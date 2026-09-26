@@ -39,6 +39,9 @@ using liba32android::compat::kA32LibcMemcpySvcImmediate;
 using liba32android::compat::kA32LibcMemoryStringShimIdentity;
 using liba32android::compat::kA32LibcMemoryStringShimSoname;
 using liba32android::compat::kA32LibcMemsetSvcImmediate;
+using liba32android::compat::kA32LibcMemmemSvcImmediate;
+using liba32android::compat::kA32LibcStrcpySvcImmediate;
+using liba32android::compat::kA32LibcStrncpySvcImmediate;
 using liba32android::compat::kA32LibcStrcmpSvcImmediate;
 using liba32android::compat::kA32LibcStrlenSvcImmediate;
 using liba32android::compat::kA32LibcStrncmpSvcImmediate;
@@ -147,7 +150,8 @@ std::optional<A32ServiceDispatchResult> run_wrapper(
     std::uint32_t stop_pc,
     std::uint32_t r0,
     std::uint32_t r1,
-    std::uint32_t r2) {
+    std::uint32_t r2,
+    std::uint32_t r3 = 0) {
     const auto lookup = lookup_elf32_graph_symbol(
         memory, graph, 0, name, symbol_options());
     if (!lookup) {
@@ -171,6 +175,7 @@ std::optional<A32ServiceDispatchResult> run_wrapper(
     request.regs[0] = r0;
     request.regs[1] = r1;
     request.regs[2] = r2;
+    request.regs[3] = r3;
     request.regs[13] = stack_top;
     request.regs[14] = stop_pc | (thumb ? 1U : 0U);
     request.instruction_count = kInstructionBudget;
@@ -268,9 +273,10 @@ int main(int argc, char** argv) {
         return fail("libc shim dependency/provider metadata was incorrect");
     }
 
-    constexpr std::array<std::string_view, 7> shim_names{{
+    constexpr std::array<std::string_view, 10> shim_names{{
         "memcpy", "memset", "memcmp", "memchr",
         "strlen", "strcmp", "strncmp",
+        "memmem", "strcpy", "strncpy",
     }};
     std::array<std::uint32_t, shim_names.size()> shim_targets{};
     for (std::size_t i = 0; i < shim_names.size(); ++i) {
@@ -351,7 +357,7 @@ int main(int argc, char** argv) {
 
     A32LibcMemoryStringService service{
         A32LibcMemoryStringOptions{64, 64}};
-    const std::array<A32HostServiceRegistryEntry, 7> services{{
+    const std::array<A32HostServiceRegistryEntry, 10> services{{
         {kA32LibcMemcpySvcImmediate, &service},
         {kA32LibcMemsetSvcImmediate, &service},
         {kA32LibcMemcmpSvcImmediate, &service},
@@ -359,6 +365,9 @@ int main(int argc, char** argv) {
         {kA32LibcStrlenSvcImmediate, &service},
         {kA32LibcStrcmpSvcImmediate, &service},
         {kA32LibcStrncmpSvcImmediate, &service},
+        {kA32LibcMemmemSvcImmediate, &service},
+        {kA32LibcStrcpySvcImmediate, &service},
+        {kA32LibcStrncpySvcImmediate, &service},
     }};
     A32HostServiceRegistry registry{std::span{services}};
 
@@ -428,6 +437,42 @@ int main(int argc, char** argv) {
         stack_top, *stop, alpha_address, alphb_address, 4U);
     if (!result || !*result || signed_r0(result->regs[0]) != 0) {
         return fail("real libc strncmp wrapper prefix result failed");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_memmem", registry,
+        stack_top, *stop, alpha_address, 5U, alphb_address + 1U, 2U);
+    if (!result || !*result || result->regs[0] != alpha_address + 1U) {
+        return fail("real libc memmem wrapper pointer failed");
+    }
+    ++completed_calls;
+
+    const std::uint32_t strcpy_destination = *data + 0x180U;
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_strcpy", registry,
+        stack_top, *stop, strcpy_destination, alpha_address, 0U);
+    if (!result || !*result || result->regs[0] != strcpy_destination) {
+        return fail("real libc strcpy wrapper result failed");
+    }
+    std::array<std::uint8_t, 6> strcpy_bytes{};
+    if (!memory.read(strcpy_destination, strcpy_bytes) ||
+        strcpy_bytes != alpha) {
+        return fail("real libc strcpy wrapper bytes failed");
+    }
+    ++completed_calls;
+
+    const std::uint32_t strncpy_destination = *data + 0x1c0U;
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_strncpy", registry,
+        stack_top, *stop, strncpy_destination, alpha_address, 4U);
+    if (!result || !*result || result->regs[0] != strncpy_destination) {
+        return fail("real libc strncpy wrapper result failed");
+    }
+    std::array<std::uint8_t, 4> strncpy_bytes{};
+    if (!memory.read(strncpy_destination, strncpy_bytes) ||
+        strncpy_bytes != std::array<std::uint8_t, 4>{{'a','l','p','h'}}) {
+        return fail("real libc strncpy wrapper truncation failed");
     }
     ++completed_calls;
 

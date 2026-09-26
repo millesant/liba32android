@@ -17,6 +17,13 @@ __attribute__((visibility("default")))
 int strcmp(const char* lhs, const char* rhs);
 __attribute__((visibility("default")))
 int strncmp(const char* lhs, const char* rhs, fixture_size_t count);
+__attribute__((visibility("default")))
+void* memmem(const void* haystack, fixture_size_t haystack_length,
+             const void* needle, fixture_size_t needle_length);
+__attribute__((visibility("default")))
+char* strcpy(char* destination, const char* source);
+__attribute__((visibility("default")))
+char* strncpy(char* destination, const char* source, fixture_size_t count);
 
 __attribute__((visibility("default"), noinline))
 void* fixture_memcpy(void* destination, const void* source, fixture_size_t count) {
@@ -51,4 +58,20 @@ int fixture_strcmp(const char* lhs, const char* rhs) {
 __attribute__((visibility("default"), noinline))
 int fixture_strncmp(const char* lhs, const char* rhs, fixture_size_t count) {
     return strncmp(lhs, rhs, count);
+}
+
+__attribute__((visibility("default"), noinline))
+void* fixture_memmem(const void* haystack, fixture_size_t haystack_length,
+                     const void* needle, fixture_size_t needle_length) {
+    return memmem(haystack, haystack_length, needle, needle_length);
+}
+
+__attribute__((visibility("default"), noinline))
+char* fixture_strcpy(char* destination, const char* source) {
+    return strcpy(destination, source);
+}
+
+__attribute__((visibility("default"), noinline))
+char* fixture_strncpy(char* destination, const char* source, fixture_size_t count) {
+    return strncpy(destination, source, count);
 }

@@ -204,3 +204,22 @@ count bytes without inventing a terminator when no NUL is encountered.
 
 Feature 033 adds no integer parsing, errno, allocation, thread, I/O,
 dynamic-loader, or guest-shim export behavior.
+
+
+## L32-C011 — Partial libc copy/search shim extension
+
+The prepared partial ARM32 `libc.so` may additionally export `memmem`,
+`strcpy`, and `strncpy` using the shared feature-033 SVC IDs `0xA8`,
+`0xA9`, and `0xAA`, with each guest function consisting only of its SVC
+followed by `bx lr`.
+
+The reproducible freestanding consumer may import those three functions in
+addition to the original seven. Real integration must resolve all ten symbols
+from the partial libc object, require an eager JUMP_SLOT target for every one,
+register all ten SVC IDs to the bounded libc service, and execute all ten
+consumer wrappers through the existing namespace-gated finite platform catalog
+path.
+
+The extension does not broaden the partial libc identity/SONAME or imply full
+Android libc compatibility. No integer conversion, allocation, pthread, I/O,
+dynamic-loader, math, errno, startup, signal, or locale behavior is introduced.

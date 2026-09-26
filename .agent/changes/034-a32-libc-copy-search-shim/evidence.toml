@@ -1,0 +1,29 @@
+schema = 1
+change = "034-a32-libc-copy-search-shim"
+
+[[evidence]]
+id = "ten-symbol-partial-libc-fixture"
+kind = "test"
+status = "not_run"
+claim = "The pinned-NDK partial libc fixture exports/imports all ten prepared memory/string/copy/search functions with eager JUMP_SLOT relocations."
+source = "tests/compat/fixtures/, tools/fixtures/build_arm32_libc_memory_string_fixture.sh, and .github/workflows/compat-libc-shim.yml"
+result = "Feature 034 is integrated; exact-head dedicated fixture execution has not yet been observed."
+limitations = "Integrated fixture source is not passing evidence until the dedicated check actually runs."
+
+[[evidence]]
+id = "ten-symbol-end-to-end"
+kind = "test"
+status = "not_run"
+claim = "All ten real ARM32 consumer wrappers load/relocate through the partial libc shim and execute one bounded host service before returning."
+source = "tests/compat/a32_libc_memory_string_shim.cpp"
+result = "Feature 034 is integrated; exact-head end-to-end execution has not yet been observed."
+limitations = "The ten-function partial libc remains intentionally insufficient for complete Android libc or FMOD/VLC compatibility."
+
+[[evidence]]
+id = "exact-head-ci"
+kind = "validation"
+status = "not_run"
+claim = "Feature 034 passes dedicated partial-libc integration and the required exact-head matrix after ordered integration."
+source = "GitHub commit checks on the feature-034 integration revision"
+result = ""
+limitations = "Feature 034 remains implemented rather than done until terminal exact-head checks complete successfully."

@@ -1,22 +1,26 @@
 # Next Work
 
-Features 011 through 032 are DONE.
+Features 011 through 033 are DONE.
 
-`033-a32-libc-copy-search-service` is IMPLEMENTED on `bleeding`; its
-exact-head required checks are the immediate acceptance gate.
+`034-a32-libc-copy-search-shim` is IMPLEMENTED on `bleeding`; its
+exact-head required checks plus dedicated ARM32 partial-libc integration are the
+immediate acceptance gate.
 
-Once terminal success is observed, close 033 and integrate prepared feature 034,
-which extends the real partial `libc.so` and consumer from seven to ten
-functions with `memmem/strcpy/strncpy`.
+Once terminal success is observed, close 034 and integrate prepared feature 035
+(`atoi/strtol` bounded service).
 
-Prepared order after 033:
+Prepared order after 034:
 
-`034 -> 035 -> 036 -> 037 -> 038 -> 039 -> 040 -> 041 -> 042 -> 043`.
+`035 -> 036 -> 037 -> 038 -> 039 -> 040 -> 041 -> 042 -> 043 -> 044 -> 045`.
+
+Preserve the accepted feature-033 memmem fast-path correction when integrating
+older prepared trees until feature 039's broader Android-17 alignment lands.
 
 ## Local-machine validation note
 
 If a later step materially requires the user's Linux machine, stop beforehand
-and provide exact commands, required inputs, expected output, and the reason.
+and provide exact commands, required inputs, expected output, and why it is
+needed.
 
 ## Independent follow-ups
 
