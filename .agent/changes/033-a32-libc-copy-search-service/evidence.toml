@@ -20,10 +20,19 @@ result = "Feature 033 is integrated; exact-head execution has not yet been obser
 limitations = "Integrated tests are not passing evidence until they actually run."
 
 [[evidence]]
+id = "exact-head-ci-attempt-1"
+kind = "validation"
+status = "failed"
+claim = "Feature 033 passes the required exact-head matrix after ordered integration."
+source = "GitHub commit checks at 65fa72edaf22e652df243b9f69b7cc5c71437aeb"
+result = "Android x86_64 108510459147, Android arm64-v8a 108510458979, ARM32 liblog shim 108510459672, and ARM32 libc memory string shim 108510458823 passed. Linux A32 smoke 108510459127 failed because CTest a32_libc_string_copy_search_service failed."
+limitations = "The failure is localized to memmem no-read ordering: short-haystack/empty-needle result paths were specified/tested to avoid guest access but range validation ran before those fast paths."
+
+[[evidence]]
 id = "exact-head-ci"
 kind = "validation"
 status = "not_run"
-claim = "Feature 033 passes the required exact-head matrix after ordered integration."
-source = "GitHub commit checks on the feature-033 integration revision"
+claim = "The corrected feature-033 exact head passes the required matrix."
+source = "future GitHub commit checks on the corrective feature-033 revision"
 result = ""
-limitations = "Feature 033 remains implemented rather than done until terminal exact-head checks are observed."
+limitations = "Feature 033 remains implemented rather than done until the corrected exact-head checks complete successfully."

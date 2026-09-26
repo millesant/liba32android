@@ -31,7 +31,7 @@ Latest accepted behavior-changing result: feature 032 at
 - ARM32 liblog shim integration `108508593573` — PASS.
 - ARM32 libc memory string shim integration `108508593648` — PASS.
 
-Feature 033 exact-head validation: NOT RUN.
+Feature 033 exact-head validation attempt at `65fa72edaf22e652df243b9f69b7cc5c71437aeb`: FAILED Linux A32 smoke check `108510459127`; the other four required checks passed. The failing CTest was `a32_libc_string_copy_search_service`. Source inspection localized the mismatch to memmem: the test requires short-haystack/empty-needle result-only paths to avoid guest-range validation, but the implementation validated ranges first. A corrective exact-head revision reorders only those no-read decisions ahead of range validation.
 
 ## Deferred / partial
 

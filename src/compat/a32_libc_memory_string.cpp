@@ -267,11 +267,10 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
         const std::uint32_t needle_address = regs[2];
         const std::uint32_t needle_size = regs[3];
         if (haystack_size > options_.max_transfer_bytes ||
-            needle_size > options_.max_transfer_bytes ||
-            !range_fits_u32(haystack_address, haystack_size) ||
-            !range_fits_u32(needle_address, needle_size)) {
+            needle_size > options_.max_transfer_bytes) {
             return A32HostServiceDisposition::Failed;
         }
+        // These result-only cases do not dereference either byte range.
         if (needle_size == 0) {
             regs[0] = haystack_address;
             return A32HostServiceDisposition::Handled;
@@ -279,6 +278,10 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
         if (haystack_size < needle_size) {
             regs[0] = 0;
             return A32HostServiceDisposition::Handled;
+        }
+        if (!range_fits_u32(haystack_address, haystack_size) ||
+            !range_fits_u32(needle_address, needle_size)) {
+            return A32HostServiceDisposition::Failed;
         }
 
         std::vector<std::uint8_t> haystack(haystack_size);
