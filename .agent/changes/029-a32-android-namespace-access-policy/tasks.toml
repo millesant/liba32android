@@ -3,30 +3,30 @@ change = "029-a32-android-namespace-access-policy"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Capture the bounded AOSP direct linked-namespace SONAME accessibility model and explicitly exclude path/search/RTLD behavior."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Add caller-borrowed requester bindings, direct namespace links, platform namespace target, and A32AndroidPlatformAccessPolicy implementation."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Implement exact binding/link lookup, same-namespace access, allow-all versus explicit SONAME modes, and explicit malformed/ambiguous failure behavior."
 
 [[tasks]]
 id = "T004"
-status = "implemented"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Add focused namespace-policy tests and route the real ARM32 liblog integration through android-log-consumer -> app -> platform accessibility."
 
 [[tasks]]
 id = "T005"
-status = "active"
+status = "verified"
 depends_on = ["T004"]
 acceptance = "Run exact-head required checks on the integrated feature-029 revision and reconcile closure evidence."

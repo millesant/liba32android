@@ -29,6 +29,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_libc_memory_string_test
+    tests/compat/a32_libc_memory_string.cpp
+)
+
+add_test(
+    NAME a32_libc_memory_string_service
+    COMMAND compat_libc_memory_string_test
+)
+
+liba32android_add_test_executable(
     compat_android_log_shim_integration_test
     tests/compat/a32_android_log_shim.cpp
 )

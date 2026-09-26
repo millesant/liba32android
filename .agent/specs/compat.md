@@ -106,3 +106,30 @@ for its lifetime and performs no allocation. It does not infer namespaces from
 paths, traverse namespace links transitively, search files/APKs, parse Android
 linker configuration, model RUNPATH/RPATH/LD_LIBRARY_PATH/preload/RTLD policy,
 or automatically install platform providers.
+
+
+## L32-C007 — Bounded A32 libc memory/string host service
+
+The compatibility layer may expose one bounded host-service handler for the
+seven concrete libc primitives observed in both supplied ARM32 targets:
+`memcpy`, `memset`, `memcmp`, `memchr`, `strlen`, `strcmp`, and
+`strncmp`.
+
+The shared guest/host private service IDs are `0xA1` through `0xA7` in that
+order. The service consumes their ordinary AAPCS32 word arguments from r0-r2
+and writes the result to r0. Pointer results are logical 32-bit guest addresses;
+comparison results preserve only the required negative/zero/positive contract.
+
+The caller supplies finite `max_transfer_bytes` and `max_string_bytes`
+ceilings. Transfer counts above the first ceiling, string/strncmp scans beyond
+the second, logical address wrap, or guest-memory access failure return
+`Failed`. Unknown service IDs remain `Unhandled`.
+
+Zero-count memory/strncmp calls access no guest memory. `strlen` accepts a
+payload exactly at the string ceiling when followed by NUL. `strcmp` may
+return once a differing byte determines the result; otherwise an equal
+unterminated pair at the ceiling fails. `strncmp` reads at most its explicit
+count and need not observe a terminator.
+
+Feature 030 adds no guest `libc.so`, allocator, stdio/file/socket/pthread/dl
+state, errno model, libm behavior, or platform-provider installation.

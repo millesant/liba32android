@@ -1,0 +1,29 @@
+schema = 1
+change = "030-a32-libc-memory-string-service"
+
+[[evidence]]
+id = "shared-imports"
+kind = "research"
+status = "passed"
+claim = "Both supplied ARM32 FMOD and VLC libvlc.so import the seven selected libc memory/string primitives."
+source = "docs/research/evidence/shared-libc-memory-string-imports-2026-09-26.md"
+result = "Bounded readelf parsing records the shared imports; the count correction is carried by the later prepared Android-17 alignment lineage."
+limitations = "Static imports do not prove call frequency or make this partial libc surface sufficient for either application."
+
+[[evidence]]
+id = "libc-memory-string-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused regressions cover the seven bounded host services and ARM registry/dispatcher composition."
+source = "tests/compat/a32_libc_memory_string.cpp"
+result = "Feature 030 is integrated; no exact-head execution has yet been observed."
+limitations = "Integrated tests are not passing evidence until they actually run."
+
+[[evidence]]
+id = "exact-head-ci"
+kind = "validation"
+status = "not_run"
+claim = "Feature 030 passes the required exact-head matrix after ordered integration."
+source = "GitHub commit checks on the eventual feature-030 integration revision"
+result = ""
+limitations = "Feature 030 remains implemented rather than done until terminal exact-head checks are observed."
