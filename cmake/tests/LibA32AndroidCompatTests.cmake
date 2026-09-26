@@ -19,6 +19,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_android_platform_catalog_provider_test
+    tests/compat/a32_android_platform_catalog_provider.cpp
+)
+
+add_test(
+    NAME a32_android_platform_catalog_provider
+    COMMAND compat_android_platform_catalog_provider_test
+)
+
+liba32android_add_test_executable(
     compat_android_namespace_policy_test
     tests/compat/a32_android_namespace_policy.cpp
 )

@@ -1,0 +1,26 @@
+schema = 1
+change = "031-a32-android-platform-catalog-provider"
+
+[[tasks]]
+id = "T001"
+status = "implemented"
+depends_on = []
+acceptance = "Add the finite borrowed A32AndroidPlatformCatalogProvider without changing the feature-028 one-slot provider."
+
+[[tasks]]
+id = "T002"
+status = "implemented"
+depends_on = ["T001"]
+acceptance = "Implement exact name membership, duplicate pre-policy failure, policy decision propagation, context-free behavior, and catalog validation delegation."
+
+[[tasks]]
+id = "T003"
+status = "implemented"
+depends_on = ["T002"]
+acceptance = "Add focused multi-entry tests including namespace-policy composition for a concrete libc.so catalog entry."
+
+[[tasks]]
+id = "T004"
+status = "active"
+depends_on = ["T003"]
+acceptance = "Run exact-head required checks on the integrated feature-031 revision and reconcile closure evidence."

@@ -133,3 +133,25 @@ count and need not observe a terminator.
 
 Feature 030 adds no guest `libc.so`, allocator, stdio/file/socket/pthread/dl
 state, errno model, libm behavior, or platform-provider installation.
+
+
+## L32-C008 — Finite requester-aware Android platform catalog
+
+`A32AndroidPlatformCatalogProvider` may expose a caller-owned finite span of
+exact `Elf32DependencyCatalogEntry` records through the existing
+requester-aware platform-access-policy seam.
+
+A request with no exact catalog name returns `NotFound` without invoking
+policy. Duplicate exact requested names return `Failed` before policy.
+Exactly one name match is forwarded byte-for-byte with requester identity to
+`A32AndroidPlatformAccessPolicy`. `Allow` delegates to the existing exact
+catalog provider, preserving its identity/image/maximum-byte validation;
+`NotFound` and `Failed` propagate without source data.
+
+The provider owns no entry, string, identity, image, or policy storage. All
+borrowed storage must outlive it. The feature-028 one-slot
+`A32AndroidPlatformProvider` remains valid as a `liblog.so` convenience
+provider.
+
+The finite catalog adds no automatic catalog construction, path/search logic,
+namespace inference, guest `libc.so` binary, or broader platform behavior.

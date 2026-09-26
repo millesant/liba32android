@@ -3,39 +3,43 @@
 Last updated: 2026-09-26
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `030-a32-libc-memory-string-service` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: `031-a32-android-platform-catalog-provider` — IMPLEMENTED, exact-head validation NOT RUN.
 
 ## Phase
 
-Features 011-029 are accepted.
+Features 011-030 are accepted.
 
-Feature 029 passed exact-head Linux A32 smoke, both Android checks, and the real
-ARM32 liblog integration at
-`6df9ad2d63e1aceebbf30489a31c5c803b48bbbf`.
+Feature 030 passed exact-head Linux A32 smoke, both Android checks, and the
+existing ARM32 liblog integration at
+`3dc1810d46fa3237d4303583a05b76f356e6ecab`.
 
-Feature 030 is now integrated. It adds the first bounded libc host-service
-surface shared by the supplied FMOD and VLC ARMv7 binaries:
-`memcpy/memset/memcmp/memchr/strlen/strcmp/strncmp`.
+Feature 031 is now integrated. It adds a finite requester-aware Android
+platform catalog that preserves the feature-028 policy seam while removing its
+intentional one-`liblog.so` ceiling.
 
-The service uses logical GuestMemory addresses, shared private SVC IDs
-`0xA1-0xA7`, caller-selected transfer/string ceilings, source-before-
-destination memcpy behavior, and portable comparison signs. It adds no guest
-libc.so shim or stateful libc surface.
+The provider borrows a finite span of exact catalog entries plus one
+`A32AndroidPlatformAccessPolicy`. Unknown names bypass policy, duplicate exact
+names fail before policy, and a unique matching name is policy-gated before
+delegating to the existing catalog validation semantics.
+
+Focused integration coverage composes a two-entry synthetic
+`liblog.so` + `libc.so` platform catalog with the feature-029 namespace
+policy.
 
 ## Validation and repository-truth evidence
 
-Latest accepted behavior-changing result: feature 029 at
-`6df9ad2d63e1aceebbf30489a31c5c803b48bbbf`:
+Latest accepted behavior-changing result: feature 030 at
+`3dc1810d46fa3237d4303583a05b76f356e6ecab`:
 
-- Linux A32 smoke `108505154805` — PASS.
-- Android x86_64 address-space probe `108505154737` — PASS.
-- Android arm64-v8a cross-build `108505154640` — PASS.
-- ARM32 liblog shim integration `108505154464` — PASS.
+- Linux A32 smoke `108506789969` — PASS.
+- Android x86_64 address-space probe `108506790027` — PASS.
+- Android arm64-v8a cross-build `108506789868` — PASS.
+- ARM32 liblog shim integration `108506789729` — PASS.
 
-Feature 030 exact-head validation: NOT RUN.
+Feature 031 exact-head validation: NOT RUN.
 
 ## Deferred / partial
 
-Guest libc shim/provider, broader libc state, Android filesystem/search,
-pthread/TLS, libdl, I/O/stdio/socket, libm, JNI/graphics/audio, and Android
-device end-to-end evidence remain later work.
+The guest `libc.so` binary, allocator/thread/I/O/libdl/libm surfaces, Android
+filesystem/search policy, stable embedding API, broader relocation/TLS/IFUNC,
+unload lifecycle, and Android-device evidence remain later work.

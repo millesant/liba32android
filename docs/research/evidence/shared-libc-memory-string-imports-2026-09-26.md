@@ -22,13 +22,14 @@ readelf -WsW lib/armeabi-v7a/libvlc.so
 readelf -dW ...
 ```
 
-Undefined symbol names were stripped of symbol-version suffixes, sorted
-uniquely, and intersected.
+Undefined symbol names were parsed from `UND` symbol rows, symbol-version
+suffixes were removed, names were sorted uniquely, and the two unique sets were
+intersected.
 
 ## Result
 
-The supplied FMOD library has 107 unique undefined symbol names. VLC ARMv7
-`libvlc.so` has 573. Their intersection contains 102 names.
+The supplied FMOD library has 106 unique non-empty undefined symbol names. VLC
+ARMv7 `libvlc.so` has 572. Their intersection contains 101 names.
 
 Both binaries import each of the following seven bounded memory/string
 primitives:
@@ -50,11 +51,12 @@ floating-point ABI handling, or process-global libc state.
 
 ## Wider common surface
 
-The common undefined set also contains allocator calls
-(`malloc/calloc/realloc/free`), `dlopen/dlsym/dlclose/dlerror`, pthread
-operations, file/socket I/O, stdio, time calls, and libm functions. Those have
-substantially stronger lifetime/state/ABI requirements and are intentionally not
-folded into this first bounded libc service.
+The common undefined set also contains `memmem`, `strcpy`, and `strncpy`,
+plus allocator calls (`malloc/calloc/realloc/free`),
+`dlopen/dlsym/dlclose/dlerror`, pthread operations, file/socket I/O, stdio,
+time calls, and libm functions. Those stateful surfaces have stronger
+lifetime/state/ABI requirements and are intentionally not folded into the first
+seven-function service.
 
 ## Limits
 

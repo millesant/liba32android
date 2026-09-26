@@ -64,4 +64,46 @@ private:
     A32AndroidPlatformAccessPolicy& policy_;
 };
 
+// Generic finite platform catalog for compatibility libraries beyond the
+// feature-028 one-slot liblog convenience provider. The entry span, nested
+// name/identity/image storage, and policy are all caller-owned for the full
+// provider lifetime.
+class A32AndroidPlatformCatalogProvider final
+    : public elf::Elf32DependencyProvider {
+public:
+    A32AndroidPlatformCatalogProvider(
+        std::span<const elf::Elf32DependencyCatalogEntry> entries,
+        A32AndroidPlatformAccessPolicy& policy) noexcept
+        : entries_(entries),
+          catalog_(entries),
+          policy_(policy) {}
+
+    A32AndroidPlatformCatalogProvider(
+        const A32AndroidPlatformCatalogProvider&) = delete;
+    A32AndroidPlatformCatalogProvider& operator=(
+        const A32AndroidPlatformCatalogProvider&) = delete;
+    A32AndroidPlatformCatalogProvider(
+        A32AndroidPlatformCatalogProvider&&) = delete;
+    A32AndroidPlatformCatalogProvider& operator=(
+        A32AndroidPlatformCatalogProvider&&) = delete;
+
+    [[nodiscard]] elf::Elf32DependencyProviderResult resolve(
+        std::string_view requested_name,
+        std::uint64_t max_image_bytes) override;
+
+    [[nodiscard]] elf::Elf32DependencyProviderResult resolve_for(
+        std::string_view requester_identity,
+        std::string_view requested_name,
+        std::uint64_t max_image_bytes) override;
+
+    [[nodiscard]] std::size_t size() const noexcept {
+        return entries_.size();
+    }
+
+private:
+    std::span<const elf::Elf32DependencyCatalogEntry> entries_;
+    elf::Elf32DependencyCatalogProvider catalog_;
+    A32AndroidPlatformAccessPolicy& policy_;
+};
+
 }  // namespace liba32android::compat

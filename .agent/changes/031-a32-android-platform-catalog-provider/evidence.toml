@@ -1,0 +1,20 @@
+schema = 1
+change = "031-a32-android-platform-catalog-provider"
+
+[[evidence]]
+id = "platform-catalog-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused tests cover multi-entry requester-aware platform catalog semantics and namespace-policy composition."
+source = "tests/compat/a32_android_platform_catalog_provider.cpp"
+result = "Feature 031 is integrated; no exact-head execution has yet been observed."
+limitations = "Integrated tests are not passing evidence until they actually run."
+
+[[evidence]]
+id = "exact-head-ci"
+kind = "validation"
+status = "not_run"
+claim = "Feature 031 passes required exact-head checks after feature 030 is accepted."
+source = "GitHub commit checks on the eventual feature-031 integration revision"
+result = ""
+limitations = "Feature 031 remains implemented rather than done until terminal exact-head checks are observed."
