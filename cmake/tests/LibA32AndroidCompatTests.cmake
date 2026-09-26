@@ -19,6 +19,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_android_namespace_policy_test
+    tests/compat/a32_android_namespace_policy.cpp
+)
+
+add_test(
+    NAME a32_android_namespace_access_policy
+    COMMAND compat_android_namespace_policy_test
+)
+
+liba32android_add_test_executable(
     compat_android_log_shim_integration_test
     tests/compat/a32_android_log_shim.cpp
 )

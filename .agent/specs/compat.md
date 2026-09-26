@@ -81,3 +81,28 @@ entire lifetime. It is non-copyable and non-movable because its internal catalog
 span refers to its own entry storage. It does not normalize request names,
 interpret pathnames, define Android namespaces/links, inspect filesystem/APK
 paths, or install itself automatically into an application provider chain.
+
+## L32-C006 — Direct Android namespace SONAME accessibility
+
+`A32AndroidNamespaceAccessPolicy` implements
+`A32AndroidPlatformAccessPolicy` using caller-owned finite requester bindings
+and direct namespace links.
+
+A requester is bound by exact opaque identity bytes to exactly one non-empty
+namespace. Missing bindings return `NotFound`; duplicate matching bindings or
+an empty matching namespace return `Failed`. If the requester namespace equals
+the configured non-empty platform namespace, the request is `Allow`.
+
+Otherwise exactly one direct link from requester namespace to platform
+namespace is required. No matching link returns `NotFound`; duplicate matching
+links return `Failed`. A matching link chooses exactly one accessibility mode:
+`allow_all_shared_libs=true` with no explicit names, or a non-empty finite
+list of non-empty exact SONAME bytes. Combining both modes or providing neither
+returns `Failed`. Explicit mode returns `Allow` only on an exact requested
+name match; otherwise `NotFound`.
+
+The policy borrows all bindings, links, nested SONAME spans, and string storage
+for its lifetime and performs no allocation. It does not infer namespaces from
+paths, traverse namespace links transitively, search files/APKs, parse Android
+linker configuration, model RUNPATH/RPATH/LD_LIBRARY_PATH/preload/RTLD policy,
+or automatically install platform providers.

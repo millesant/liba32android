@@ -4,6 +4,7 @@ add_library(liba32android SHARED
     src/runtime/a32_service_registry.cpp
     src/compat/a32_android_log_write.cpp
     src/compat/a32_android_platform_provider.cpp
+    src/compat/a32_android_namespace_policy.cpp
     src/elf/loading/elf32_dynamic_placement.cpp
     src/elf/loading/elf32_load_plan.cpp
     src/elf/loading/elf32_loader.cpp

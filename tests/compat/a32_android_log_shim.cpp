@@ -13,6 +13,7 @@
 
 #include "compat/a32_android_log_shim.h"
 #include "compat/a32_android_log_write.h"
+#include "compat/a32_android_namespace_policy.h"
 #include "compat/a32_android_platform_provider.h"
 #include "cpu/a32_cpu.h"
 #include "elf/elf32_dependency_loader.h"
@@ -27,8 +28,9 @@ namespace {
 using liba32android::compat::A32AndroidLogSink;
 using liba32android::compat::A32AndroidLogWriteOptions;
 using liba32android::compat::A32AndroidLogWriteService;
-using liba32android::compat::A32AndroidPlatformAccessDecision;
-using liba32android::compat::A32AndroidPlatformAccessPolicy;
+using liba32android::compat::A32AndroidNamespaceAccessPolicy;
+using liba32android::compat::A32AndroidNamespaceBinding;
+using liba32android::compat::A32AndroidNamespaceLink;
 using liba32android::compat::A32AndroidPlatformProvider;
 using liba32android::compat::kA32AndroidLogShimIdentity;
 using liba32android::compat::kA32AndroidLogShimSoname;
@@ -143,22 +145,6 @@ public:
     }
 };
 
-class RecordingPlatformPolicy final : public A32AndroidPlatformAccessPolicy {
-public:
-    std::size_t calls{};
-    std::string requester;
-    std::string requested;
-
-    A32AndroidPlatformAccessDecision decide(
-        std::string_view requester_identity,
-        std::string_view requested_name) override {
-        ++calls;
-        requester.assign(requester_identity.data(), requester_identity.size());
-        requested.assign(requested_name.data(), requested_name.size());
-        return A32AndroidPlatformAccessDecision::Allow;
-    }
-};
-
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -178,9 +164,28 @@ int main(int argc, char** argv) {
 
     const std::array<Elf32DependencyCatalogEntry, 0> app_entries{};
     Elf32DependencyCatalogProvider app_provider{std::span{app_entries}};
-    RecordingPlatformPolicy platform_policy;
+
+    const std::array<A32AndroidNamespaceBinding, 1> namespace_bindings{{
+        {"android-log-consumer", "app"},
+    }};
+    const std::array<std::string_view, 1> platform_shared_libs{{
+        kA32AndroidLogShimSoname,
+    }};
+    const std::array<A32AndroidNamespaceLink, 1> namespace_links{{
+        {
+            "app",
+            "platform",
+            false,
+            std::span{platform_shared_libs},
+        },
+    }};
+    A32AndroidNamespaceAccessPolicy namespace_policy{
+        std::span{namespace_bindings},
+        std::span{namespace_links},
+        "platform",
+    };
     A32AndroidPlatformProvider platform_provider{
-        std::span{shim_image}, platform_policy};
+        std::span{shim_image}, namespace_policy};
     const std::array<Elf32DependencyProvider*, 2> provider_list{{
         &app_provider,
         &platform_provider,
@@ -208,11 +213,8 @@ int main(int argc, char** argv) {
             std::string("Android log shim dependency graph load failed: ") +
             liba32android::elf::to_string(graph_result.error));
     }
-    if (graph_result.graph.objects.size() != 2 ||
-        platform_policy.calls != 1 ||
-        platform_policy.requester != "android-log-consumer" ||
-        platform_policy.requested != kA32AndroidLogShimSoname) {
-        return fail("Android platform provider did not preserve requester-aware fallback");
+    if (graph_result.graph.objects.size() != 2) {
+        return fail("Android namespace-gated platform fallback did not form the expected graph");
     }
 
     const auto& consumer = graph_result.graph.objects[0];
@@ -339,8 +341,7 @@ int main(int argc, char** argv) {
         << "fixture.android_log.object_count="
         << graph_result.graph.objects.size() << '\n'
         << "fixture.android_log.needed=" << kA32AndroidLogShimSoname << '\n'
-        << "fixture.android_log.platform_policy_calls="
-        << platform_policy.calls << '\n'
+        << "fixture.android_log.namespace_access=linked\n"
         << "fixture.android_log.symbol_object="
         << log_write.symbol.object_index << '\n'
         << "fixture.android_log.relocation_count="

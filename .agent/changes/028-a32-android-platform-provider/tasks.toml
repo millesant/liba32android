@@ -3,30 +3,30 @@ change = "028-a32-android-platform-provider"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Add the requester-aware Android platform access-policy/provider contracts with explicit ownership and non-copyable lifetime rules."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Implement exact liblog.so recognition, byte-preserving policy forwarding, decision translation, context-free empty requester behavior, and catalog-backed image validation."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Add focused provider regressions for requester bytes, decisions, resource failures, unknown-name bypass, context-free lookup, and application-first chain fallback."
 
 [[tasks]]
 id = "T004"
-status = "implemented"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Switch the real ARM32 log-shim integration to application-first/platform-fallback composition and assert requester-aware platform selection before relocation/execution."
 
 [[tasks]]
 id = "T005"
-status = "active"
+status = "verified"
 depends_on = ["T004"]
 acceptance = "Run exact-head dedicated shim integration, Linux A32 smoke, and both Android checks, then reconcile status/evidence/current state."
