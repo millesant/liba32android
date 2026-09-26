@@ -18,7 +18,7 @@ The runtime target must produce exactly `build/liba32android.so`.
 
 The Linux CI job builds ARMv7 Android fixture DSOs with pinned NDK
 `27.3.13750724`. Existing loader/JUMP_SLOT/versioning fixtures plus the
-feature-027 Android-log consumer/shim pair are passed to CMake through:
+feature-027 Android-log pair and feature-032 partial-libc pair are passed to CMake through:
 
 - `LIBA32ANDROID_ARM32_FIXTURE_PATH`
 - `LIBA32ANDROID_ARM32_JUMP_SLOT_CONSUMER_PATH`
@@ -26,7 +26,7 @@ feature-027 Android-log consumer/shim pair are passed to CMake through:
 - `LIBA32ANDROID_ARM32_VERSIONED_CONSUMER_PATH`
 - `LIBA32ANDROID_ARM32_VERSIONED_PROVIDER_PATH`
 - `LIBA32ANDROID_ARM32_ANDROID_LOG_CONSUMER_PATH`
-- `LIBA32ANDROID_ARM32_ANDROID_LOG_SHIM_PATH`
+- `LIBA32ANDROID_ARM32_ANDROID_LOG_SHIM_PATH`\n- `LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH`\n- `LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH`
 
 ELF-only fixture source lives in `tests/elf/fixtures/`; compatibility fixture
 source lives in `tests/compat/fixtures/`; builders live in

@@ -1,17 +1,17 @@
 # Next Work
 
-Features 011 through 030 are DONE.
+Features 011 through 031 are DONE.
 
-`031-a32-android-platform-catalog-provider` is IMPLEMENTED on `bleeding`;
-its exact-head required checks are the immediate acceptance gate.
+`032-a32-libc-memory-string-shim-provider` is IMPLEMENTED on `bleeding`.
+Its exact-head required checks plus the dedicated ARM32 partial-libc integration
+are the immediate acceptance gate.
 
-Once terminal success is observed, close 031 and integrate prepared feature 032,
-the reproducible partial ARM32 `libc.so` shim/provider for the first seven
-memory/string services.
+Once terminal success is observed, close 032 and integrate prepared feature 033
+(`memmem/strcpy/strncpy` bounded services).
 
-Prepared order after 031:
+Prepared order after 032:
 
-`032 -> 033 -> 034 -> 035 -> 036 -> 037 -> 038 -> 039 -> 040 -> 041`.
+`033 -> 034 -> 035 -> 036 -> 037 -> 038 -> 039 -> 040 -> 041`.
 
 ## Local-machine validation note
 

@@ -155,3 +155,25 @@ provider.
 
 The finite catalog adds no automatic catalog construction, path/search logic,
 namespace inference, guest `libc.so` binary, or broader platform behavior.
+
+
+## L32-C009 — Partial ARM32 libc memory/string shim/provider path
+
+The compatibility layer may build a reproducible freestanding ARM32 DSO with
+SONAME `libc.so` that exports only the seven feature-030 primitives. Each
+export preserves incoming AAPCS32 argument registers, executes its shared
+private SVC ID `0xA1` through `0xA7`, and returns with `bx lr`.
+
+`make_a32_libc_memory_string_shim_catalog_entry` returns a borrowed exact-name
+catalog entry for `libc.so` with stable opaque identity
+`liba32android-compat-libc-memory-string`.
+
+A real freestanding ARM32 consumer may depend on that shim through ordinary
+`DT_NEEDED libc.so` plus eager JUMP_SLOT relocations. Integration may acquire
+the shim through feature-031 finite platform catalog plus feature-029 namespace
+policy and execute every wrapper through feature-030 services.
+
+The partial shim is not Android libc and does not claim sufficiency for supplied
+FMOD/VLC targets. Allocation, pthreads, I/O/stdio/socket, errno, dynamic-loader,
+math, process-startup, signal, locale, and all other libc behavior remain out of
+scope.

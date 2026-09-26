@@ -1,0 +1,442 @@
+#include <array>
+#include <bit>
+#include <cstddef>
+#include <cstdint>
+#include <iostream>
+#include <limits>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "support/fixture_io.h"
+
+#include "compat/a32_android_namespace_policy.h"
+#include "compat/a32_android_platform_provider.h"
+#include "compat/a32_libc_memory_string.h"
+#include "compat/a32_libc_memory_string_shim.h"
+#include "cpu/a32_cpu.h"
+#include "elf/elf32_dependency_graph.h"
+#include "elf/elf32_dependency_loader.h"
+#include "elf/elf32_relocation.h"
+#include "elf/elf32_symbol_lookup.h"
+#include "memory/guest_memory.h"
+#include "runtime/a32_service_dispatch.h"
+#include "runtime/a32_service_registry.h"
+
+namespace {
+
+using liba32android::compat::A32AndroidNamespaceAccessPolicy;
+using liba32android::compat::A32AndroidNamespaceBinding;
+using liba32android::compat::A32AndroidNamespaceLink;
+using liba32android::compat::A32AndroidPlatformCatalogProvider;
+using liba32android::compat::A32LibcMemoryStringOptions;
+using liba32android::compat::A32LibcMemoryStringService;
+using liba32android::compat::kA32LibcMemchrSvcImmediate;
+using liba32android::compat::kA32LibcMemcmpSvcImmediate;
+using liba32android::compat::kA32LibcMemcpySvcImmediate;
+using liba32android::compat::kA32LibcMemoryStringShimIdentity;
+using liba32android::compat::kA32LibcMemoryStringShimSoname;
+using liba32android::compat::kA32LibcMemsetSvcImmediate;
+using liba32android::compat::kA32LibcStrcmpSvcImmediate;
+using liba32android::compat::kA32LibcStrlenSvcImmediate;
+using liba32android::compat::kA32LibcStrncmpSvcImmediate;
+using liba32android::compat::make_a32_libc_memory_string_shim_catalog_entry;
+using liba32android::cpu::ExecutionRequest;
+using liba32android::cpu::InstructionSet;
+using liba32android::elf::Elf32DependencyCatalogEntry;
+using liba32android::elf::Elf32DependencyCatalogProvider;
+using liba32android::elf::Elf32DependencyGraph;
+using liba32android::elf::Elf32DependencyLoadOptions;
+using liba32android::elf::Elf32DependencyLoadSource;
+using liba32android::elf::Elf32DependencyProvider;
+using liba32android::elf::Elf32DependencyProviderChain;
+using liba32android::elf::Elf32GraphSymbolLookupResult;
+using liba32android::elf::Elf32RelocationOptions;
+using liba32android::elf::Elf32SymbolLookupOptions;
+using liba32android::elf::apply_elf32_combined_relocations;
+using liba32android::elf::kRArmJumpSlot;
+using liba32android::elf::load_elf32_dependency_graph;
+using liba32android::elf::lookup_elf32_graph_symbol;
+using liba32android::memory::MappedGuestMemory;
+using liba32android::memory::MemoryPermission;
+using liba32android::runtime::A32HostServiceRegistry;
+using liba32android::runtime::A32HostServiceRegistryEntry;
+using liba32android::runtime::A32ServiceDispatchResult;
+using liba32android::runtime::execute_a32_with_services;
+
+constexpr std::uint32_t kMaxFixtureNameBytes = 128;
+constexpr std::uint64_t kMaxFixtureImageBytes = 4U << 20;
+constexpr std::uint64_t kMaxTotalImageBytes = 8U << 20;
+constexpr std::size_t kInstructionBudget = 256;
+constexpr std::size_t kStackPages = 4;
+
+int fail(const std::string& message) {
+    std::cerr << message << '\n';
+    return 1;
+}
+
+std::int32_t signed_r0(std::uint32_t value) {
+    return std::bit_cast<std::int32_t>(value);
+}
+
+Elf32SymbolLookupOptions symbol_options() {
+    return Elf32SymbolLookupOptions{
+        .max_symbols = 512,
+        .max_hash_buckets = 512,
+        .max_gnu_bloom_words = 128,
+        .max_scope_objects = 8,
+        .max_name_bytes = kMaxFixtureNameBytes,
+    };
+}
+
+Elf32RelocationOptions relocation_options() {
+    Elf32RelocationOptions result;
+    result.max_relocations = 64;
+    result.symbols = symbol_options();
+    return result;
+}
+
+std::string lookup_error(
+    std::string_view name,
+    const Elf32GraphSymbolLookupResult& result) {
+    return std::string("libc shim symbol lookup failed for ") +
+           std::string(name) + ": graph=" +
+           liba32android::elf::to_string(result.error) + ", index=" +
+           liba32android::elf::to_string(result.index_error) + ", lookup=" +
+           liba32android::elf::to_string(result.lookup_error) + ", string=" +
+           liba32android::elf::to_string(result.string_error);
+}
+
+std::optional<std::uint32_t> find_unmapped_region(
+    const MappedGuestMemory& memory,
+    std::uint32_t start,
+    std::size_t page_count) {
+    const std::uint64_t page_size = memory.page_size();
+    const std::uint64_t length = page_size * page_count;
+    if (page_count == 0 || length > std::numeric_limits<std::uint32_t>::max()) {
+        return std::nullopt;
+    }
+
+    for (std::uint64_t candidate = start;
+         candidate + length <= 0xf0000000ULL;
+         candidate += page_size * 16U) {
+        bool available = true;
+        for (std::size_t i = 0; i < page_count; ++i) {
+            const std::uint64_t page = candidate + i * page_size;
+            if (page > std::numeric_limits<std::uint32_t>::max() ||
+                memory.is_mapped(static_cast<std::uint32_t>(page))) {
+                available = false;
+                break;
+            }
+        }
+        if (available) {
+            return static_cast<std::uint32_t>(candidate);
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<A32ServiceDispatchResult> run_wrapper(
+    MappedGuestMemory& memory,
+    const Elf32DependencyGraph& graph,
+    std::string_view name,
+    A32HostServiceRegistry& registry,
+    std::uint32_t stack_top,
+    std::uint32_t stop_pc,
+    std::uint32_t r0,
+    std::uint32_t r1,
+    std::uint32_t r2) {
+    const auto lookup = lookup_elf32_graph_symbol(
+        memory, graph, 0, name, symbol_options());
+    if (!lookup) {
+        std::cerr << lookup_error(name, lookup) << '\n';
+        return std::nullopt;
+    }
+    if (lookup.symbol.object_index != 0 ||
+        lookup.symbol.symbol.symbol.type != 2U ||
+        lookup.symbol.symbol.symbol.size == 0) {
+        std::cerr << "wrapper symbol was not a non-empty root STT_FUNC: "
+                  << name << '\n';
+        return std::nullopt;
+    }
+
+    const auto& symbol = lookup.symbol.symbol;
+    const bool thumb = (symbol.symbol.value & 1U) != 0;
+    ExecutionRequest request{};
+    request.instruction_set =
+        thumb ? InstructionSet::Thumb : InstructionSet::Arm;
+    request.entry_pc = symbol.guest_value & ~1U;
+    request.regs[0] = r0;
+    request.regs[1] = r1;
+    request.regs[2] = r2;
+    request.regs[13] = stack_top;
+    request.regs[14] = stop_pc | (thumb ? 1U : 0U);
+    request.instruction_count = kInstructionBudget;
+    request.stop_pc = stop_pc;
+
+    return execute_a32_with_services(memory, request, registry, 1);
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    if (argc != 3) {
+        return fail("expected paths to ARM32 libc consumer and partial libc.so shim");
+    }
+
+    const std::vector<std::uint8_t> consumer_image =
+        liba32android::test_support::read_binary_file(argv[1]);
+    const std::vector<std::uint8_t> shim_image =
+        liba32android::test_support::read_binary_file(argv[2]);
+    if (consumer_image.empty() || shim_image.empty()) {
+        return fail("generated ARM32 libc memory/string fixture is missing or empty");
+    }
+
+    MappedGuestMemory memory;
+
+    const std::array<Elf32DependencyCatalogEntry, 0> app_entries{};
+    Elf32DependencyCatalogProvider app_provider{std::span{app_entries}};
+
+    const std::array<Elf32DependencyCatalogEntry, 1> platform_entries{{
+        make_a32_libc_memory_string_shim_catalog_entry(shim_image),
+    }};
+    const std::array<A32AndroidNamespaceBinding, 1> namespace_bindings{{
+        {"libc-memory-string-consumer", "app"},
+    }};
+    const std::array<std::string_view, 1> platform_shared_libs{{
+        kA32LibcMemoryStringShimSoname,
+    }};
+    const std::array<A32AndroidNamespaceLink, 1> namespace_links{{
+        {
+            "app",
+            "platform",
+            false,
+            std::span{platform_shared_libs},
+        },
+    }};
+    A32AndroidNamespaceAccessPolicy namespace_policy{
+        std::span{namespace_bindings},
+        std::span{namespace_links},
+        "platform",
+    };
+    A32AndroidPlatformCatalogProvider platform_provider{
+        std::span{platform_entries}, namespace_policy};
+
+    const std::array<Elf32DependencyProvider*, 2> provider_list{{
+        &app_provider,
+        &platform_provider,
+    }};
+    Elf32DependencyProviderChain provider_chain{std::span{provider_list}};
+
+    Elf32DependencyLoadOptions load_options;
+    load_options.max_objects = 8;
+    load_options.max_depth = 8;
+    load_options.max_dependency_occurrences = 8;
+    load_options.max_image_bytes = kMaxFixtureImageBytes;
+    load_options.max_total_image_bytes = kMaxTotalImageBytes;
+    load_options.max_string_bytes = kMaxFixtureNameBytes;
+
+    const auto graph_result = load_elf32_dependency_graph(
+        memory,
+        Elf32DependencyLoadSource{
+            .identity = "libc-memory-string-consumer",
+            .image = consumer_image,
+        },
+        provider_chain,
+        load_options);
+    if (!graph_result) {
+        return fail(
+            std::string("libc shim dependency graph load failed: ") +
+            liba32android::elf::to_string(graph_result.error));
+    }
+    if (graph_result.graph.objects.size() != 2) {
+        return fail("libc namespace-gated platform catalog did not form two-object graph");
+    }
+
+    const auto& consumer = graph_result.graph.objects[0];
+    const auto& shim = graph_result.graph.objects[1];
+    if (consumer.linker_strings.needed.size() != 1 ||
+        consumer.linker_strings.needed[0] != kA32LibcMemoryStringShimSoname ||
+        consumer.dependencies.size() != 1 ||
+        consumer.dependencies[0].requested_name !=
+            kA32LibcMemoryStringShimSoname ||
+        consumer.dependencies[0].target_object != 1 ||
+        shim.identity != kA32LibcMemoryStringShimIdentity ||
+        !shim.linker_strings.needed.empty()) {
+        return fail("libc shim dependency/provider metadata was incorrect");
+    }
+
+    constexpr std::array<std::string_view, 7> shim_names{{
+        "memcpy", "memset", "memcmp", "memchr",
+        "strlen", "strcmp", "strncmp",
+    }};
+    std::array<std::uint32_t, shim_names.size()> shim_targets{};
+    for (std::size_t i = 0; i < shim_names.size(); ++i) {
+        const auto lookup = lookup_elf32_graph_symbol(
+            memory, graph_result.graph, 0, shim_names[i], symbol_options());
+        if (!lookup) {
+            return fail(lookup_error(shim_names[i], lookup));
+        }
+        if (lookup.symbol.object_index != 1 ||
+            lookup.symbol.symbol.symbol.type != 2U) {
+            return fail("libc import did not resolve to shim STT_FUNC");
+        }
+        shim_targets[i] = lookup.symbol.symbol.guest_value;
+    }
+
+    const auto relocated = apply_elf32_combined_relocations(
+        memory, graph_result.graph, 0, relocation_options());
+    if (!relocated) {
+        return fail(
+            std::string("libc shim consumer relocation failed: ") +
+            liba32android::elf::to_string(relocated.error));
+    }
+    for (const std::uint32_t target : shim_targets) {
+        bool found = false;
+        for (const auto& write : relocated.application.writes) {
+            if (write.type == kRArmJumpSlot &&
+                write.final_word == target) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            return fail("libc consumer missing expected JUMP_SLOT target");
+        }
+    }
+
+    const auto data = find_unmapped_region(memory, 0x70000000U, 1);
+    const auto stack = find_unmapped_region(memory, 0x71000000U, kStackPages);
+    const auto stop = find_unmapped_region(memory, 0x72000000U, 1);
+    if (!data.has_value() || !stack.has_value() || !stop.has_value()) {
+        return fail("could not reserve libc shim execution harness regions");
+    }
+
+    const auto rw = MemoryPermission::Read | MemoryPermission::Write;
+    if (!memory.map(*data, memory.page_size(), rw) ||
+        !memory.map(*stack, memory.page_size() * kStackPages, rw)) {
+        return fail("could not map libc shim data/stack");
+    }
+
+    const std::uint64_t stack_top64 =
+        static_cast<std::uint64_t>(*stack) +
+        memory.page_size() * kStackPages - 16U;
+    if (stack_top64 > std::numeric_limits<std::uint32_t>::max()) {
+        return fail("libc shim stack top overflowed guest address space");
+    }
+    const std::uint32_t stack_top =
+        static_cast<std::uint32_t>(stack_top64) & ~7U;
+
+    constexpr std::array<std::uint8_t, 4> source{{1, 2, 3, 4}};
+    constexpr std::array<std::uint8_t, 4> rhs{{1, 2, 4, 4}};
+    constexpr std::array<std::uint8_t, 6> alpha{
+        'a','l','p','h','a',0,
+    };
+    constexpr std::array<std::uint8_t, 6> alphb{
+        'a','l','p','h','b',0,
+    };
+    const std::uint32_t source_address = *data;
+    const std::uint32_t destination_address = *data + 0x40U;
+    const std::uint32_t rhs_address = *data + 0x80U;
+    const std::uint32_t alpha_address = *data + 0x100U;
+    const std::uint32_t alphb_address = *data + 0x120U;
+    if (!memory.write(source_address, source) ||
+        !memory.write(rhs_address, rhs) ||
+        !memory.write(alpha_address, alpha) ||
+        !memory.write(alphb_address, alphb)) {
+        return fail("could not stage libc shim guest inputs");
+    }
+
+    A32LibcMemoryStringService service{
+        A32LibcMemoryStringOptions{64, 64}};
+    const std::array<A32HostServiceRegistryEntry, 7> services{{
+        {kA32LibcMemcpySvcImmediate, &service},
+        {kA32LibcMemsetSvcImmediate, &service},
+        {kA32LibcMemcmpSvcImmediate, &service},
+        {kA32LibcMemchrSvcImmediate, &service},
+        {kA32LibcStrlenSvcImmediate, &service},
+        {kA32LibcStrcmpSvcImmediate, &service},
+        {kA32LibcStrncmpSvcImmediate, &service},
+    }};
+    A32HostServiceRegistry registry{std::span{services}};
+
+    std::size_t completed_calls = 0;
+
+    auto result = run_wrapper(
+        memory, graph_result.graph, "fixture_memcpy", registry,
+        stack_top, *stop, destination_address, source_address, 4);
+    if (!result || !*result || !result->stop_pc_reached ||
+        result->services_handled != 1 ||
+        result->regs[0] != destination_address) {
+        return fail("real libc memcpy wrapper execution failed");
+    }
+    ++completed_calls;
+    std::array<std::uint8_t, 4> copied{};
+    if (!memory.read(destination_address, copied) || copied != source) {
+        return fail("real libc memcpy wrapper did not copy bytes");
+    }
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_memset", registry,
+        stack_top, *stop, destination_address + 4U, 0xAAU, 2);
+    if (!result || !*result || result->regs[0] != destination_address + 4U) {
+        return fail("real libc memset wrapper execution failed");
+    }
+    ++completed_calls;
+    std::array<std::uint8_t, 2> filled{};
+    if (!memory.read(destination_address + 4U, filled) ||
+        filled != std::array<std::uint8_t, 2>{{0xAA, 0xAA}}) {
+        return fail("real libc memset wrapper did not write bytes");
+    }
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_memcmp", registry,
+        stack_top, *stop, source_address, rhs_address, 4);
+    if (!result || !*result || signed_r0(result->regs[0]) >= 0) {
+        return fail("real libc memcmp wrapper sign failed");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_memchr", registry,
+        stack_top, *stop, source_address, 3U, 4U);
+    if (!result || !*result || result->regs[0] != source_address + 2U) {
+        return fail("real libc memchr wrapper pointer failed");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_strlen", registry,
+        stack_top, *stop, alpha_address, 0, 0);
+    if (!result || !*result || result->regs[0] != 5U) {
+        return fail("real libc strlen wrapper result failed");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_strcmp", registry,
+        stack_top, *stop, alpha_address, alphb_address, 0);
+    if (!result || !*result || signed_r0(result->regs[0]) >= 0) {
+        return fail("real libc strcmp wrapper sign failed");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_strncmp", registry,
+        stack_top, *stop, alpha_address, alphb_address, 4U);
+    if (!result || !*result || signed_r0(result->regs[0]) != 0) {
+        return fail("real libc strncmp wrapper prefix result failed");
+    }
+    ++completed_calls;
+
+    std::cout
+        << "fixture.libc.object_count=" << graph_result.graph.objects.size() << '\n'
+        << "fixture.libc.needed=" << kA32LibcMemoryStringShimSoname << '\n'
+        << "fixture.libc.namespace_access=linked\n"
+        << "fixture.libc.required_jump_slots=" << shim_targets.size() << '\n'
+        << "fixture.libc.completed_service_calls=" << completed_calls << '\n'
+        << "fixture.libc.status=PASS\n";
+    return 0;
+}

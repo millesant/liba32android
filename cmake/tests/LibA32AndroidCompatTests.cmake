@@ -78,3 +78,34 @@ if(LIBA32ANDROID_ARM32_ANDROID_LOG_CONSUMER_PATH AND
                 "${LIBA32ANDROID_ARM32_ANDROID_LOG_SHIM_PATH}"
     )
 endif()
+
+liba32android_add_test_executable(
+    compat_libc_memory_string_shim_integration_test
+    tests/compat/a32_libc_memory_string_shim.cpp
+)
+
+if((LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH AND
+    NOT LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH) OR
+   (LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH AND
+    NOT LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH))
+    message(FATAL_ERROR
+        "Both LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH and LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH must be supplied together")
+endif()
+
+if(LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH AND
+   LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH)
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH}")
+        message(FATAL_ERROR
+            "libc memory/string consumer fixture does not exist: ${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH}")
+    endif()
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH}")
+        message(FATAL_ERROR
+            "libc memory/string shim fixture does not exist: ${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH}")
+    endif()
+    add_test(
+        NAME a32_libc_memory_string_shim_integration
+        COMMAND compat_libc_memory_string_shim_integration_test
+                "${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH}"
+                "${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH}"
+    )
+endif()

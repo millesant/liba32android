@@ -1,0 +1,26 @@
+schema = 1
+change = "032-a32-libc-memory-string-shim-provider"
+
+[[tasks]]
+id = "T001"
+status = "implemented"
+depends_on = []
+acceptance = "Add shared partial-libc catalog identity/helper plus reproducible ARMv7 libc.so SVC stubs and consumer wrappers for all seven feature-030 functions."
+
+[[tasks]]
+id = "T002"
+status = "implemented"
+depends_on = ["T001"]
+acceptance = "Add pinned-NDK builder, paired CMake fixture inputs, deterministic/readelf CI inspection, and dedicated integration workflow."
+
+[[tasks]]
+id = "T003"
+status = "implemented"
+depends_on = ["T002"]
+acceptance = "Add real dependency/provider/namespace/relocation integration and execute all seven wrappers through the exact SVC registry and feature-030 service."
+
+[[tasks]]
+id = "T004"
+status = "active"
+depends_on = ["T003"]
+acceptance = "Run dedicated partial-libc integration and required exact-head checks, then reconcile closure evidence."

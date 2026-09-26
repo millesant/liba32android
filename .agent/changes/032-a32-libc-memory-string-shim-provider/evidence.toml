@@ -1,0 +1,29 @@
+schema = 1
+change = "032-a32-libc-memory-string-shim-provider"
+
+[[evidence]]
+id = "partial-libc-fixture"
+kind = "test"
+status = "not_run"
+claim = "Pinned-NDK generation deterministically produces partial libc.so and a real consumer with expected SONAME, DT_NEEDED, exports, and JUMP_SLOT imports."
+source = "tools/fixtures/build_arm32_libc_memory_string_fixture.sh and tests/compat/fixtures/"
+result = "Feature 032 is integrated; exact-head dedicated fixture execution has not yet been observed."
+limitations = "Source and workflow presence are not passing fixture evidence until the dedicated check actually runs."
+
+[[evidence]]
+id = "partial-libc-end-to-end"
+kind = "test"
+status = "not_run"
+claim = "A real ARM32 consumer loads partial libc.so through namespace-gated finite platform catalog, relocates all seven functions, executes each SVC service, and returns successfully."
+source = "tests/compat/a32_libc_memory_string_shim.cpp"
+result = "Feature 032 is integrated; exact-head end-to-end execution has not yet been observed."
+limitations = "The seven-function shim is intentionally insufficient for full FMOD/VLC libc requirements."
+
+[[evidence]]
+id = "exact-head-ci"
+kind = "validation"
+status = "not_run"
+claim = "Feature 032 passes dedicated partial-libc integration and the project exact-head matrix after ordered integration."
+source = "GitHub commit checks on the feature-032 integration revision"
+result = ""
+limitations = "Feature 032 remains implemented rather than done until terminal exact-head checks including the dedicated partial-libc integration are observed."
