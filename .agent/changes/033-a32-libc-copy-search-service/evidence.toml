@@ -1,0 +1,29 @@
+schema = 1
+change = "033-a32-libc-copy-search-service"
+
+[[evidence]]
+id = "shared-copy-search-imports"
+kind = "research"
+status = "passed"
+claim = "Both supplied ARM32 FMOD and VLC libvlc.so import memmem, strcpy, and strncpy."
+source = "docs/research/evidence/shared-libc-copy-search-imports-2026-09-26.md"
+result = "Corrected bounded readelf parsing yields 106/572 unique undefined names with 101 common names; memmem, strcpy, and strncpy occur in both."
+limitations = "Static imports do not prove runtime call frequency or sufficiency for either target."
+
+[[evidence]]
+id = "copy-search-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused tests cover bounded memmem, strcpy, and strncpy behavior."
+source = "tests/compat/a32_libc_string_copy_search.cpp"
+result = "Feature 033 is integrated; exact-head execution has not yet been observed."
+limitations = "Integrated tests are not passing evidence until they actually run."
+
+[[evidence]]
+id = "exact-head-ci"
+kind = "validation"
+status = "not_run"
+claim = "Feature 033 passes the required exact-head matrix after ordered integration."
+source = "GitHub commit checks on the feature-033 integration revision"
+result = ""
+limitations = "Feature 033 remains implemented rather than done until terminal exact-head checks are observed."

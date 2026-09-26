@@ -49,6 +49,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_libc_string_copy_search_test
+    tests/compat/a32_libc_string_copy_search.cpp
+)
+
+add_test(
+    NAME a32_libc_string_copy_search_service
+    COMMAND compat_libc_string_copy_search_test
+)
+
+liba32android_add_test_executable(
     compat_android_log_shim_integration_test
     tests/compat/a32_android_log_shim.cpp
 )

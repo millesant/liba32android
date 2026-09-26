@@ -177,3 +177,30 @@ The partial shim is not Android libc and does not claim sufficiency for supplied
 FMOD/VLC targets. Allocation, pthreads, I/O/stdio/socket, errno, dynamic-loader,
 math, process-startup, signal, locale, and all other libc behavior remain out of
 scope.
+
+
+## L32-C010 — Additional bounded libc copy/search services
+
+The existing `A32LibcMemoryStringService` may additionally recognize
+`memmem`, `strcpy`, and `strncpy` through shared private SVC IDs
+`0xA8`, `0xA9`, and `0xAA`.
+
+`memmem` consumes haystack pointer/length in r0/r1 and needle pointer/length
+in r2/r3. Both explicit lengths are bounded by `max_transfer_bytes`; logical
+range wrap or GuestMemory read failure returns `Failed`. An empty needle
+returns the haystack pointer without guest reads; a haystack shorter than a
+non-empty needle returns null without guest reads; otherwise the first exact
+byte match returns a logical guest pointer.
+
+`strcpy` reads the complete source including NUL into temporary storage before
+destination mutation. The source payload must terminate within
+`max_string_bytes`, the full copy including NUL must fit
+`max_transfer_bytes`, and the destination logical range must not wrap.
+
+`strncpy` bounds its explicit count by `max_transfer_bytes`. Zero count
+performs no guest access. Non-zero calls read at most count source bytes, stop
+reading after NUL and pad the temporary destination with NULs, or copy exactly
+count bytes without inventing a terminator when no NUL is encountered.
+
+Feature 033 adds no integer parsing, errno, allocation, thread, I/O,
+dynamic-loader, or guest-shim export behavior.

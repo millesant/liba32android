@@ -1,5 +1,6 @@
 #include "compat/a32_libc_memory_string.h"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstddef>
@@ -39,6 +40,27 @@ using runtime::A32HostServiceDisposition;
     }
     value = byte[0];
     return true;
+}
+
+[[nodiscard]] bool read_c_string_with_nul(
+    const memory::GuestMemory& memory,
+    std::uint32_t address,
+    std::uint32_t max_payload_bytes,
+    std::vector<std::uint8_t>& output) {
+    output.clear();
+    for (std::uint32_t offset = 0;; ++offset) {
+        std::uint8_t byte{};
+        if (!read_byte(memory, address, offset, byte)) {
+            return false;
+        }
+        output.push_back(byte);
+        if (byte == 0) {
+            return true;
+        }
+        if (offset == max_payload_bytes) {
+            return false;
+        }
+    }
 }
 
 void write_signed_result(
@@ -236,6 +258,104 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
             }
         }
         write_signed_result(regs, 0);
+        return A32HostServiceDisposition::Handled;
+    }
+
+    case kA32LibcMemmemSvcImmediate: {
+        const std::uint32_t haystack_address = regs[0];
+        const std::uint32_t haystack_size = regs[1];
+        const std::uint32_t needle_address = regs[2];
+        const std::uint32_t needle_size = regs[3];
+        if (haystack_size > options_.max_transfer_bytes ||
+            needle_size > options_.max_transfer_bytes ||
+            !range_fits_u32(haystack_address, haystack_size) ||
+            !range_fits_u32(needle_address, needle_size)) {
+            return A32HostServiceDisposition::Failed;
+        }
+        if (needle_size == 0) {
+            regs[0] = haystack_address;
+            return A32HostServiceDisposition::Handled;
+        }
+        if (haystack_size < needle_size) {
+            regs[0] = 0;
+            return A32HostServiceDisposition::Handled;
+        }
+
+        std::vector<std::uint8_t> haystack(haystack_size);
+        std::vector<std::uint8_t> needle(needle_size);
+        if (!memory.read(haystack_address, haystack) ||
+            !memory.read(needle_address, needle)) {
+            return A32HostServiceDisposition::Failed;
+        }
+
+        const auto found = std::search(
+            haystack.begin(), haystack.end(),
+            needle.begin(), needle.end());
+        if (found == haystack.end()) {
+            regs[0] = 0;
+            return A32HostServiceDisposition::Handled;
+        }
+
+        regs[0] = haystack_address +
+            static_cast<std::uint32_t>(
+                std::distance(haystack.begin(), found));
+        return A32HostServiceDisposition::Handled;
+    }
+
+    case kA32LibcStrcpySvcImmediate: {
+        const std::uint32_t destination = regs[0];
+        const std::uint32_t source = regs[1];
+
+        std::vector<std::uint8_t> bytes;
+        if (!read_c_string_with_nul(
+                memory, source, options_.max_string_bytes, bytes) ||
+            bytes.size() > std::numeric_limits<std::uint32_t>::max()) {
+            return A32HostServiceDisposition::Failed;
+        }
+        const auto size = static_cast<std::uint32_t>(bytes.size());
+        if (size > options_.max_transfer_bytes ||
+            !range_fits_u32(destination, size)) {
+            return A32HostServiceDisposition::Failed;
+        }
+        if (!memory.write(destination, bytes)) {
+            return A32HostServiceDisposition::Failed;
+        }
+        regs[0] = destination;
+        return A32HostServiceDisposition::Handled;
+    }
+
+    case kA32LibcStrncpySvcImmediate: {
+        const std::uint32_t destination = regs[0];
+        const std::uint32_t source = regs[1];
+        const std::uint32_t count = regs[2];
+        if (count > options_.max_transfer_bytes ||
+            !range_fits_u32(destination, count) ||
+            !range_fits_u32(source, count)) {
+            return A32HostServiceDisposition::Failed;
+        }
+        if (count == 0) {
+            return A32HostServiceDisposition::Handled;
+        }
+
+        std::vector<std::uint8_t> bytes(count, 0);
+        bool terminated = false;
+        for (std::uint32_t offset = 0; offset < count; ++offset) {
+            if (terminated) {
+                continue;
+            }
+            std::uint8_t byte{};
+            if (!read_byte(memory, source, offset, byte)) {
+                return A32HostServiceDisposition::Failed;
+            }
+            bytes[offset] = byte;
+            if (byte == 0) {
+                terminated = true;
+            }
+        }
+        if (!memory.write(destination, bytes)) {
+            return A32HostServiceDisposition::Failed;
+        }
+        regs[0] = destination;
         return A32HostServiceDisposition::Handled;
     }
 

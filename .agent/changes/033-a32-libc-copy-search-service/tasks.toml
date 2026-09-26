@@ -1,0 +1,26 @@
+schema = 1
+change = "033-a32-libc-copy-search-service"
+
+[[tasks]]
+id = "T001"
+status = "implemented"
+depends_on = []
+acceptance = "Capture corrected shared-import evidence and select memmem/strcpy/strncpy while deferring integer conversion and stateful libc surfaces."
+
+[[tasks]]
+id = "T002"
+status = "implemented"
+depends_on = ["T001"]
+acceptance = "Extend the shared service-ID header and A32LibcMemoryStringService with bounded memmem/strcpy/strncpy semantics."
+
+[[tasks]]
+id = "T003"
+status = "implemented"
+depends_on = ["T002"]
+acceptance = "Add focused deterministic regression coverage and CTest registration."
+
+[[tasks]]
+id = "T004"
+status = "active"
+depends_on = ["T003"]
+acceptance = "Run exact-head required checks and reconcile evidence."
