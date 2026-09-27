@@ -377,6 +377,38 @@ namespace {
 
 }  // namespace
 
+namespace {
+
+class LifecycleExecutionContextScope final {
+public:
+    LifecycleExecutionContextScope(
+        Elf32LifecycleExecutionContext* context,
+        std::size_t object_index) noexcept
+        : context_(context) {
+        if (context_ != nullptr) {
+            previous_ = context_->object_index;
+            context_->object_index = object_index;
+        }
+    }
+
+    ~LifecycleExecutionContextScope() {
+        if (context_ != nullptr) {
+            context_->object_index = previous_;
+        }
+    }
+
+    LifecycleExecutionContextScope(
+        const LifecycleExecutionContextScope&) = delete;
+    LifecycleExecutionContextScope& operator=(
+        const LifecycleExecutionContextScope&) = delete;
+
+private:
+    Elf32LifecycleExecutionContext* context_{};
+    std::optional<std::size_t> previous_;
+};
+
+}  // namespace
+
 Elf32InitExecutionResult execute_elf32_init_calls(
     memory::GuestMemory& memory,
     std::span<const Elf32InitCall> calls,
@@ -405,6 +437,9 @@ Elf32InitExecutionResult execute_elf32_init_calls(
                 Elf32InitExecutionError::InvalidFunctionAddress,
                 result.calls_completed, index, call.object_index);
         }
+
+        LifecycleExecutionContextScope context_scope{
+            options.execution_context, call.object_index};
 
         cpu::ExecutionRequest request{};
         request.instruction_set =
