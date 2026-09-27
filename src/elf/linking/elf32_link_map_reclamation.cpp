@@ -22,7 +22,7 @@ struct MappingSnapshot {
 
 [[nodiscard]] Elf32LinkMapReleaseResult failure(
     Elf32LinkMapReleaseError error,
-    std::size_t released_root,
+    std::optional<std::size_t> released_root,
     std::optional<std::size_t> failing_object = std::nullopt,
     std::optional<std::size_t> failing_segment = std::nullopt) {
     Elf32LinkMapReleaseResult result;
@@ -119,32 +119,32 @@ struct MappingSnapshot {
 
 }  // namespace
 
-Elf32LinkMapReleaseResult release_elf32_link_map_root(
+[[nodiscard]] static Elf32LinkMapReleaseResult reclaim_link_map_impl(
     memory::MappedGuestMemory& memory,
     Elf32LinkMap& link_map,
     const Elf32LifecycleState& lifecycle,
-    std::size_t root_object_index,
+    std::optional<std::size_t> root_to_release,
     std::span<const std::size_t> additional_live_anchors,
     const Elf32LinkMapReleaseOptions& options) {
     if (options.max_objects == 0U ||
         options.max_segments == 0U ||
         options.max_snapshot_bytes == 0U) {
         return failure(
-            Elf32LinkMapReleaseError::InvalidOptions, root_object_index);
+            Elf32LinkMapReleaseError::InvalidOptions, root_to_release);
     }
 
     const std::size_t object_count = link_map.graph.objects.size();
     if (object_count > static_cast<std::size_t>(options.max_objects)) {
         return failure(
             Elf32LinkMapReleaseError::ObjectLimitExceeded,
-            root_object_index);
+            root_to_release);
     }
     if (lifecycle.objects.size() != object_count ||
         (!link_map.object_states.empty() &&
          link_map.object_states.size() != object_count)) {
         return failure(
             Elf32LinkMapReleaseError::InvalidLinkMap,
-            root_object_index);
+            root_to_release);
     }
 
     const auto object_active =
@@ -163,7 +163,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
                 state != Elf32LinkMapObjectState::Retired) {
                 return failure(
                     Elf32LinkMapReleaseError::InvalidLinkMap,
-                    root_object_index,
+                    root_to_release,
                     object_index);
             }
         }
@@ -178,7 +178,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
         if (object.identity.empty()) {
             return failure(
                 Elf32LinkMapReleaseError::InvalidLinkMap,
-                root_object_index,
+                root_to_release,
                 object_index);
         }
         if (object_active(object_index)) {
@@ -189,7 +189,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
                     identity) != active_identities.end()) {
                 return failure(
                     Elf32LinkMapReleaseError::InvalidLinkMap,
-                    root_object_index,
+                    root_to_release,
                     object_index);
             }
             active_identities.push_back(identity);
@@ -201,7 +201,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
                  !object_active(edge.target_object))) {
                 return failure(
                     Elf32LinkMapReleaseError::InvalidLinkMap,
-                    root_object_index,
+                    root_to_release,
                     object_index);
             }
         }
@@ -220,19 +220,21 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
              root.policy != Elf32LinkMapRootPolicy::Global)) {
             return failure(
                 Elf32LinkMapReleaseError::InvalidLinkMap,
-                root_object_index,
+                root_to_release,
                 root.object_index < object_count
                     ? std::optional<std::size_t>{root.object_index}
                     : std::nullopt);
         }
         root_seen[root.object_index] = 1U;
-        if (root.object_index == root_object_index) {
+        if (root_to_release.has_value() &&
+            root.object_index == *root_to_release) {
             released_root_record = record_index;
         }
     }
-    if (!released_root_record.has_value()) {
+    if (root_to_release.has_value() &&
+        !released_root_record.has_value()) {
         return failure(
-            Elf32LinkMapReleaseError::InvalidRoot, root_object_index);
+            Elf32LinkMapReleaseError::InvalidRoot, root_to_release);
     }
 
     {
@@ -262,7 +264,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
                 (has_previous && object_index <= previous)) {
                 return failure(
                     Elf32LinkMapReleaseError::InvalidLinkMap,
-                    root_object_index,
+                    root_to_release,
                     object_index < object_count
                         ? std::optional<std::size_t>{object_index}
                         : std::nullopt);
@@ -277,7 +279,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
             if (required_global[object_index] != global_seen[object_index]) {
                 return failure(
                     Elf32LinkMapReleaseError::InvalidLinkMap,
-                    root_object_index,
+                    root_to_release,
                     object_index);
             }
         }
@@ -287,17 +289,20 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
         if (object_index >= object_count || !object_active(object_index)) {
             return failure(
                 Elf32LinkMapReleaseError::InvalidLiveAnchor,
-                root_object_index,
+                root_to_release,
                 object_index);
         }
     }
 
     std::vector<Elf32LinkMapRoot> new_roots;
-    new_roots.reserve(link_map.roots.size() - 1U);
+    new_roots.reserve(
+        link_map.roots.size() -
+        (released_root_record.has_value() ? 1U : 0U));
     for (std::size_t record_index = 0;
          record_index < link_map.roots.size();
          ++record_index) {
-        if (record_index != *released_root_record) {
+        if (!released_root_record.has_value() ||
+            record_index != *released_root_record) {
             new_roots.push_back(link_map.roots[record_index]);
         }
     }
@@ -382,7 +387,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
         if (!valid_lifecycle_state(lifecycle.objects[object_index])) {
             return failure(
                 Elf32LinkMapReleaseError::InvalidLifecycleState,
-                root_object_index,
+                root_to_release,
                 object_index);
         }
     }
@@ -424,7 +429,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
     const std::size_t page_size = memory.page_size();
     if (page_size == 0U) {
         return failure(
-            Elf32LinkMapReleaseError::InvalidMapping, root_object_index);
+            Elf32LinkMapReleaseError::InvalidMapping, root_to_release);
     }
 
     std::vector<MappingSnapshot> snapshots;
@@ -440,7 +445,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
             if (snapshots.size() >= options.max_segments) {
                 return failure(
                     Elf32LinkMapReleaseError::SegmentLimitExceeded,
-                    root_object_index,
+                    root_to_release,
                     object_index,
                     segment_index);
             }
@@ -453,7 +458,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
                 (segment.mapping_size % page_size) != 0U) {
                 return failure(
                     Elf32LinkMapReleaseError::InvalidMapping,
-                    root_object_index,
+                    root_to_release,
                     object_index,
                     segment_index);
             }
@@ -467,7 +472,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
                     end > memory::MappedGuestMemory::kAddressSpaceSize
                         ? Elf32LinkMapReleaseError::InvalidMapping
                         : Elf32LinkMapReleaseError::SnapshotByteLimitExceeded,
-                    root_object_index,
+                    root_to_release,
                     object_index,
                     segment_index);
             }
@@ -478,7 +483,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
                     range.first < end) {
                     return failure(
                         Elf32LinkMapReleaseError::InvalidMapping,
-                        root_object_index,
+                        root_to_release,
                         object_index,
                         segment_index);
                 }
@@ -503,7 +508,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
                 if (page64 > std::numeric_limits<std::uint32_t>::max()) {
                     return failure(
                         Elf32LinkMapReleaseError::InvalidMapping,
-                        root_object_index,
+                        root_to_release,
                         object_index,
                         segment_index);
                 }
@@ -511,7 +516,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
                 if (!memory.is_mapped(page)) {
                     return failure(
                         Elf32LinkMapReleaseError::InvalidMapping,
-                        root_object_index,
+                        root_to_release,
                         object_index,
                         segment_index);
                 }
@@ -525,7 +530,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
                             snapshot.bytes.data() + offset, page_size})) {
                     return failure(
                         Elf32LinkMapReleaseError::SnapshotFailed,
-                        root_object_index,
+                        root_to_release,
                         object_index,
                         segment_index);
                 }
@@ -554,7 +559,7 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
             rollback_ok
                 ? Elf32LinkMapReleaseError::UnmapFailed
                 : Elf32LinkMapReleaseError::RollbackFailed,
-            root_object_index,
+            root_to_release,
             snapshot.object_index,
             snapshot.segment_index);
         result.mappings_unmapped = index;
@@ -566,10 +571,41 @@ Elf32LinkMapReleaseResult release_elf32_link_map_root(
     link_map.object_states = std::move(new_states);
 
     Elf32LinkMapReleaseResult result;
-    result.released_root = root_object_index;
+    result.released_root = root_to_release;
     result.reclaimed_objects = std::move(reclaimable);
     result.mappings_unmapped = snapshots.size();
     return result;
+}
+
+Elf32LinkMapReleaseResult reclaim_elf32_link_map_unreachable(
+    memory::MappedGuestMemory& memory,
+    Elf32LinkMap& link_map,
+    const Elf32LifecycleState& lifecycle,
+    std::span<const std::size_t> additional_live_anchors,
+    const Elf32LinkMapReleaseOptions& options) {
+    return reclaim_link_map_impl(
+        memory,
+        link_map,
+        lifecycle,
+        std::nullopt,
+        additional_live_anchors,
+        options);
+}
+
+Elf32LinkMapReleaseResult release_elf32_link_map_root(
+    memory::MappedGuestMemory& memory,
+    Elf32LinkMap& link_map,
+    const Elf32LifecycleState& lifecycle,
+    std::size_t root_object_index,
+    std::span<const std::size_t> additional_live_anchors,
+    const Elf32LinkMapReleaseOptions& options) {
+    return reclaim_link_map_impl(
+        memory,
+        link_map,
+        lifecycle,
+        root_object_index,
+        additional_live_anchors,
+        options);
 }
 
 const char* to_string(Elf32LinkMapReleaseError error) noexcept {
