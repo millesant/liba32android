@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -328,7 +329,7 @@ int test_failure_preserves_ownership_and_retry_skips_completed_object() {
     if (failed.error != A32LibDlUnloadTransactionError::FinalizationFailed ||
         failed.finalization_error != A32LibDlCloseTransactionError::InvalidBinding ||
         failed.failing_object != std::optional<std::size_t>{1U} ||
-        failed.teardown_objects != std::vector<std::size_t>({0U, 1U}) ||
+        failed.teardown_objects != std::vector<std::size_t>{0U, 1U} ||
         failed.objects_completed != 1U ||
         handles[0].refcount != 1U ||
         link_map.roots.size() != 1U ||
@@ -344,14 +345,14 @@ int test_failure_preserves_ownership_and_retry_skips_completed_object() {
     bindings[1].dso_handle = 0x11000U;
     const auto retried = unload.close(memory, 0x70000000U, 0x8ff8U);
     if (!retried ||
-        retried.teardown_objects != std::vector<std::size_t>({0U, 1U}) ||
+        retried.teardown_objects != std::vector<std::size_t>{0U, 1U} ||
         retried.objects_completed != 1U ||
         handles[0].refcount != 0U ||
         !link_map.roots.empty() ||
         link_map.object_states !=
-            std::vector<Elf32LinkMapObjectState>({
+            std::vector<Elf32LinkMapObjectState>{
                 Elf32LinkMapObjectState::Retired,
-                Elf32LinkMapObjectState::Retired}) ||
+                Elf32LinkMapObjectState::Retired} ||
         lifecycle.objects[0].destructors !=
             Elf32LifecycleObjectStatus::Complete ||
         lifecycle.objects[1].destructors !=
@@ -359,6 +360,69 @@ int test_failure_preserves_ownership_and_retry_skips_completed_object() {
         mapped(memory, link_map, 0U) ||
         mapped(memory, link_map, 1U)) {
         return fail("targeted teardown retry replayed or failed to reclaim");
+    }
+    return 0;
+}
+
+int test_preexisting_unowned_object_blocks_targeted_close() {
+    MappedGuestMemory memory;
+    Elf32LinkMap link_map;
+    if (!stage_object(memory, link_map, "root", 0x24000U) ||
+        !stage_object(memory, link_map, "orphan", 0x26000U)) {
+        return fail("could not map preexisting-orphan fixture");
+    }
+    link_map.roots = {
+        Elf32LinkMapRoot{
+            .object_index = 0U,
+            .policy = Elf32LinkMapRootPolicy::Local},
+    };
+    link_map.object_states.assign(2U, Elf32LinkMapObjectState::Active);
+
+    Elf32LifecycleState lifecycle;
+    lifecycle.objects.resize(2U);
+    for (auto& state : lifecycle.objects) {
+        state.constructors = Elf32LifecycleObjectStatus::Complete;
+    }
+    std::array<A32LibDlHandle, 1> handles{{
+        {.guest_handle = 0x70000000U, .object_index = 0U, .refcount = 1U},
+    }};
+    std::array<A32AeabiAtexitRecord, 1> records{};
+    A32AeabiAtexitService registrations{std::span{records}};
+    const std::array<A32HostServiceRegistryEntry, 0> service_entries{};
+    A32HostServiceRegistry registry{std::span{service_entries}};
+    const std::array<A32LibDlObjectLifecycleBinding, 2> bindings{{
+        {.object_index = 0U, .dso_handle = 0x13000U},
+        {.object_index = 1U, .dso_handle = 0x14000U},
+    }};
+    A32LibDlCloseTransaction finalizer{
+        link_map,
+        std::span{handles},
+        lifecycle,
+        registrations,
+        std::span{bindings},
+        close_options(registry),
+    };
+    A32LibDlUnloadTransaction unload{
+        link_map,
+        std::span{handles},
+        lifecycle,
+        finalizer,
+        unload_options(),
+    };
+
+    const auto result = unload.close(memory, 0x70000000U, 0x8ff8U);
+    if (result.error !=
+            A32LibDlUnloadTransactionError::PreexistingUnownedObjects ||
+        result.failing_object != std::optional<std::size_t>{1U} ||
+        handles[0].refcount != 1U ||
+        link_map.roots.size() != 1U ||
+        lifecycle.objects[0].destructors !=
+            Elf32LifecycleObjectStatus::Pending ||
+        lifecycle.objects[1].destructors !=
+            Elf32LifecycleObjectStatus::Pending ||
+        !mapped(memory, link_map, 0U) ||
+        !mapped(memory, link_map, 1U)) {
+        return fail("targeted close collected a pre-existing orphan");
     }
     return 0;
 }
@@ -432,6 +496,11 @@ int main() {
     }
     if (const int status =
             test_failure_preserves_ownership_and_retry_skips_completed_object();
+        status != 0) {
+        return status;
+    }
+    if (const int status =
+            test_preexisting_unowned_object_blocks_targeted_close();
         status != 0) {
         return status;
     }
