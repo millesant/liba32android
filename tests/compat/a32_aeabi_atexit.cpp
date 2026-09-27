@@ -428,6 +428,29 @@ int test_lifecycle_context_learns_dso_binding() {
         return fail("learned DSO binding capacity failure was not atomic");
     }
 
+    records[0].status = A32AeabiAtexitRecordStatus::Complete;
+    records[1].status = A32AeabiAtexitRecordStatus::Complete;
+    service.forget_binding_for_object(3U);
+    if (service.binding_count() != 0U) {
+        return fail("retired object DSO binding was not forgotten");
+    }
+
+    context.object_index = 5U;
+    regs = {};
+    regs[0] = 0xAAAA0002U;
+    regs[1] = 0xBBBB0002U;
+    regs[2] = 0x55550000U;
+    if (service.handle(
+            memory, kA32AeabiAtexitSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0U ||
+        service.record_count() != 3U ||
+        service.binding_count() != 1U ||
+        service.learned_bindings()[0].object_index != 5U ||
+        service.learned_bindings()[0].dso_handle != 0x55550000U) {
+        return fail("forgotten DSO binding capacity was not reusable");
+    }
+
     context.object_index.reset();
     regs = {};
     regs[0] = 0xCCCC0001U;
@@ -437,7 +460,7 @@ int test_lifecycle_context_learns_dso_binding() {
             memory, kA32AeabiAtexitSvcImmediate, regs, cpsr) !=
             A32HostServiceDisposition::Handled ||
         regs[0] != 0U ||
-        service.record_count() != 3U ||
+        service.record_count() != 4U ||
         service.binding_count() != 1U) {
         return fail("context-free legacy registration unexpectedly learned binding");
     }
