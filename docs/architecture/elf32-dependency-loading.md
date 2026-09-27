@@ -154,6 +154,40 @@ live anchors that it consumes before returning a successful plan. Destructor
 execution, root/global removal, stable-slot tombstoning/reuse, and guest
 unmapping remain later transactions.
 
+## Reclamation transaction
+
+Post-roadmap reclamation mutation keeps feature-016 stable object indexes
+permanent. Each accumulated link-map slot is Active or Retired; retirement is a
+tombstone, not vector erasure or slot reuse. Append and planning ignore Retired
+slots for active identity reuse, ownership roots, global visibility, and live
+anchors, so a later load of the same identity receives a new stable index.
+
+`release_elf32_link_map_root` computes reachability after removing one exact
+persistent root. `reclaim_elf32_link_map_unreachable` performs the same
+physical sweep without removing another root and is used when the last external
+owner disappears. Both retain remaining roots and caller live anchors.
+
+Reclamation does not run lifecycle callbacks. Persistent lifecycle state must
+cover every graph slot, and each reclaim candidate must be either
+Pending/Pending (never constructed) or Complete/Complete (fully torn down).
+Failed or partial lifecycle state blocks the mutation.
+
+Every reclaimable PT_LOAD mapping is snapshotted before the first unmap under
+caller object/segment/byte ceilings. Snapshots contain current guest bytes and
+per-page permissions, preserving relocation and RELRO effects. Mappings that
+cannot be read safely are rejected before unmapping. If an unmap fails, touched
+mappings are restored from their snapshots; rollback failure is distinct.
+
+Only after all unmaps succeed are the precomputed root list, recomputed active
+global scope, and Retired object states published. No successful or ordinary
+failed transaction compacts graph indexes.
+
+The concrete `MappedGuestMemory` backend has no deterministic syscall-failure
+injection seam, so focused tests exercise successful physical unmapping and
+failure-before-unmap preservation. The rollback path remains implemented for
+real backend failures but is not claimed as a deterministically forced unit-test
+outcome.
+
 ## Failure surface
 
 The graph layer distinguishes root/options/image limits, object/depth/occurrence limits, nested dependency-resolution errors, identity/image mismatch, malformed or non-dynamic dependencies, placement/load failures, dynamic/metadata/string failures, and rollback failure.
