@@ -157,7 +157,7 @@ A32LibDlOptions service_options() {
     result.error_buffer_address = 0x90100U;
     result.error_buffer_bytes = 128U;
     result.info_string_buffer_address = 0x90200U;
-    result.info_string_buffer_bytes = 256U;
+    result.info_string_buffer_bytes = 512U;
     result.symbols.max_symbols = 128U;
     result.symbols.max_hash_buckets = 128U;
     result.symbols.max_gnu_bloom_words = 64U;
