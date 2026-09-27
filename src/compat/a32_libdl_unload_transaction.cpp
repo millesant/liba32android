@@ -190,6 +190,10 @@ A32LibDlUnloadTransactionResult A32LibDlUnloadTransaction::close(
     }
 
     result.mappings_unmapped = released.mappings_unmapped;
+    for (const std::size_t reclaimed_object :
+         released.reclaimed_objects) {
+        finalizer_.forget_learned_binding(reclaimed_object);
+    }
     handle = {};
     result.outcome =
         result.teardown_objects.empty()
