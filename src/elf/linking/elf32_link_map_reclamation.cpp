@@ -433,7 +433,6 @@ struct MappingSnapshot {
     }
 
     std::vector<MappingSnapshot> snapshots;
-    snapshots.reserve(options.max_segments);
     std::uint64_t snapshot_bytes = 0U;
     std::vector<std::pair<std::uint64_t, std::uint64_t>> ranges;
 
