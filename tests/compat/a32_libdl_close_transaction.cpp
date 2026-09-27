@@ -13,6 +13,7 @@
 namespace {
 
 using liba32android::compat::A32AeabiAtexitRecord;
+using liba32android::compat::A32AeabiObjectDsoBinding;
 using liba32android::compat::A32AeabiAtexitRecordStatus;
 using liba32android::compat::A32AeabiAtexitService;
 using liba32android::compat::A32AeabiFinalizeOptions;
@@ -26,6 +27,7 @@ using liba32android::compat::A32LibDlObjectLifecycleBinding;
 using liba32android::compat::kA32AeabiAtexitSvcImmediate;
 using liba32android::compat::kA32CxaFinalizeSvcImmediate;
 using liba32android::elf::Elf32FunctionArrayMetadata;
+using liba32android::elf::Elf32LifecycleExecutionContext;
 using liba32android::elf::Elf32LifecycleObjectStatus;
 using liba32android::elf::Elf32LifecycleState;
 using liba32android::elf::Elf32LinkMap;
@@ -95,7 +97,15 @@ int test_last_reference_runs_exact_object_teardown() {
     lifecycle.objects[0].constructors = Elf32LifecycleObjectStatus::Complete;
 
     std::array<A32AeabiAtexitRecord, 2> records{};
-    A32AeabiAtexitService registrations{std::span{records}};
+    std::array<A32AeabiObjectDsoBinding, 1> learned_bindings{};
+    Elf32LifecycleExecutionContext registration_context{
+        .object_index = 0U,
+    };
+    A32AeabiAtexitService registrations{
+        std::span{records},
+        std::span{learned_bindings},
+        &registration_context,
+    };
     std::array<std::uint32_t, 16> regs{};
     std::uint32_t cpsr{};
     regs[0] = 0xCAFEBABEU;
@@ -125,15 +135,13 @@ int test_last_reference_runs_exact_object_teardown() {
     std::array<A32LibDlHandle, 1> handles{{
         {.guest_handle = 0x70000000U, .object_index = 0U, .refcount = 2U},
     }};
-    const std::array<A32LibDlObjectLifecycleBinding, 1> bindings{{
-        {.object_index = 0U, .dso_handle = dso},
-    }};
+    registration_context.object_index.reset();
     A32LibDlCloseTransaction transaction{
         link_map,
         std::span{handles},
         lifecycle,
         registrations,
-        std::span{bindings},
+        std::span<const A32LibDlObjectLifecycleBinding>{},
         A32LibDlCloseTransactionOptions{
             .max_fini_array_entries = 4U,
             .execution = {
@@ -167,6 +175,81 @@ int test_last_reference_runs_exact_object_teardown() {
             A32AeabiAtexitRecordStatus::Complete ||
         read_u32(memory, 0x300U) != 0xCAFEBABEU) {
         return fail("last-reference dlclose teardown ordering failed");
+    }
+    return 0;
+}
+
+int test_explicit_and_learned_binding_disagreement_fails() {
+    LinearGuestMemory memory{0x1000U};
+    Elf32LinkMap link_map;
+    Elf32LoadedDependencyObject object;
+    object.identity = "binding-conflict";
+    link_map.graph.objects.push_back(std::move(object));
+
+    Elf32LifecycleState lifecycle;
+    lifecycle.objects.resize(1U);
+    lifecycle.objects[0].constructors =
+        Elf32LifecycleObjectStatus::Complete;
+
+    std::array<A32AeabiAtexitRecord, 1> records{};
+    std::array<A32AeabiObjectDsoBinding, 1> learned_bindings{};
+    Elf32LifecycleExecutionContext context{
+        .object_index = 0U,
+    };
+    A32AeabiAtexitService registrations{
+        std::span{records},
+        std::span{learned_bindings},
+        &context,
+    };
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t cpsr{};
+    regs[0] = 0x11111111U;
+    regs[1] = 0x140U;
+    regs[2] = 0xAAAA0000U;
+    if (registrations.handle(
+            memory, kA32AeabiAtexitSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0U ||
+        registrations.binding_count() != 1U) {
+        return fail("could not stage learned DSO conflict fixture");
+    }
+    context.object_index.reset();
+
+    std::array<A32LibDlHandle, 1> handles{{
+        {.guest_handle = 0x70000000U, .object_index = 0U, .refcount = 1U},
+    }};
+    const std::array<A32LibDlObjectLifecycleBinding, 1> explicit_bindings{{
+        {.object_index = 0U, .dso_handle = 0xBBBB0000U},
+    }};
+    const std::array<A32HostServiceRegistryEntry, 0> entries{};
+    A32HostServiceRegistry registry{std::span{entries}};
+    A32LibDlCloseTransaction transaction{
+        link_map,
+        std::span{handles},
+        lifecycle,
+        registrations,
+        std::span{explicit_bindings},
+        A32LibDlCloseTransactionOptions{
+            .max_fini_array_entries = 1U,
+            .execution = {
+                .stack_top = 0x0ff8U,
+                .return_pc = 0x1000U,
+                .max_instructions_per_call = 16U,
+                .service_handler = &registry,
+                .max_service_calls_per_call = 1U,
+            },
+        },
+    };
+
+    const auto result = transaction.close(
+        memory, 0x70000000U);
+    if (result.error != A32LibDlCloseTransactionError::InvalidBinding ||
+        handles[0].refcount != 1U ||
+        lifecycle.objects[0].destructors !=
+            Elf32LifecycleObjectStatus::Pending ||
+        registrations.records()[0].status !=
+            A32AeabiAtexitRecordStatus::Pending) {
+        return fail("explicit/learned DSO disagreement was not rejected");
     }
     return 0;
 }
@@ -311,6 +394,11 @@ int main() {
         return status;
     }
     if (const int status = test_nested_stack_override_uses_live_guest_sp();
+        status != 0) {
+        return status;
+    }
+    if (const int status =
+            test_explicit_and_learned_binding_disagreement_fails();
         status != 0) {
         return status;
     }
