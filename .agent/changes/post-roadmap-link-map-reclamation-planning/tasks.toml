@@ -3,24 +3,24 @@ change = "post-roadmap-link-map-reclamation-planning"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Define bounded read-only ownership/reachability and reclamation-plan API over persistent roots plus caller live anchors."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Implement cycle-safe reachability and deterministic requester-before-dependency unreachable ordering without mutating link-map or guest state."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Add focused regressions for shared dependencies, cycles, live anchors, global-only visibility, invalid state, and object ceilings; converge specs/docs."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Run exact-head required checks and reconcile closure evidence/state."
