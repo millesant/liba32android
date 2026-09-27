@@ -3,57 +3,39 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `post-roadmap-dynamic-dlopen-acquisition` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: none — `post-roadmap-dynamic-dlopen-acquisition` is DONE.
 
 ## Phase
 
 Features 011-049 remain accepted and the numbered roadmap remains COMPLETE.
 
 Accepted post-roadmap work includes service-aware ELF FINI, linked
-`__cxa_finalize`, bounded resident last-reference `dlclose` lifecycle,
-persistent ownership/reachability planning, and physical persistent link-map
-reclamation.
+`__cxa_finalize`, resident last-reference `dlclose` lifecycle, persistent
+ownership/reachability planning, physical link-map reclamation, and dynamic
+missing-object `dlopen` acquisition.
 
-The reclamation transaction is DONE. Its validated result revision is
-`33037680cdf3dd25a7b60dc12b051fef5cfebf98`.
+Dynamic acquisition is accepted at
+`40479ffebe61c22c90d7d523292fc9e787be635d`. The project operator confirmed
+all required exact-head CI checks were green.
 
-## Active post-roadmap follow-up
+## Next post-roadmap direction
 
-Dynamic missing-object libdl acquisition is implemented.
+Implement targeted final-close unload lifecycle over only the objects that
+become unreachable after releasing one dynamic ownership root.
 
-`A32LibDlService` may optionally delegate named dlopen to
-`A32LibDlOpenTransaction`. Without that transaction, the accepted
-resident-only behavior remains available.
+The transaction must compute the post-release unreachable set before mutating
+ownership, preserve every object still retained by another root or live handle,
+execute registered/ELF teardown only for that newly unreachable set in
+deterministic requester-before-dependency order, and only then release the root
+and invoke physical reclamation.
 
-The open transaction considers Active slots only, rejects failed-constructor or
-non-Pending-destructor resident state, resolves missing roots through the
-caller-owned dependency-provider seam, appends/reuses Local persistent roots,
-eagerly relocates newly appended objects with the current global scope, seals
-their GNU RELRO, and runs persistent constructors dependency-first.
-
-Synchronous guest dlopen passes trapped live r13 into constructor execution so
-nested guest lifecycle calls stay below the active caller frame.
-
-A genuinely new load preflights handle capacity before graph mutation. Failures
-before constructor execution remove a root added by the attempt and physically
-reclaim newly unreachable Pending/Pending mappings while preserving all live
-handle anchors. Constructor-stage failure latches Failed and remains resident;
-later dlopen refuses replay.
-
-Handle publication occurs only after successful initialization. Repeated opens
-reuse/refcount the same object handle. Retired tombstones are excluded from
-resident name lookup, handle-root symbol lookup, and dladdr address matching.
-
-Focused regressions are integrated in
-`tests/compat/a32_libdl_open_transaction.cpp`.
-
-Exact-head validation: NOT RUN.
+Do not call the existing whole-root persistent destructor traversal for this
+job: that would finalize shared dependencies that remain owned elsewhere.
 
 ## Deferred / partial
 
-Recursive final-close lifecycle over only newly unreachable objects,
-RTLD_NODELETE/global-group policy, RTLD_GLOBAL/LOCAL flag expansion, lazy
-binding, RTLD_NEXT, Retired-slot reuse/compaction, concurrent graph mutation,
+RTLD_NODELETE/global-group policy, RTLD_GLOBAL/LOCAL flag expansion, RTLD_NEXT,
+lazy binding, Retired-slot reuse/compaction, concurrent graph mutation,
 `DT_PREINIT_ARRAY`, process argv/envp constructor ABI, broader pthread/TLS,
 concrete APK/ZIP byte acquisition, higher-level public ELF/platform
 orchestration, JNI/graphics/audio surfaces, and real Android device execution
