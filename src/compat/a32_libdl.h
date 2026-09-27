@@ -24,6 +24,7 @@
 namespace liba32android::compat {
 
 class A32LibDlCloseTransaction;
+class A32LibDlOpenTransaction;
 
 inline constexpr std::uint32_t kA32LibDlDlopenSvcImmediate =
     LIBA32ANDROID_A32_LIBDL_DLOPEN_SVC;
@@ -67,7 +68,8 @@ public:
         elf::Elf32LinkMap& link_map,
         std::span<A32LibDlHandle> handles,
         A32LibDlOptions options,
-        A32LibDlCloseTransaction* close_transaction = nullptr) noexcept;
+        A32LibDlCloseTransaction* close_transaction = nullptr,
+        A32LibDlOpenTransaction* open_transaction = nullptr) noexcept;
 
     A32LibDlService(const A32LibDlService&) = delete;
     A32LibDlService& operator=(const A32LibDlService&) = delete;
@@ -136,6 +138,7 @@ private:
     std::span<A32LibDlHandle> handles_;
     A32LibDlOptions options_;
     A32LibDlCloseTransaction* close_transaction_{};
+    A32LibDlOpenTransaction* open_transaction_{};
     std::optional<std::string> pending_error_;
 };
 
