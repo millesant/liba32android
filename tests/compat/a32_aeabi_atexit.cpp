@@ -5,6 +5,7 @@
 
 #include "compat/a32_aeabi_atexit.h"
 #include "cpu/a32_cpu.h"
+#include "elf/elf32_lifecycle.h"
 #include "memory/guest_memory.h"
 #include "runtime/a32_service_dispatch.h"
 #include "runtime/a32_service_registry.h"
@@ -12,6 +13,7 @@
 namespace {
 
 using liba32android::compat::A32AeabiAtexitRecord;
+using liba32android::compat::A32AeabiObjectDsoBinding;
 using liba32android::compat::A32AeabiAtexitRecordStatus;
 using liba32android::compat::A32AeabiAtexitService;
 using liba32android::compat::A32AeabiFinalizeError;
@@ -25,6 +27,10 @@ using liba32android::runtime::A32HostServiceDisposition;
 using liba32android::runtime::A32HostServiceRegistry;
 using liba32android::runtime::A32HostServiceRegistryEntry;
 using liba32android::runtime::execute_a32_with_services;
+using liba32android::elf::Elf32InitCall;
+using liba32android::elf::Elf32InitExecutionOptions;
+using liba32android::elf::Elf32LifecycleExecutionContext;
+using liba32android::elf::execute_elf32_init_calls;
 
 int fail(const char* message) {
     std::cerr << message << '\n';
@@ -301,6 +307,142 @@ int test_guest_cxa_finalize_service() {
     return 0;
 }
 
+int test_lifecycle_context_learns_dso_binding() {
+    constexpr std::array<std::uint8_t, 32> code{
+        0x0C, 0x00, 0x9F, 0xE5,  // ldr r0, [pc, #12]
+        0x0C, 0x10, 0x9F, 0xE5,  // ldr r1, [pc, #12]
+        0x0C, 0x20, 0x9F, 0xE5,  // ldr r2, [pc, #12]
+        0xD2, 0x00, 0x00, 0xEF,  // svc #0xd2
+        0x1E, 0xFF, 0x2F, 0xE1,  // bx lr
+        0x11, 0x11, 0x11, 0x11,  // object
+        0x21, 0x22, 0x22, 0x22,  // destructor
+        0x00, 0x00, 0x33, 0x33,  // DSO
+    };
+
+    LinearGuestMemory memory{4096};
+    if (!memory.write(0x100U, code)) {
+        return fail("could not stage lifecycle-aware __aeabi_atexit fixture");
+    }
+
+    std::array<A32AeabiAtexitRecord, 4> records{};
+    std::array<A32AeabiObjectDsoBinding, 1> bindings{};
+    Elf32LifecycleExecutionContext context{
+        .object_index = 9U,
+    };
+    A32AeabiAtexitService service{
+        std::span{records},
+        std::span{bindings},
+        &context,
+    };
+    const std::array<A32HostServiceRegistryEntry, 1> entries{{
+        {kA32AeabiAtexitSvcImmediate, &service},
+    }};
+    A32HostServiceRegistry registry{std::span{entries}};
+    const std::array<Elf32InitCall, 1> calls{{
+        {
+            .object_index = 3U,
+            .array_index = 0U,
+            .function = 0x100U,
+        },
+    }};
+
+    const auto executed = execute_elf32_init_calls(
+        memory,
+        calls,
+        Elf32InitExecutionOptions{
+            .stack_top = 0x0ff8U,
+            .return_pc = 0x1000U,
+            .max_instructions_per_call = 8U,
+            .service_handler = &registry,
+            .max_service_calls_per_call = 1U,
+            .execution_context = &context,
+        });
+    bool ambiguous = false;
+    const auto learned = service.dso_for_object(3U, ambiguous);
+    if (!executed ||
+        executed.calls_completed != 1U ||
+        context.object_index != 9U ||
+        service.record_count() != 1U ||
+        service.binding_count() != 1U ||
+        ambiguous ||
+        learned != 0x33330000U ||
+        service.learned_bindings()[0].object_index != 3U ||
+        service.learned_bindings()[0].dso_handle != 0x33330000U) {
+        return fail("lifecycle __aeabi_atexit did not learn exact DSO binding");
+    }
+
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t cpsr{};
+    context.object_index = 3U;
+    regs[0] = 0x44444444U;
+    regs[1] = 0x55555555U;
+    regs[2] = 0x33330000U;
+    if (service.handle(
+            memory, kA32AeabiAtexitSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0U ||
+        service.record_count() != 2U ||
+        service.binding_count() != 1U) {
+        return fail("identical learned DSO binding was not reused");
+    }
+
+    regs = {};
+    regs[0] = 0x66666666U;
+    regs[1] = 0x77777777U;
+    regs[2] = 0x44440000U;
+    if (service.handle(
+            memory, kA32AeabiAtexitSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0xffffffffU ||
+        service.record_count() != 2U ||
+        service.binding_count() != 1U) {
+        return fail("same object conflicting DSO mutated registration state");
+    }
+
+    context.object_index = 4U;
+    regs = {};
+    regs[0] = 0x88888888U;
+    regs[1] = 0x99999999U;
+    regs[2] = 0x33330000U;
+    if (service.handle(
+            memory, kA32AeabiAtexitSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0xffffffffU ||
+        service.record_count() != 2U ||
+        service.binding_count() != 1U) {
+        return fail("same DSO conflicting object mutated registration state");
+    }
+
+    context.object_index = 5U;
+    regs = {};
+    regs[0] = 0xAAAA0001U;
+    regs[1] = 0xBBBB0001U;
+    regs[2] = 0x55550000U;
+    if (service.handle(
+            memory, kA32AeabiAtexitSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0xffffffffU ||
+        service.record_count() != 2U ||
+        service.binding_count() != 1U) {
+        return fail("learned DSO binding capacity failure was not atomic");
+    }
+
+    context.object_index.reset();
+    regs = {};
+    regs[0] = 0xCCCC0001U;
+    regs[1] = 0xDDDD0001U;
+    regs[2] = 0x66660000U;
+    if (service.handle(
+            memory, kA32AeabiAtexitSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0U ||
+        service.record_count() != 3U ||
+        service.binding_count() != 1U) {
+        return fail("context-free legacy registration unexpectedly learned binding");
+    }
+    return 0;
+}
+
 int test_arm_registry_integration() {
     constexpr std::array<std::uint8_t, 8> code{
         0xD2, 0x00, 0x00, 0xEF,
@@ -358,6 +500,10 @@ int main() {
         return status;
     }
     if (const int status = test_guest_cxa_finalize_service();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_lifecycle_context_learns_dso_binding();
         status != 0) {
         return status;
     }
