@@ -5,6 +5,8 @@
 
 #include "elf/elf32_lifecycle.h"
 #include "memory/guest_memory.h"
+#include "runtime/a32_service_dispatch.h"
+#include "runtime/a32_service_registry.h"
 
 namespace {
 
@@ -32,6 +34,10 @@ using liba32android::elf::plan_elf32_init_array_calls;
 using liba32android::elf::run_elf32_persistent_constructors;
 using liba32android::elf::run_elf32_persistent_destructors;
 using liba32android::memory::LinearGuestMemory;
+using liba32android::runtime::A32HostServiceDisposition;
+using liba32android::runtime::A32HostServiceHandler;
+using liba32android::runtime::A32HostServiceRegistry;
+using liba32android::runtime::A32HostServiceRegistryEntry;
 
 int fail(const char* message) {
     std::cerr << message << '\n';
@@ -958,6 +964,88 @@ int test_persistent_lifecycle_failure_latches_state() {
     return 0;
 }
 
+
+class LifecycleMarkerService final : public A32HostServiceHandler {
+public:
+    A32HostServiceDisposition handle(
+        liba32android::memory::GuestMemory&,
+        std::uint32_t svc_immediate,
+        std::array<std::uint32_t, 16>& regs,
+        std::uint32_t&) override {
+        if (svc_immediate != 0xD3U) {
+            return A32HostServiceDisposition::Unhandled;
+        }
+        ++calls;
+        regs[0] = 42U;
+        return A32HostServiceDisposition::Handled;
+    }
+
+    std::size_t calls{};
+};
+
+int test_fini_execution_dispatches_guest_services() {
+    LinearGuestMemory memory(0x800, 0x1000);
+    Elf32DependencyGraph graph;
+    graph.objects.resize(1);
+
+    constexpr std::array<std::uint8_t, 20> fini_code{
+        0xD3, 0x00, 0x00, 0xEF,
+        0x04, 0x10, 0x9F, 0xE5,
+        0x00, 0x00, 0x81, 0xE5,
+        0x1E, 0xFF, 0x2F, 0xE1,
+        0x80, 0x13, 0x00, 0x00,
+    };
+    if (!memory.write(0x1100U, fini_code) ||
+        !stage_fini_array(memory, graph, 0U, 0x1200U, {0x1100U})) {
+        return fail("could not stage service-aware FINI fixture");
+    }
+
+    const auto plan = plan_elf32_fini_array_calls(
+        memory,
+        graph,
+        0U,
+        Elf32FiniPlanOptions{
+            .max_objects = 1U,
+            .max_entries = 1U,
+        });
+    if (!plan || plan.calls.size() != 1U) {
+        return fail("service-aware FINI plan was not produced");
+    }
+
+    LifecycleMarkerService marker;
+    const std::array<A32HostServiceRegistryEntry, 1> entries{{
+        {0xD3U, &marker},
+    }};
+    A32HostServiceRegistry registry{std::span{entries}};
+
+    const auto executed = execute_elf32_fini_calls(
+        memory,
+        plan.calls,
+        Elf32FiniExecutionOptions{
+            .stack_top = 0x17f8U,
+            .return_pc = 0x2000U,
+            .max_instructions_per_call = 16U,
+            .service_handler = &registry,
+            .max_service_calls_per_call = 1U,
+        });
+    std::array<std::uint8_t, 4> bytes{};
+    if (!memory.read(0x1380U, bytes)) {
+        return fail("could not read service-aware FINI marker");
+    }
+    const std::uint32_t value =
+        static_cast<std::uint32_t>(bytes[0]) |
+        (static_cast<std::uint32_t>(bytes[1]) << 8U) |
+        (static_cast<std::uint32_t>(bytes[2]) << 16U) |
+        (static_cast<std::uint32_t>(bytes[3]) << 24U);
+    if (!executed ||
+        executed.calls_completed != 1U ||
+        marker.calls != 1U ||
+        value != 42U) {
+        return fail("FINI execution did not dispatch and resume guest service");
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -1003,6 +1091,10 @@ int main() {
         return status;
     }
     if (const int status = test_fini_plan_executes_requester_first_end_to_end();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_fini_execution_dispatches_guest_services();
         status != 0) {
         return status;
     }

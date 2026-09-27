@@ -11,6 +11,10 @@
 #include "elf/elf32_linker_metadata.h"
 #include "memory/guest_memory.h"
 
+namespace liba32android::runtime {
+class A32HostServiceHandler;
+}
+
 namespace liba32android::elf {
 
 struct Elf32FunctionArrayDecodeOptions {
@@ -145,6 +149,11 @@ struct Elf32InitExecutionOptions {
     // alignment lets the same target safely serve ARM and Thumb constructors.
     std::uint32_t return_pc{};
     std::size_t max_instructions_per_call{};
+    // Optional synchronous host-service dispatcher for lifecycle code that
+    // executes SVC-backed compatibility shims. When non-null, each lifecycle
+    // call may handle at most max_service_calls_per_call services.
+    runtime::A32HostServiceHandler* service_handler{};
+    std::size_t max_service_calls_per_call{};
 };
 
 enum class Elf32InitExecutionError : std::uint8_t {
@@ -154,6 +163,10 @@ enum class Elf32InitExecutionError : std::uint8_t {
     CpuException,
     MemoryFault,
     InstructionLimitExceeded,
+    ServiceLimitExceeded,
+    ServiceUnhandled,
+    ServiceFailed,
+    ServiceSuspended,
 };
 
 struct Elf32InitExecutionResult {
@@ -162,6 +175,7 @@ struct Elf32InitExecutionResult {
     std::optional<std::size_t> failing_call;
     std::optional<std::size_t> failing_object;
     std::optional<cpu::ExecutionResult> cpu_result;
+    std::optional<std::uint32_t> failing_svc_immediate;
 
     [[nodiscard]] explicit operator bool() const noexcept {
         return error == Elf32InitExecutionError::None;
@@ -240,6 +254,7 @@ struct Elf32PersistentLifecycleResult {
     std::size_t calls_completed{};
     std::optional<std::size_t> failing_object;
     std::optional<cpu::ExecutionResult> cpu_result;
+    std::optional<std::uint32_t> failing_svc_immediate;
 
     [[nodiscard]] explicit operator bool() const noexcept {
         return error == Elf32PersistentLifecycleError::None;

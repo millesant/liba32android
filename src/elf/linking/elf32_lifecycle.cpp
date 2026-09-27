@@ -7,6 +7,8 @@
 #include <utility>
 #include <vector>
 
+#include "runtime/a32_service_dispatch.h"
+
 namespace liba32android::elf {
 namespace {
 
@@ -361,13 +363,15 @@ namespace {
     std::size_t calls_completed,
     std::size_t failing_call,
     std::size_t failing_object,
-    std::optional<cpu::ExecutionResult> cpu_result = std::nullopt) {
+    std::optional<cpu::ExecutionResult> cpu_result = std::nullopt,
+    std::optional<std::uint32_t> failing_svc = std::nullopt) {
     Elf32InitExecutionResult result;
     result.error = error;
     result.calls_completed = calls_completed;
     result.failing_call = failing_call;
     result.failing_object = failing_object;
     result.cpu_result = std::move(cpu_result);
+    result.failing_svc_immediate = failing_svc;
     return result;
 }
 
@@ -380,7 +384,9 @@ Elf32InitExecutionResult execute_elf32_init_calls(
     if (options.stack_top == 0U ||
         (options.stack_top & 7U) != 0U ||
         (options.return_pc & 3U) != 0U ||
-        options.max_instructions_per_call == 0U) {
+        options.max_instructions_per_call == 0U ||
+        (options.service_handler != nullptr &&
+         options.max_service_calls_per_call == 0U)) {
         Elf32InitExecutionResult result;
         result.error = Elf32InitExecutionError::InvalidOptions;
         return result;
@@ -408,6 +414,84 @@ Elf32InitExecutionResult execute_elf32_init_calls(
         request.regs[14] = options.return_pc | (thumb ? 1U : 0U);
         request.instruction_count = options.max_instructions_per_call;
         request.stop_pc = options.return_pc;
+
+        if (options.service_handler != nullptr) {
+            auto service_result = runtime::execute_a32_with_services(
+                memory,
+                request,
+                *options.service_handler,
+                options.max_service_calls_per_call);
+            if (service_result.service_suspended) {
+                return execution_failure(
+                    Elf32InitExecutionError::ServiceSuspended,
+                    result.calls_completed,
+                    index,
+                    call.object_index,
+                    std::nullopt,
+                    service_result.suspended_svc_immediate);
+            }
+            switch (service_result.error) {
+            case runtime::A32ServiceDispatchError::None:
+                break;
+            case runtime::A32ServiceDispatchError::MemoryFault:
+                return execution_failure(
+                    Elf32InitExecutionError::MemoryFault,
+                    result.calls_completed,
+                    index,
+                    call.object_index,
+                    std::nullopt,
+                    service_result.failing_svc_immediate);
+            case runtime::A32ServiceDispatchError::CpuException:
+                return execution_failure(
+                    Elf32InitExecutionError::CpuException,
+                    result.calls_completed,
+                    index,
+                    call.object_index,
+                    std::nullopt,
+                    service_result.failing_svc_immediate);
+            case runtime::A32ServiceDispatchError::ServiceLimitExceeded:
+                return execution_failure(
+                    Elf32InitExecutionError::ServiceLimitExceeded,
+                    result.calls_completed,
+                    index,
+                    call.object_index,
+                    std::nullopt,
+                    service_result.failing_svc_immediate);
+            case runtime::A32ServiceDispatchError::ServiceUnhandled:
+                return execution_failure(
+                    Elf32InitExecutionError::ServiceUnhandled,
+                    result.calls_completed,
+                    index,
+                    call.object_index,
+                    std::nullopt,
+                    service_result.failing_svc_immediate);
+            case runtime::A32ServiceDispatchError::ServiceFailed:
+                return execution_failure(
+                    Elf32InitExecutionError::ServiceFailed,
+                    result.calls_completed,
+                    index,
+                    call.object_index,
+                    std::nullopt,
+                    service_result.failing_svc_immediate);
+            case runtime::A32ServiceDispatchError::InstructionLimitExceeded:
+                return execution_failure(
+                    Elf32InitExecutionError::InstructionLimitExceeded,
+                    result.calls_completed,
+                    index,
+                    call.object_index,
+                    std::nullopt,
+                    service_result.failing_svc_immediate);
+            }
+            if (!service_result.stop_pc_reached) {
+                return execution_failure(
+                    Elf32InitExecutionError::InstructionLimitExceeded,
+                    result.calls_completed,
+                    index,
+                    call.object_index);
+            }
+            ++result.calls_completed;
+            continue;
+        }
 
         auto cpu_result = cpu::execute(memory, request);
         // Instruction-fetch/data faults can also make the CPU backend report a
@@ -449,6 +533,14 @@ const char* to_string(Elf32InitExecutionError error) noexcept {
         return "memory_fault";
     case Elf32InitExecutionError::InstructionLimitExceeded:
         return "instruction_limit_exceeded";
+    case Elf32InitExecutionError::ServiceLimitExceeded:
+        return "service_limit_exceeded";
+    case Elf32InitExecutionError::ServiceUnhandled:
+        return "service_unhandled";
+    case Elf32InitExecutionError::ServiceFailed:
+        return "service_failed";
+    case Elf32InitExecutionError::ServiceSuspended:
+        return "service_suspended";
     }
     return "unknown";
 }
@@ -625,6 +717,8 @@ struct PersistentInitContext {
                 result.execution_error = executed.error;
                 result.failing_object = object_index;
                 result.cpu_result = std::move(executed.cpu_result);
+                result.failing_svc_immediate =
+                    executed.failing_svc_immediate;
                 return false;
             }
         }
