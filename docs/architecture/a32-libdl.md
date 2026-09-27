@@ -1,12 +1,13 @@
-# ARM32 resident-object libdl compatibility
+# ARM32 libdl compatibility
 
-Status: feature 046 accepted; exact-head validation PASSed
+Status: feature 046 resident service accepted; dynamic acquisition follow-up implemented
 
 ## Goal
 
-Provide the target-backed `libdl.so` ABI surface that can operate safely on
-the project's existing persistent ELF32 link map without prematurely owning
-Android filesystem/search or unload lifecycle.
+Provide the target-backed `libdl.so` ABI surface over the persistent ELF32
+link map, with an optional bounded acquisition transaction for named objects
+while keeping Android pathname/search policy and recursive unload lifecycle
+outside the service itself.
 
 The supplied FMOD image imports `dlopen`, `dlsym`, `dlclose`, and
 `dlerror`. The supplied VLC ARMv7 set additionally imports `dladdr`.
@@ -24,20 +25,36 @@ The generated ARM32 `libdl.so` exports five direct SVC stubs:
 All guest handles/pointers remain logical 32-bit values. No host pointer is
 published.
 
-## Resident dlopen and handles
+## Resident and dynamic dlopen
 
 The service borrows a persistent `Elf32LinkMap` plus a finite caller-owned
-handle table. `dlopen(name, RTLD_LAZY|RTLD_NOW)` matches only exact resident
-SONAME/identity bytes. Null filename acquires the first root. Repeated opens of
-the same resident object reuse one synthetic handle and increment its finite
-refcount.
+handle table. Null filename acquires the first root. Without an open
+transaction, named `dlopen(name, RTLD_LAZY|RTLD_NOW)` retains the accepted
+resident-only exact SONAME/identity behavior.
 
-A missing object returns null and records a pending error. The service does not
-invoke a dependency provider, open a path/APK, map an ELF, relocate it, or run
-constructors.
+When an `A32LibDlOpenTransaction` is supplied, named dlopen first considers
+Active resident objects only. Retired tombstones are ignored. Missing names are
+resolved through the caller-owned dependency provider, appended/reused as Local
+persistent roots, eagerly relocated, GNU-RELRO sealed, and initialized through
+persistent constructors before a synthetic handle is published.
 
-`dlclose` only decrements/recycles the synthetic handle. The mapped object
-persists; no FINI_ARRAY or unmap is performed.
+Persistent constructors reuse the caller's once/failure lifecycle state, so
+already-Complete shared dependencies are not replayed. Synchronous guest dlopen
+passes trapped r13 as the nested constructor stack top.
+
+Failures before constructor execution can remove a root added by the attempt
+and reclaim newly unreachable Pending/Pending mappings while existing live
+handles remain ownership anchors. Constructor-stage failures remain resident
+with Failed lifecycle state because guest side effects cannot be rolled back
+safely.
+
+Repeated successful opens of the same Active object reuse one synthetic handle
+and increment its finite refcount. Objects with failed constructors or
+non-Pending destructor state are not reopenable.
+
+The accepted close transaction may finalize one exact resident object on final
+handle release. Recursive final-close teardown/reclamation of dependency
+closures remains a separate higher ownership transaction.
 
 ## Symbol and address lookup
 
@@ -45,10 +62,11 @@ persists; no FINI_ARRAY or unmap is performed.
 resident root. `RTLD_DEFAULT` starts from the first process root and then
 caller-recorded global roots. `RTLD_NEXT` is explicitly deferred.
 
-`dladdr` locates the resident object whose loaded segment contains the guest
+`dladdr` locates the Active object whose loaded segment contains the guest
 address, writes the ARM32 four-word `Dl_info` structure, copies a bounded
 SONAME/identity into guest scratch, and scans the bounded dynamic symbol index
-for the nearest preceding definition when available.
+for the nearest preceding definition when available. Retired tombstones are
+excluded from address lookup.
 
 ## Error lifetime
 
@@ -70,9 +88,19 @@ application catalog plus namespace-gated platform `libdl.so`, eagerly
 relocates it, proves direct resident-provider execution, then exercises guest
 `dlopen -> dlsym -> dladdr -> dlclose -> failing dlsym -> dlerror`.
 
+## Dynamic-acquisition validation
+
+Focused host-side coverage exercises provider-backed missing-object acquisition,
+persistent Local-root publication, eager initialization, repeated handle
+refcounting, rejection of already-destructed/failed resident state,
+pre-constructor RELRO failure cleanup with physical reclamation, tombstoned
+same-name retry into a fresh stable slot, and constructor-failure no-replay.
+
+The existing pinned-NDK integration remains the real ARM32 resident libdl proof;
+this follow-up does not yet claim a real ARM32 missing-object dlopen fixture.
+
 ## Limits
 
-Dynamic acquisition of a missing SONAME, Android search paths/APK extraction,
-RTLD_GLOBAL/NOLOAD/NODELETE policy, RTLD_NEXT, relocation/constructor
-transactions for newly loaded roots, persistent lifecycle called-state, actual
-unload, and destructor execution remain separate work.
+Recursive final-close lifecycle over only newly unreachable objects,
+RTLD_GLOBAL/NOLOAD/NODELETE policy, RTLD_NEXT, lazy binding, concrete Android
+search paths/APK extraction, and pathname accessibility remain separate work.
