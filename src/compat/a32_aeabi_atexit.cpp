@@ -8,8 +8,64 @@
 
 #include "cpu/a32_cpu.h"
 #include "runtime/a32_service_dispatch.h"
+#include "elf/elf32_lifecycle.h"
 
 namespace liba32android::compat {
+
+bool A32AeabiAtexitService::learn_binding(
+    std::size_t object_index,
+    std::uint32_t dso_handle) noexcept {
+    bool exact_existing = false;
+    for (std::size_t index = 0; index < binding_count_; ++index) {
+        const auto& binding = learned_bindings_[index];
+        if (binding.object_index == object_index) {
+            if (binding.dso_handle != dso_handle) {
+                return false;
+            }
+            exact_existing = true;
+        }
+        if (binding.dso_handle == dso_handle &&
+            binding.object_index != object_index) {
+            return false;
+        }
+    }
+
+    if (exact_existing) {
+        return true;
+    }
+    if (binding_count_ >= learned_bindings_.size()) {
+        return false;
+    }
+
+    learned_bindings_[binding_count_++] = A32AeabiObjectDsoBinding{
+        .object_index = object_index,
+        .dso_handle = dso_handle,
+    };
+    return true;
+}
+
+std::optional<std::uint32_t> A32AeabiAtexitService::dso_for_object(
+    std::size_t object_index,
+    bool& ambiguous) const noexcept {
+    ambiguous = false;
+    std::optional<std::uint32_t> result;
+    for (std::size_t index = 0; index < binding_count_; ++index) {
+        const auto& binding = learned_bindings_[index];
+        if (binding.object_index != object_index) {
+            continue;
+        }
+        if (binding.dso_handle == 0U) {
+            ambiguous = true;
+            return std::nullopt;
+        }
+        if (result.has_value() && *result != binding.dso_handle) {
+            ambiguous = true;
+            return std::nullopt;
+        }
+        result = binding.dso_handle;
+    }
+    return result;
+}
 
 runtime::A32HostServiceDisposition A32AeabiAtexitService::handle(
     memory::GuestMemory&,
@@ -21,6 +77,15 @@ runtime::A32HostServiceDisposition A32AeabiAtexitService::handle(
     }
 
     if (record_count_ >= records_.size()) {
+        regs[0] = 0xffffffffU;
+        return runtime::A32HostServiceDisposition::Handled;
+    }
+
+    if (!learned_bindings_.empty() &&
+        execution_context_ != nullptr &&
+        execution_context_->object_index.has_value() &&
+        regs[2] != 0U &&
+        !learn_binding(*execution_context_->object_index, regs[2])) {
         regs[0] = 0xffffffffU;
         return runtime::A32HostServiceDisposition::Handled;
     }
