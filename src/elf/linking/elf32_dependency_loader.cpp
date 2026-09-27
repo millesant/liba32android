@@ -621,8 +621,10 @@ Elf32DependencyLoadResult append_elf32_link_map_root(
     return result;
 }
 
-Elf32LinkMapReclamationResult plan_elf32_link_map_reclamation(
+[[nodiscard]] static Elf32LinkMapReclamationResult
+plan_elf32_link_map_reclamation_impl(
     const Elf32LinkMap& link_map,
+    std::optional<std::size_t> root_to_release,
     std::span<const std::size_t> additional_live_anchors,
     const Elf32LinkMapReclamationOptions& options) {
     Elf32LinkMapReclamationResult result;
@@ -692,6 +694,7 @@ Elf32LinkMapReclamationResult plan_elf32_link_map_reclamation(
     }
 
     std::vector<std::uint8_t> root_seen(object_count, 0U);
+    bool released_root_found = false;
     for (const auto& root : link_map.roots) {
         if (root.object_index >= object_count ||
             !object_active(root.object_index) ||
@@ -705,6 +708,15 @@ Elf32LinkMapReclamationResult plan_elf32_link_map_reclamation(
             return result;
         }
         root_seen[root.object_index] = 1U;
+        if (root_to_release.has_value() &&
+            root.object_index == *root_to_release) {
+            released_root_found = true;
+        }
+    }
+    if (root_to_release.has_value() && !released_root_found) {
+        result.error = Elf32LinkMapReclamationError::InvalidRoot;
+        result.failing_object = *root_to_release;
+        return result;
     }
 
     {
@@ -774,6 +786,10 @@ Elf32LinkMapReclamationResult plan_elf32_link_map_reclamation(
         };
 
     for (const auto& root : link_map.roots) {
+        if (root_to_release.has_value() &&
+            root.object_index == *root_to_release) {
+            continue;
+        }
         add_anchor(root.object_index);
     }
     for (const std::size_t object_index : additional_live_anchors) {
@@ -857,6 +873,29 @@ Elf32LinkMapReclamationResult plan_elf32_link_map_reclamation(
     return result;
 }
 
+Elf32LinkMapReclamationResult plan_elf32_link_map_reclamation(
+    const Elf32LinkMap& link_map,
+    std::span<const std::size_t> additional_live_anchors,
+    const Elf32LinkMapReclamationOptions& options) {
+    return plan_elf32_link_map_reclamation_impl(
+        link_map,
+        std::nullopt,
+        additional_live_anchors,
+        options);
+}
+
+Elf32LinkMapReclamationResult plan_elf32_link_map_root_release(
+    const Elf32LinkMap& link_map,
+    std::size_t root_object_index,
+    std::span<const std::size_t> additional_live_anchors,
+    const Elf32LinkMapReclamationOptions& options) {
+    return plan_elf32_link_map_reclamation_impl(
+        link_map,
+        root_object_index,
+        additional_live_anchors,
+        options);
+}
+
 const char* to_string(Elf32LinkMapReclamationError error) noexcept {
     switch (error) {
     case Elf32LinkMapReclamationError::None:
@@ -869,6 +908,8 @@ const char* to_string(Elf32LinkMapReclamationError error) noexcept {
         return "invalid_live_anchor";
     case Elf32LinkMapReclamationError::ObjectLimitExceeded:
         return "object_limit_exceeded";
+    case Elf32LinkMapReclamationError::InvalidRoot:
+        return "invalid_root";
     }
     return "unknown";
 }
