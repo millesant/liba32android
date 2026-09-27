@@ -1,6 +1,7 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <vector>
 
 #include "elf/elf32_lifecycle.h"
