@@ -1,6 +1,7 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 
 #include "compat/a32_libc_memory_string.h"
 #include "memory/guest_memory.h"
@@ -14,6 +15,8 @@ using liba32android::compat::kA32LibcMemmemSvcImmediate;
 using liba32android::compat::kA32LibcStrcpySvcImmediate;
 using liba32android::compat::kA32LibcStrncpySvcImmediate;
 using liba32android::memory::LinearGuestMemory;
+using liba32android::memory::MappedGuestMemory;
+using liba32android::memory::MemoryPermission;
 using liba32android::runtime::A32HostServiceDisposition;
 
 int fail(const char* message) {
@@ -58,6 +61,17 @@ int test_memmem() {
             A32HostServiceDisposition::Handled ||
         regs[0] != 0x1ffU) {
         return fail("empty memmem needle did not avoid guest reads");
+    }
+
+    regs = {};
+    regs[0] = 0xfffffffcU;
+    regs[1] = 8U;
+    regs[2] = 0xffffffffU;
+    regs[3] = 0U;
+    if (service.handle(memory, kA32LibcMemmemSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0xfffffffcU) {
+        return fail("empty memmem needle validated unused haystack range");
     }
 
     regs = {};
@@ -191,6 +205,53 @@ int test_strncpy() {
     return 0;
 }
 
+int test_strncpy_stops_reading_after_nul() {
+    MappedGuestMemory memory;
+    const std::uint64_t page_size = memory.page_size();
+    if (page_size == 0 ||
+        page_size > std::numeric_limits<std::uint32_t>::max() / 3U) {
+        return fail("invalid mapped-memory page size");
+    }
+
+    const std::uint32_t destination_page =
+        static_cast<std::uint32_t>(page_size * 2U);
+    const std::uint32_t final_page =
+        static_cast<std::uint32_t>(
+            MappedGuestMemory::kAddressSpaceSize - page_size);
+    const auto rw = MemoryPermission::Read | MemoryPermission::Write;
+    if (!memory.map(destination_page, page_size, rw) ||
+        !memory.map(final_page, page_size, rw)) {
+        return fail("could not map high-address strncpy regression pages");
+    }
+
+    constexpr std::array<std::uint8_t, 2> source{{'A', 0}};
+    constexpr std::uint32_t source_address = 0xfffffffeU;
+    if (!memory.write(source_address, source)) {
+        return fail("could not stage high-address strncpy source");
+    }
+
+    A32LibcMemoryStringService service{
+        A32LibcMemoryStringOptions{8, 8}};
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t cpsr{};
+    regs[0] = destination_page;
+    regs[1] = source_address;
+    regs[2] = 4U;
+
+    if (service.handle(memory, kA32LibcStrncpySvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != destination_page) {
+        return fail("strncpy rejected unread bytes after an observed NUL");
+    }
+
+    std::array<std::uint8_t, 4> copied{};
+    if (!memory.read(destination_page, copied) ||
+        copied != std::array<std::uint8_t, 4>{{'A', 0, 0, 0}}) {
+        return fail("high-address strncpy did not preserve NUL padding");
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -201,6 +262,9 @@ int main() {
         return status;
     }
     if (const int status = test_strncpy(); status != 0) {
+        return status;
+    }
+    if (const int status = test_strncpy_stops_reading_after_nul(); status != 0) {
         return status;
     }
     return 0;

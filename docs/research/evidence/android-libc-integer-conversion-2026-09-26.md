@@ -6,9 +6,13 @@ The supplied ARM32 FMOD library and VLC ARMv7 `libvlc.so` both import
 `atoi` and `strtol`; see the corrected common-symbol evidence in
 `shared-libc-memory-string-imports-2026-09-26.md`.
 
+## AOSP release baseline
+
+The project compatibility baseline now follows the official `android-latest-release` manifest. As of 2026-09-27 that manifest resolves to `android17-release`; the stable Android 17.0.0 r1 bionic tag is used below for exact source evidence.
+
 ## AOSP evidence
 
-Current Android bionic implements `atoi(s)` by calling
+Android 17 bionic implements `atoi(s)` by calling
 `strtol(s, nullptr, 10)`.
 
 Its signed conversion implementation:
@@ -26,7 +30,7 @@ Its signed conversion implementation:
 
 Primary source:
 
-https://android.googlesource.com/platform/bionic/+/master/libc/bionic/strtol.cpp
+https://android.googlesource.com/platform/bionic/+/refs/tags/android-17.0.0_r1/libc/bionic/strtol.cpp
 
 ## Project boundary
 
@@ -48,3 +52,13 @@ A caller-owned errno sink receives Android guest errno numbers 22 (EINVAL) and
 This evidence covers `atoi` and signed 32-bit `strtol` only. It does not
 cover locale-specific classification, unsigned/wide/64-bit conversions,
 `strtod`, or a guest `__errno`/TLS implementation.
+
+
+## Alignment result — 2026-09-27
+
+The prepared feature-035 parser was re-audited against Android 17's exact
+`strtol.cpp` source. Its accepted base range, guarded 0x/0b prefixes,
+whitespace/sign handling, no-digit end pointer, overflow digit consumption,
+EINVAL/ERANGE cases, and ARM32 signed-result model match the release behavior.
+The project's caller-selected byte ceiling remains an intentional safety bound,
+not an Android semantic claim.

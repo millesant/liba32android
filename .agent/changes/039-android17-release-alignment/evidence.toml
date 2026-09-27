@@ -1,0 +1,38 @@
+schema = 1
+change = "039-android17-release-alignment"
+
+[[evidence]]
+id = "android17-baseline"
+kind = "research"
+status = "passed"
+claim = "The official android-latest-release baseline selects android17-release and Android 17 release source is used for current compatibility comparison."
+source = "docs/research/evidence/android17-release-alignment-2026-09-27.md"
+result = "Release baseline and exact-source references are recorded for namespace, integer conversion, errno, libc string behavior, and system logging."
+limitations = "Historical evidence keeps its original source revisions; main may still be consulted only as forward-looking context."
+
+[[evidence]]
+id = "memmem-alignment"
+kind = "test"
+status = "not_run"
+claim = "memmem preserves bounded no-read empty-needle/short-haystack decisions before validating unused guest byte ranges."
+source = "tests/compat/a32_libc_string_copy_search.cpp"
+result = "Integrated source preserves the already accepted feature-033 ordering and adds the Android-17 alignment regression; exact-head execution has not yet been observed."
+limitations = "Not passing feature-039 evidence until this integrated exact head actually runs."
+
+[[evidence]]
+id = "strncpy-alignment"
+kind = "test"
+status = "not_run"
+claim = "strncpy permits early-NUL source termination at the end of guest address space and pads only the valid destination without fictitious source reads."
+source = "tests/compat/a32_libc_string_copy_search.cpp"
+result = "The Android-17 source-access correction and sparse high-address regression are integrated; exact-head execution has not yet been observed."
+limitations = "Not passing evidence until this integrated exact head actually runs."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "Feature 039 passes applicable exact-head validation after feature 038 is accepted."
+source = "GitHub commit checks on the feature-039 integration revision"
+result = ""
+limitations = "Feature 039 remains implemented rather than done until terminal exact-head checks are observed."

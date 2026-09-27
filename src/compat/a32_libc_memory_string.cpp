@@ -270,7 +270,9 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
             needle_size > options_.max_transfer_bytes) {
             return A32HostServiceDisposition::Failed;
         }
-        // These result-only cases do not dereference either byte range.
+        // Android 17 uses the OpenBSD/musl memmem shape: an empty needle
+        // returns haystack immediately, and a shorter haystack returns null,
+        // before either byte range is dereferenced.
         if (needle_size == 0) {
             regs[0] = haystack_address;
             return A32HostServiceDisposition::Handled;
@@ -332,14 +334,15 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
         const std::uint32_t source = regs[1];
         const std::uint32_t count = regs[2];
         if (count > options_.max_transfer_bytes ||
-            !range_fits_u32(destination, count) ||
-            !range_fits_u32(source, count)) {
+            !range_fits_u32(destination, count)) {
             return A32HostServiceDisposition::Failed;
         }
         if (count == 0) {
             return A32HostServiceDisposition::Handled;
         }
 
+        // Only source bytes actually consumed before NUL need to be
+        // addressable. Remaining output bytes are destination padding.
         std::vector<std::uint8_t> bytes(count, 0);
         bool terminated = false;
         for (std::uint32_t offset = 0; offset < count; ++offset) {

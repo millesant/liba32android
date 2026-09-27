@@ -186,11 +186,12 @@ The existing `A32LibcMemoryStringService` may additionally recognize
 `0xA8`, `0xA9`, and `0xAA`.
 
 `memmem` consumes haystack pointer/length in r0/r1 and needle pointer/length
-in r2/r3. Both explicit lengths are bounded by `max_transfer_bytes`; logical
-range wrap or GuestMemory read failure returns `Failed`. An empty needle
-returns the haystack pointer without guest reads; a haystack shorter than a
-non-empty needle returns null without guest reads; otherwise the first exact
-byte match returns a logical guest pointer.
+in r2/r3. Both explicit lengths are bounded by `max_transfer_bytes`. An empty
+needle returns the haystack pointer without validating or reading either byte
+range; a haystack shorter than a non-empty needle returns null without validating
+or reading either byte range. Only a search that can inspect bytes validates the
+required logical ranges; wrap or GuestMemory read failure then returns
+`Failed`. Otherwise the first exact byte match returns a logical guest pointer.
 
 `strcpy` reads the complete source including NUL into temporary storage before
 destination mutation. The source payload must terminate within
@@ -200,7 +201,10 @@ destination mutation. The source payload must terminate within
 `strncpy` bounds its explicit count by `max_transfer_bytes`. Zero count
 performs no guest access. Non-zero calls read at most count source bytes, stop
 reading after NUL and pad the temporary destination with NULs, or copy exactly
-count bytes without inventing a terminator when no NUL is encountered.
+count bytes without inventing a terminator when no NUL is encountered. The
+full destination count range is validated before mutation; source addressability
+is checked only for bytes actually read before NUL/count, so padding bytes never
+require a fictitious source range.
 
 Feature 033 adds no integer parsing, errno, allocation, thread, I/O,
 dynamic-loader, or guest-shim export behavior.
@@ -308,3 +312,22 @@ must read that same value through the returned logical guest pointer.
 
 No Android TLS layout, guest thread selection, or additional libc symbols are
 introduced by feature 038.
+
+
+## L32-C016 — Android 17 release alignment baseline
+
+Android-facing compatibility semantics are audited against the official
+`android-latest-release` manifest. As of 2026-09-27 it selects
+`android17-release`; stable Android 17.0.0 r1 source is the exact-source
+reference for bionic/linker behavior in the feature-029 through feature-038
+prepared lineage.
+
+The audit preserves the direct linked-namespace accessibility model, Android
+log-write ABI, ARM32 atoi/strtol rules, memmem empty-needle result, and
+per-guest-thread errno-pointer abstraction. It corrects two prepared feature-033
+access-order mismatches: memmem fast paths must precede unused-range validation,
+and strncpy padding after NUL must not require source addressability for bytes
+that are never read.
+
+Future Android-semantic changes must record the release/ref used as evidence
+rather than relying on unqualified `main`/`master` behavior.

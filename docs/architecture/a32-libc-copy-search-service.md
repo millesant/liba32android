@@ -43,3 +43,17 @@ copied and no terminator is invented.
 No integer parsing, locale, errno, allocation, thread, I/O, dynamic-loader, or
 guest-shim export changes are included. A later guest libc shim extension must
 use the same shared service-ID header.
+
+
+## Android 17 alignment note — 2026-09-27
+
+Android 17 builds the OpenBSD/musl-derived `memmem`, whose empty-needle path
+returns the haystack immediately and whose short-haystack path returns null
+before dereferencing either range. Feature 039 orders its bounded fast paths the
+same way after enforcing configured length ceilings.
+
+For `strncpy`, source bytes are consumed only until NUL or count. The full
+destination range remains validated before mutation, but unused source bytes
+that correspond only to post-NUL padding are not required to be addressable.
+A sparse regression places `{'A', 0}` at guest address `0xfffffffe` and
+requires a four-byte padded copy to succeed.

@@ -2,10 +2,11 @@ schema = 1
 id = "038-a32-libc-errno-shim"
 kind = "feature"
 size = "S2"
-status = "implemented"
+status = "done"
 workflow = "feature"
 control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
 base_revision = "d4390484a4df6435c74d6e165ecdef0f3a396b95"
+result_revision = "4305b0d06aa007741984a013ac354c95162cf5a0"
 acceptance = [
   "the partial ARM32 libc.so adds __errno export using shared feature-037 SVC 0xAD without changing existing symbols or SONAME",
   "the freestanding consumer imports __errno and exposes a wrapper that dereferences the returned guest int pointer",
@@ -27,5 +28,5 @@ tests = "aligned"
 documentation = "aligned"
 decisions = "not_applicable"
 tasks = "aligned"
-evidence = "pending"
+evidence = "aligned"
 repository = "aligned"

@@ -6,6 +6,10 @@ What is the smallest authoritative guest ABI contract required to bridge the
 shared `__android_log_write` import observed in the supplied ARM32 FMOD/VLC
 artifacts?
 
+## Android release baseline
+
+The compatibility baseline follows the official `android-latest-release` manifest, which resolves to `android17-release` as of 2026-09-27. The system/logging project is part of that manifest. The log-write ABI has remained stable across the historical Android 9 source and current system/logging API inspected for this contract.
+
 ## Android API evidence
 
 Current AOSP `liblog/include/android/log.h` declares:
@@ -67,3 +71,11 @@ This evidence defines the call shape, not a complete `liblog.so`
 compatibility library. It does not justify implementing
 `__android_log_print` or `__android_log_vprint`, does not choose a private
 SVC number, and does not solve guest ELF symbol export/provider selection.
+
+
+## Alignment result — 2026-09-27
+
+No feature-026 ABI change is required by the Android 17 baseline: the bridge
+continues to model the same three machine-word arguments and signed 32-bit
+result, preserves a null tag for downstream policy, and keeps host logging
+policy outside the game-agnostic runtime.

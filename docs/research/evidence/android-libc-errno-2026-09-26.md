@@ -5,19 +5,22 @@
 The supplied ARM32 FMOD library and VLC ARMv7 `libvlc.so` both import
 `__errno`.
 
+## AOSP release baseline
+
+The project compatibility baseline follows `android-latest-release`, which resolves to `android17-release` as of 2026-09-27. The exact Android 17.0.0 r1 bionic sources are used below.
+
 ## AOSP evidence
 
 Android's public errno header defines `errno` as `(*__errno())` and declares
 `int* __errno(void)`, documenting that it returns the calling thread's errno
 storage.
 
-Bionic's implementation returns a pointer into thread-local storage rather than
-a process-global host errno value.
+Android 17 bionic returns `&__get_thread()->errno_value`, i.e. the calling thread's bionic errno storage rather than a process-global host errno value.
 
 Primary sources:
 
-- https://android.googlesource.com/platform/bionic/+/main/libc/include/errno.h
-- https://android.googlesource.com/platform/bionic/+/main/libc/bionic/__errno.cpp
+- https://android.googlesource.com/platform/bionic/+/refs/tags/android-17.0.0_r1/libc/include/errno.h
+- https://android.googlesource.com/platform/bionic/+/refs/tags/android-17.0.0_r1/libc/bionic/__errno.cpp
 
 ## Project consequence
 
@@ -39,3 +42,11 @@ thread when real guest threading is introduced.
 
 This does not implement Android TLS layout, `__get_tls`, pthread TLS keys, or
 thread creation. It provides the observable `__errno` pointer/value seam only.
+
+
+## Alignment result — 2026-09-27
+
+Feature 037's one-logical-slot-per-guest-thread abstraction remains ABI-aligned:
+guest code observes a stable `int*` for its current execution/thread context,
+while the embedding chooses the backing guest slot. The project intentionally
+does not mirror bionic's internal `pthread_internal_t` layout.

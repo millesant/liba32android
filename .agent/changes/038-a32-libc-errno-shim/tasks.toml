@@ -3,24 +3,24 @@ change = "038-a32-libc-errno-shim"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Add __errno SVC stub and consumer dereference wrapper to the partial libc fixture."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Extend real symbol/JUMP_SLOT coverage and registry composition to thirteen functions using one A32LibcGuestErrnoState as service plus integer errno sink."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Prove real strtol overflow writes ERANGE into guest memory and a subsequent guest __errno wrapper reads it; update dedicated workflow expectations."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Run dedicated partial-libc integration and exact-head required checks, then reconcile closure evidence."
