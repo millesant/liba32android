@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
