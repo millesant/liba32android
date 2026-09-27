@@ -2,16 +2,19 @@
 
 The numbered 011-049 roadmap is COMPLETE.
 
-The Android filesystem source, persistent legacy lifecycle, and
-`__aeabi_atexit` registration follow-ups are DONE.
+The Android filesystem source, persistent legacy lifecycle,
+`__aeabi_atexit` registration, and registered-destructor finalization
+follow-ups are DONE.
 
-`post-roadmap-a32-registered-destructor-finalization` is IMPLEMENTED on
-`bleeding`; exact-head required checks are its current acceptance gate.
+No acceptance gate is currently active.
 
-After terminal success, the next lifecycle step is DSO-handle/link-map binding
-plus a bounded dlclose transaction that composes registered finalization,
-FINI_ARRAY/DT_FINI, reference ownership, and only then eventual mapping
-reclamation.
+## Ready next follow-up
+
+Bind resident libdl handles to stable link-map object indexes and implement a
+bounded dlclose transaction for the last synthetic handle reference. The
+transaction should compose registered finalization with persistent
+FINI_ARRAY/DT_FINI execution while keeping actual mapping reclamation separate
+until ownership/refcount rules are explicit.
 
 ## Other ready follow-up candidates
 

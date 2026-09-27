@@ -1,6 +1,6 @@
 # ARM EABI __aeabi_atexit registration
 
-Status: registration accepted; registered-destructor finalization implemented, exact-head validation pending
+Status: registration and registered-destructor finalization accepted; exact-head validation PASSed
 
 ## Boundary
 
@@ -23,31 +23,31 @@ The accepted ARM32 `libc.so` shim exposes `__aeabi_atexit` as its fortieth
 target-backed function. Exact-head real integration resolves the eager
 JUMP_SLOT, executes the wrapper, and verifies exact object/destructor/DSO state.
 
+## Registered-destructor finalization
+
+Matching pending records can be finalized for one exact opaque DSO handle or
+process-wide. Callbacks execute in reverse registration order, receive the
+registered object in r0, and use the registered destructor word as an ARM/Thumb
+function value.
+
+Finalization is bounded by caller callback/instruction ceilings and an aligned
+guest stack/normalized stop PC. Callback-count overflow is rejected before any
+guest callback runs.
+
+Each record is Pending, Complete, or Failed. Successful callbacks become
+Complete and are never replayed. Invalid function addresses or guest execution
+failures latch Failed so later calls cannot replay possible partial side
+effects.
+
 ## Validation
 
 All nine exact-head checks passed at
-`3272ec52fa54208a9435f3991c92172fd71b2be0`, including the focused Linux
-regressions and the forty-symbol ARM32 partial-libc integration.
-
-## Registered-destructor finalization
-
-The post-registration follow-up executes pending callbacks in reverse
-registration order. A host caller may select one exact opaque DSO handle or all
-records. The callback receives the exact registered object in r0 and uses the
-registered destructor word as its ARM/Thumb entry point.
-
-Finalization is bounded by caller-selected callback and instruction ceilings,
-plus the existing aligned guest stack/normalized stop-PC contract. Callback
-ceilings are preflighted before guest execution.
-
-Each record is Pending, Complete, or Failed. Successful callbacks become
-Complete and are never replayed. Invalid function addresses or guest
-execution failures latch Failed so later calls cannot replay possible partial
-side effects.
+`1640ddc5e0958acbaeff4596f71338de65aa6081`, including the focused Linux
+registered-finalizer regressions.
 
 ## Deliberate limits
 
-Guest `__cxa_finalize` export, association of DSO handles with link-map
-objects, ordering registered callbacks against FINI_ARRAY/DT_FINI during
-dlclose/process exit, shared-object reference-count ownership, mapping
-reclamation, and actual unload remain follow-up lifecycle work.
+Guest `__cxa_finalize`, association of DSO handles with link-map objects,
+ordering registered callbacks against FINI_ARRAY/DT_FINI during dlclose/process
+exit, shared-object reference-count ownership, mapping reclamation, and actual
+unload remain follow-up lifecycle work.

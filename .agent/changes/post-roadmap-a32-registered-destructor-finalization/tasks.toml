@@ -3,24 +3,24 @@ change = "post-roadmap-a32-registered-destructor-finalization"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Add Pending/Complete/Failed registration state plus bounded finalization options/results."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Execute selected callbacks in reverse order with exact r0 object, ARM/Thumb entry, once-only completion, and conservative failure latching."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Add focused per-DSO/process-wide/order/limit/failure regressions."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Run exact-head required checks and reconcile closure evidence/state."
