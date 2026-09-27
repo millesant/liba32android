@@ -3,7 +3,7 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `post-roadmap-elf-lifecycle-state-legacy-init-fini` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: none.
 
 ## Phase
 
@@ -11,23 +11,17 @@ Features 011-049 are accepted. The numbered roadmap remains COMPLETE.
 
 The post-roadmap Android filesystem-library-source follow-up is accepted.
 
-## Active post-roadmap follow-up
+The post-roadmap persistent ELF lifecycle/legacy DT_INIT/DT_FINI follow-up is accepted.
 
-Persistent ELF lifecycle execution now recognizes legacy `DT_INIT/DT_FINI`
-alongside INIT_ARRAY/FINI_ARRAY.
+## Post-roadmap lifecycle validation
 
-A caller-owned state vector keyed by stable graph object index records
-constructor/destructor Pending, Complete, or Failed status. Constructors execute
-dependency-first as `DT_INIT -> INIT_ARRAY`; destructors execute
-requester-first as `reverse FINI_ARRAY -> DT_FINI`. Complete objects are
-suppressed on repeated/shared-root traversal. Guest execution failure latches
-Failed state to prevent unsafe replay of partial side effects.
+Persistent lifecycle execution passed all nine exact-head checks at
+`dbbb484fe98713eb67afd0026fe8a12a87afaaca`.
 
-Focused lifecycle regressions cover legacy metadata rebasing/duplicate/overflow,
-dependency and per-object ordering, once-only state, destructor ordering, and
-terminal failure latching.
-
-Exact-head validation: NOT RUN.
+Caller-owned stable-index state now suppresses completed constructors/destructors
+and latches failed guest lifecycle execution. Constructors run dependency-first
+as `DT_INIT -> INIT_ARRAY`; destructors run requester-first as
+`reverse FINI_ARRAY -> DT_FINI`.
 
 ## Deferred / partial
 

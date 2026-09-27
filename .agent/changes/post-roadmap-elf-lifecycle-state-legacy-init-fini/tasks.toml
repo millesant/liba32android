@@ -3,24 +3,24 @@ change = "post-roadmap-elf-lifecycle-state-legacy-init-fini"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Recognize/rebase singleton DT_INIT/DT_FINI metadata without host pointer exposure."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Implement caller-owned stable-index lifecycle status and bounded once-only constructor/destructor traversal."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Add focused metadata, ordering, once-only, and failure-latching regressions."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Run exact-head required checks and reconcile follow-up closure evidence/state."

@@ -4,12 +4,17 @@ The numbered 011-049 roadmap is COMPLETE.
 
 The post-roadmap Android filesystem-library-source follow-up is DONE.
 
-`post-roadmap-elf-lifecycle-state-legacy-init-fini` is IMPLEMENTED on
-`bleeding`; exact-head required checks are its current acceptance gate.
+The post-roadmap persistent ELF lifecycle/legacy DT_INIT/DT_FINI follow-up is DONE.
 
-After terminal success, close this lifecycle follow-up. The next coherent
-lifecycle step is bounded `__aeabi_atexit`/registered-destructor state, which
-can then feed real dynamic dlopen/unload ownership.
+No acceptance gate is currently active.
+
+## Ready next follow-up
+
+Integrate the prepared bounded `__aeabi_atexit` registration slice, then
+validate its focused service path and forty-symbol real partial-libc integration.
+
+After that, add registered-destructor finalization / per-DSO reverse execution
+before attempting real dynamic dlopen/unload ownership.
 
 ## Other ready follow-up candidates
 
