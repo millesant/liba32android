@@ -48,6 +48,11 @@ bool A32LibDlOpenTransaction::options_valid() const noexcept {
         options_.reclamation.max_objects == 0U ||
         options_.reclamation.max_segments == 0U ||
         options_.reclamation.max_snapshot_bytes == 0U ||
+        options_.load.max_objects > symbols.max_scope_objects ||
+        options_.load.max_objects > options_.lifecycle.max_objects ||
+        options_.load.max_objects > options_.reclamation.max_objects ||
+        link_map_.graph.objects.size() >
+            static_cast<std::size_t>(options_.load.max_objects) ||
         lifecycle_.objects.size() > link_map_.graph.objects.size()) {
         return false;
     }
