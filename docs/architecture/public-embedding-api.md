@@ -1,6 +1,6 @@
 # Stable public C embedding API
 
-Status: feature 049 implemented; exact-head validation pending
+Status: feature 049 accepted; exact-head validation PASSed
 
 ## Goal
 
@@ -23,82 +23,42 @@ No public function treats a logical guest address as a host pointer.
 
 ## Public memory surface
 
-Version 1 exposes:
-
-- page-size query;
-- map;
-- protect;
-- unmap;
-- read;
-- write.
-
-Addresses are `uint32_t`. Lengths are host `size_t`. Permission bits are
-READ/WRITE/EXECUTE and preserve the internal mapping rule that W/X implies R.
-Page operations classify unaligned, zero-length, or wrapping ranges as invalid
-arguments before touching mapped state; read/write likewise reject logical
-address overflow distinctly from unmapped/permission failures.
+Version 1 exposes page-size query, map, protect, unmap, read, and write.
+Addresses are `uint32_t`; lengths are host `size_t`. Permission bits are
+READ/WRITE/EXECUTE and preserve the internal rule that W/X implies R.
+Malformed page ranges and logical-address overflow are classified separately
+from mapped-memory operation failure.
 
 ## Public execution surface
 
-The caller fills a size-tagged request containing:
+The size-tagged request selects ARM or Thumb, logical entry PC, r0-r15, a
+finite non-zero instruction budget, optional stop PC, and optional initial CPSR.
 
-- ARM or Thumb;
-- logical entry PC;
-- r0-r15;
-- finite non-zero instruction budget;
-- optional stop PC;
-- optional exact initial CPSR.
+The size-tagged result returns r0-r15, CPSR, executed instruction count, flags
+for stop-PC/SVC/fastmem/memory-fault/ordinary-exception, and the exact SVC
+immediate when trapped.
 
-The size-tagged result returns:
-
-- r0-r15;
-- CPSR;
-- executed instruction count;
-- flags for stop-PC, SVC, fastmem, memory fault, and ordinary exception;
-- exact SVC immediate when trapped.
-
-SVC is not collapsed into a generic error. It is a successful trap result so a
-host can inspect the post-SVC state and make its own continuation/service
-decision.
+SVC is a successful trap outcome so the embedding receives the post-SVC state
+and can decide how to continue.
 
 ## Error ABI
 
-Every fallible call accepts an optional
-`liba32android_error_buffer { data, capacity, required }`.
+Every fallible call accepts an optional caller-owned
+`liba32android_error_buffer`. Failures use the stable
+`A32ERR|component=...|code=...` prefix and append logical PC/address where
+known. Required length excludes NUL; supplied storage is NUL-terminated when
+capacity is non-zero. Successful calls clear the error buffer.
 
-Failures produce the stable diagnostic prefix:
+## Validation
 
-`A32ERR|component=...|code=...`
+The exact-head public API workflow at
+`827fce9fbb55f6106bea5273345ccbb4af94e253` passed. It:
 
-and add logical PC/address fields where known. `required` is the complete
-message size excluding NUL. Supplied storage is NUL-terminated even if
-truncated. Successful calls clear the error buffer.
-
-No exception is intentionally allowed to cross the C ABI.
-
-## C compatibility proof
-
-A pure-C regression includes only the installed-style public header. It:
-
-1. creates the runtime and queries page size;
-2. verifies invalid page alignment and wrapping read ranges are classified as
-   invalid arguments;
-3. maps/writes/protects a logical guest code page;
-4. executes ARM `mov r0,#42; bx lr` to a stop PC;
-5. executes `svc #0x12` and verifies the exact successful trap;
-6. performs an unmapped read and verifies the structured memory error;
-7. proves a later successful call clears the error buffer;
-8. unmaps and destroys the runtime.
-
-A dedicated host workflow additionally performs a staged CMake install, checks
-the installed public header/shared library, compiles the same caller as external
-C against only that installed surface, and runs it.
-
-## Packaging
-
-The public include directory is a CMake BUILD_INTERFACE/INSTALL_INTERFACE usage
-requirement. CMake installs the shared library and
-`include/liba32android` header tree.
+1. runs the pure-C in-tree regression;
+2. stages a CMake install;
+3. verifies the installed header, shared library, and exported C symbols;
+4. compiles the same caller externally using only the installed surface;
+5. executes that external consumer successfully.
 
 ## Deliberate limits
 

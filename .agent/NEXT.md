@@ -1,23 +1,26 @@
 # Next Work
 
-Features 011 through 048 are DONE.
+The numbered 011-049 roadmap is COMPLETE.
 
-`049-stable-c-embedding-api` is IMPLEMENTED on `bleeding`; its exact-head
-required checks are the final numbered-roadmap acceptance gate.
+No numbered acceptance gate remains.
 
-Once terminal exact-head success is observed, close feature 049 and mark the
-011-049 numbered roadmap complete.
+## Follow-up work
 
-## Local-machine validation note
-
-If a later step materially requires the user's Linux machine, stop beforehand
-and provide exact commands, required inputs, expected output, and why it is
-needed.
-
-## Independent follow-ups after numbered roadmap
+Future bounded work should be selected from remaining production-readiness gaps,
+not by extending the completed numbered roadmap implicitly:
 
 - Android native tombstone/backtrace coexistence: BLOCKED on accessible device environment.
 - AArch64 runtime execution on a 16 KiB Android host: NOT RUN.
 - Project license: BLOCKED on maintainer choice.
-- Higher-level ELF/platform embedding APIs, concrete APK/filesystem I/O, and
-  broader pthread/lifecycle/libdl/libm compatibility remain future bounded work.
+- Legacy DT_INIT/DT_FINI, __aeabi_atexit/static-destructor registration, and persistent lifecycle state.
+- Broader pthread/thread creation/TLS services.
+- Dynamic libdl acquisition/unload semantics.
+- Broader/exceptional libm behavior.
+- Concrete APK/filesystem byte acquisition and richer Android search policy.
+- Higher-level public ELF/platform embedding APIs.
+
+## Local-machine validation note
+
+If a follow-up materially requires the user's Linux machine, stop beforehand
+and provide exact commands, required inputs, expected output, and why it is
+needed.

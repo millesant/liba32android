@@ -2,10 +2,11 @@ schema = 1
 id = "049-stable-c-embedding-api"
 kind = "feature"
 size = "S2"
-status = "implemented"
+status = "done"
 workflow = "feature"
 control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
 base_revision = "84d4679b4d69bed4978de0609b77bf56f5d46211"
+result_revision = "827fce9fbb55f6106bea5273345ccbb4af94e253"
 acceptance = [
   "repository evidence records that internal runtime orchestration exists while no installable stable public embedding/error API exists before feature 049",
   "include/liba32android/liba32android.h is C-compatible, versioned, and exposes only opaque runtime state, fixed-width values, size-tagged structs, and caller buffers",
@@ -27,5 +28,5 @@ tests = "aligned"
 documentation = "aligned"
 decisions = "not_applicable"
 tasks = "aligned"
-evidence = "pending"
+evidence = "aligned"
 repository = "aligned"
