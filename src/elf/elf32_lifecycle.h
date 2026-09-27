@@ -141,6 +141,10 @@ struct Elf32FiniPlanResult {
 
 [[nodiscard]] const char* to_string(Elf32FiniPlanError error) noexcept;
 
+struct Elf32LifecycleExecutionContext {
+    std::optional<std::size_t> object_index;
+};
+
 struct Elf32InitExecutionOptions {
     // Caller-owned writable stack top. The executor does not map or unmap it.
     std::uint32_t stack_top{};
@@ -154,6 +158,10 @@ struct Elf32InitExecutionOptions {
     // call may handle at most max_service_calls_per_call services.
     runtime::A32HostServiceHandler* service_handler{};
     std::size_t max_service_calls_per_call{};
+    // Optional caller-owned object provenance for synchronous service calls.
+    // Each lifecycle call scopes this to its stable graph object index and
+    // restores the previous value on return, including nested execution.
+    Elf32LifecycleExecutionContext* execution_context{};
 };
 
 enum class Elf32InitExecutionError : std::uint8_t {
