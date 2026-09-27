@@ -1,0 +1,29 @@
+schema = 1
+change = "035-a32-libc-integer-service"
+
+[[evidence]]
+id = "bionic-integer-contract"
+kind = "research"
+status = "passed"
+claim = "Current bionic atoi delegates to strtol and signed strtol defines base/prefix/endptr/saturation plus EINVAL/ERANGE behavior used by feature 035."
+source = "docs/research/evidence/android-libc-integer-conversion-2026-09-26.md"
+result = "AOSP strtol behavior plus supplied-target import evidence define the bounded compatibility contract."
+limitations = "The project implementation intentionally uses bounded ASCII parsing and does not model locale-aware ctype or guest errno TLS."
+
+[[evidence]]
+id = "integer-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused tests cover bounded atoi/strtol semantics and ARM registry/dispatcher composition."
+source = "tests/compat/a32_libc_integer.cpp"
+result = "Feature 035 is integrated; exact-head execution has not yet been observed."
+limitations = "Integrated tests are not passing evidence until they actually run."
+
+[[evidence]]
+id = "exact-head-ci"
+kind = "validation"
+status = "not_run"
+claim = "Feature 035 passes required exact-head checks after ordered integration."
+source = "GitHub commit checks on the feature-035 integration revision"
+result = ""
+limitations = "Feature 035 remains implemented rather than done until terminal exact-head checks are observed."

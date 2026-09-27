@@ -223,3 +223,30 @@ path.
 The extension does not broaden the partial libc identity/SONAME or imply full
 Android libc compatibility. No integer conversion, allocation, pthread, I/O,
 dynamic-loader, math, errno, startup, signal, or locale behavior is introduced.
+
+
+## L32-C012 — Bounded A32 atoi/strtol service
+
+The compatibility layer may expose private service IDs `0xAB` for `atoi`
+and `0xAC` for signed ARM32 `strtol`.
+
+`atoi` consumes a logical guest string pointer in r0 and returns signed
+32-bit result bits in r0. `strtol` consumes r0 input pointer, r1 optional
+logical guest pointer to a little-endian 32-bit end-pointer slot, and signed r2
+base, returning signed 32-bit ARM `long` bits in r0.
+
+Parsing is bounded by caller-selected `max_parse_bytes` and implements ASCII
+C whitespace, optional sign, bases 2-36 plus base 0, guarded `0x` and current
+bionic `0b` prefixes, base-0 octal/decimal selection, original-input endptr
+when no digits are consumed, and signed 32-bit saturation while continuing to
+consume valid digits for the final end pointer.
+
+A caller-owned `A32LibcErrnoSink` receives Android guest errno 22 (EINVAL)
+for invalid base and 34 (ERANGE) for overflow/underflow. The service never
+changes host process errno. A non-null strtol end-pointer is written only after
+parsing succeeds; an end-pointer GuestMemory failure returns `Failed` before
+errno/r0 publication.
+
+Feature 035 adds no guest atoi/strtol shim exports, guest __errno/TLS storage,
+locale-aware ctype, unsigned/wide/64-bit conversion, floating conversion, or
+broader libc behavior.

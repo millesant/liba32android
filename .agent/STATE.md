@@ -3,41 +3,40 @@
 Last updated: 2026-09-26
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `034-a32-libc-copy-search-shim` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: `035-a32-libc-integer-service` — IMPLEMENTED, exact-head validation NOT RUN.
 
 ## Phase
 
-Features 011-033 are accepted.
+Features 011-034 are accepted.
 
-Feature 033's first exact-head attempt exposed a real memmem no-read ordering
-bug. The corrective revision
-`f13febc07bfdd7564951979f9b988e9a14cbd025` moved empty-needle and
-short-haystack result paths ahead of unused guest-range validation; all five
-required checks then passed.
+Feature 034 passed all five exact-head checks at
+`e4215d8c974ca5c4a6a49bad82918597d56d61e1`, including the dedicated real
+ARM32 ten-symbol partial-libc fixture/integration.
 
-Feature 034 is now integrated. It extends the reproducible partial ARM32
-`libc.so` and consumer from seven to ten functions by adding
-`memmem/strcpy/strncpy`, with ten exact shim resolutions, eager JUMP_SLOT
-targets, exact-SVC registry entries, and real wrapper execution.
+Feature 035 is now integrated. It adds bounded ARM32 Android `atoi` and
+`strtol` host services at private SVC IDs `0xAB/0xAC`, with signed
+32-bit result semantics, bounded base/prefix parsing, endptr publication, and
+caller-owned guest errno publication for EINVAL/ERANGE.
 
-The feature-033 memmem correction is preserved in the integrated feature-034
-tree rather than reintroducing the older prepared implementation.
+The accepted feature-033 memmem no-read correction remains preserved in the
+integrated tree.
 
 ## Validation and repository-truth evidence
 
-Latest accepted behavior-changing result: feature 033 at
-`f13febc07bfdd7564951979f9b988e9a14cbd025`:
+Latest accepted behavior-changing result: feature 034 at
+`e4215d8c974ca5c4a6a49bad82918597d56d61e1`:
 
-- Linux A32 smoke `108511986967` — PASS.
-- Android arm64-v8a `108511986963` — PASS.
-- ARM32 liblog shim integration `108511986937` — PASS.
-- Android x86_64 `108511986837` — PASS.
-- ARM32 libc memory string shim integration `108511986625` — PASS.
+- Linux A32 smoke `108513006508` — PASS.
+- Android x86_64 address-space probe `108513006502` — PASS.
+- Android arm64-v8a cross-build `108513006419` — PASS.
+- ARM32 liblog shim integration `108513005936` — PASS.
+- ARM32 libc memory string shim integration `108513005915` — PASS.
 
-Feature 034 exact-head validation: NOT RUN.
+Feature 035 exact-head validation: NOT RUN.
 
 ## Deferred / partial
 
-Integer/errno, allocator, lifecycle registration/finalization, ARM EABI memory
-helpers, pthread/TLS, I/O/stdio/socket, libdl, libm, Android filesystem/search,
-stable embedding API, and device execution remain later work.
+The matching atoi/strtol guest-shim exports, guest errno slot, allocator,
+constructor/destructor lifecycle, ARM EABI memory helpers, pthread/TLS,
+I/O/stdio/socket, libdl, libm, Android filesystem/search, stable embedding API,
+and device execution remain later work.

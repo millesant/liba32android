@@ -6,6 +6,7 @@ add_library(liba32android SHARED
     src/compat/a32_android_platform_provider.cpp
     src/compat/a32_android_namespace_policy.cpp
     src/compat/a32_libc_memory_string.cpp
+    src/compat/a32_libc_integer.cpp
     src/elf/loading/elf32_dynamic_placement.cpp
     src/elf/loading/elf32_load_plan.cpp
     src/elf/loading/elf32_loader.cpp

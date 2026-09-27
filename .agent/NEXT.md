@@ -1,20 +1,19 @@
 # Next Work
 
-Features 011 through 033 are DONE.
+Features 011 through 034 are DONE.
 
-`034-a32-libc-copy-search-shim` is IMPLEMENTED on `bleeding`; its
-exact-head required checks plus dedicated ARM32 partial-libc integration are the
-immediate acceptance gate.
+`035-a32-libc-integer-service` is IMPLEMENTED on `bleeding`; its exact-head
+required checks are the immediate acceptance gate.
 
-Once terminal success is observed, close 034 and integrate prepared feature 035
-(`atoi/strtol` bounded service).
+Once terminal success is observed, close 035 and integrate prepared feature 036,
+which carries `atoi/strtol` through the real partial-libc shim path.
 
-Prepared order after 034:
+Prepared order after 035:
 
-`035 -> 036 -> 037 -> 038 -> 039 -> 040 -> 041 -> 042 -> 043 -> 044 -> 045`.
+`036 -> 037 -> 038 -> 039 -> 040 -> 041 -> 042 -> 043 -> 044 -> 045`.
 
-Preserve the accepted feature-033 memmem fast-path correction when integrating
-older prepared trees until feature 039's broader Android-17 alignment lands.
+Preserve the accepted feature-033 memmem no-read ordering when integrating older
+prepared trees until feature 039's broader Android-17 alignment lands.
 
 ## Local-machine validation note
 
