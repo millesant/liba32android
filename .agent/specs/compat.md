@@ -1,7 +1,7 @@
 # Compatibility contract
 
 Status: Accepted current project contract
-Last reconciled: 2026-09-26
+Last reconciled: 2026-09-27
 
 ## L32-C001 — Platform compatibility is a separate layer
 
@@ -377,3 +377,40 @@ This remains a bounded partial libc compatibility shim. It does not add
 Android TLS/thread scheduling, constructor/destructor lifecycle, aligned
 allocation, stdio/file/socket I/O, libdl, libm, startup, signals, locale, or a
 full Android libc claim.
+
+## L32-C019 — ARM EABI memory helpers and memmove extension
+
+The bounded memory/string service may additionally expose private SVC `0xB2`
+for `memmove(dest, src, count)`. It uses the existing
+`max_transfer_bytes` ceiling, rejects logical source/destination range wrap,
+performs no guest access for zero count, and stages the complete source payload
+before the destination write so overlapping ranges have memmove semantics.
+The service returns the logical destination in r0 on ordinary non-zero success.
+
+The prepared partial ARM32 `libc.so` may additionally export plain `memmove`
+plus the twelve bionic ARM EABI memory helpers:
+
+`__aeabi_memcpy`, `__aeabi_memcpy4`, `__aeabi_memcpy8`,
+`__aeabi_memmove`, `__aeabi_memmove4`, `__aeabi_memmove8`,
+`__aeabi_memset`, `__aeabi_memset4`, `__aeabi_memset8`,
+`__aeabi_memclr`, `__aeabi_memclr4`, and `__aeabi_memclr8`.
+
+The memcpy and memmove helper variants preserve r0/r1/r2 as
+destination/source/count and dispatch to the corresponding bounded service.
+The memset helpers implement the ARM EABI argument order
+`(destination, count, value)` by reordering r1/r2 before dispatching to the
+existing libc memset service. The memclr helpers implement
+`(destination, count)` by dispatching memset with byte value zero. The
+alignment-suffixed 4/8 variants have the same observable behavior as their
+unsuffixed bionic counterparts; no stronger guest alignment precondition is
+invented by the compatibility shim.
+
+The freestanding consumer and real integration must resolve all thirty current
+partial-libc symbols, require an eager `R_ARM_JUMP_SLOT` target for each, and
+execute all thirty wrappers through the existing namespace-gated finite
+platform catalog. Integration must prove overlapping memmove, EABI memset
+argument order, and EABI memclr zeroing.
+
+`__aeabi_atexit` is explicitly outside this feature because Android routes it
+into C++ destructor registration and persistent lifecycle state rather than a
+stateless memory primitive.

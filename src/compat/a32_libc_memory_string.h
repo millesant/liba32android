@@ -10,6 +10,7 @@
 #define LIBA32ANDROID_A32_LIBC_MEMMEM_SVC 0xA8
 #define LIBA32ANDROID_A32_LIBC_STRCPY_SVC 0xA9
 #define LIBA32ANDROID_A32_LIBC_STRNCPY_SVC 0xAA
+#define LIBA32ANDROID_A32_LIBC_MEMMOVE_SVC 0xB2
 
 #ifdef __cplusplus
 
@@ -40,6 +41,8 @@ inline constexpr std::uint32_t kA32LibcStrcpySvcImmediate =
     LIBA32ANDROID_A32_LIBC_STRCPY_SVC;
 inline constexpr std::uint32_t kA32LibcStrncpySvcImmediate =
     LIBA32ANDROID_A32_LIBC_STRNCPY_SVC;
+inline constexpr std::uint32_t kA32LibcMemmoveSvcImmediate =
+    LIBA32ANDROID_A32_LIBC_MEMMOVE_SVC;
 
 struct A32LibcMemoryStringOptions {
     std::uint32_t max_transfer_bytes{};

@@ -1,6 +1,6 @@
 # A32 libc memory/string host service
 
-Status: feature 030 implementation prepared OFF-REF; exact-head validation NOT RUN
+Status: features 030/033 accepted; feature 043 memmove/EABI extension implemented, exact-head validation pending
 
 ## Motivation
 
@@ -24,6 +24,7 @@ separate work.
 - `0xA5` — `strlen`
 - `0xA6` — `strcmp`
 - `0xA7` — `strncmp`
+- `0xB2` — `memmove` (feature 043)
 
 The header is preprocessor-safe so a future ARM32 guest shim can include the
 same definitions instead of duplicating service numbers.
@@ -65,3 +66,20 @@ No guest `libc.so` DSO/provider, allocator, `strcpy`/`strncpy`,
 `strtol`, stdio, file/socket I/O, pthread state, dynamic-loader APIs, libm
 functions, errno semantics, or Android namespace/provider installation is added
 by feature 030.
+
+## Feature 043 memmove boundary
+
+Feature 043 adds one new host-service operation, `memmove`, at private SVC
+`0xB2`. The call uses ordinary libc AAPCS32 arguments in r0-r2:
+destination, source, count. The same `max_transfer_bytes` ceiling and checked
+32-bit guest-range rules used by memcpy apply.
+
+The implementation reads the full bounded source into temporary host storage
+before writing the destination. That makes forward and backward guest-range
+overlap deterministic without exposing host pointers or depending on mapping
+layout. Zero count performs no guest memory access.
+
+The ARM EABI helper names are guest-shim ABI adapters rather than separate host
+services. memcpy/memmove helpers dispatch directly to the bounded operations;
+memset helpers reorder the EABI `(dest, count, value)` arguments to libc
+memset order; memclr helpers dispatch memset with zero.

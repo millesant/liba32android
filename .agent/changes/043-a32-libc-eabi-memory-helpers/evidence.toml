@@ -1,0 +1,38 @@
+schema = 1
+change = "043-a32-libc-eabi-memory-helpers"
+
+[[evidence]]
+id = "target-eabi-imports"
+kind = "artifact"
+status = "observed"
+claim = "The supplied targets require plain memmove and the VLC ARMv7 set collectively imports all twelve bionic ARM EABI memory helpers."
+source = "docs/research/evidence/android17-aeabi-memory-helpers-2026-09-27.md"
+result = "Bounded readelf inspection records exact artifact hashes, per-surface imports, and the twelve-helper union."
+limitations = "Static imports do not prove runtime call frequency; __aeabi_atexit is observed separately and remains deferred."
+
+[[evidence]]
+id = "android-eabi-contract"
+kind = "research"
+status = "passed"
+claim = "Android bionic delegates EABI memcpy/memmove variants to libc, reverses EABI memset count/value relative to libc memset, and implements memclr as zero-valued memset."
+source = "docs/research/evidence/android17-aeabi-memory-helpers-2026-09-27.md"
+result = "Official bionic ARM source and symbol-map paths are recorded against the accepted Android release baseline."
+limitations = "The project copies observable ABI behavior only, not bionic internals or optimized implementations."
+
+[[evidence]]
+id = "memmove-eabi-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused and real-fixture tests cover overlap-safe memmove, bounded failures, every EABI memory variant, memset argument order, memclr zeroing, thirty JUMP_SLOT targets, and thirty wrapper calls."
+source = "tests/compat/a32_libc_memory_string.cpp and tests/compat/a32_libc_memory_string_shim.cpp"
+result = "Feature 043 source/tests are integrated; exact-head execution has not yet been observed."
+limitations = "Generated fixture coverage is not proof that all remaining target libc/platform dependencies are satisfied."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "Feature 043 passes required exact-head checks after feature 042 is accepted."
+source = "GitHub commit checks on the feature-043 integration revision"
+result = ""
+limitations = "Feature 043 remains implemented rather than done until terminal exact-head checks are observed."

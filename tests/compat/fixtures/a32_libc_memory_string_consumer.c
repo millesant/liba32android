@@ -6,6 +6,8 @@ typedef __SIZE_TYPE__ fixture_size_t;
 __attribute__((visibility("default")))
 void* memcpy(void* destination, const void* source, fixture_size_t count);
 __attribute__((visibility("default")))
+void* memmove(void* destination, const void* source, fixture_size_t count);
+__attribute__((visibility("default")))
 void* memset(void* destination, int value, fixture_size_t count);
 __attribute__((visibility("default")))
 int memcmp(const void* lhs, const void* rhs, fixture_size_t count);
@@ -39,9 +41,39 @@ void* realloc(void* pointer, fixture_size_t size);
 __attribute__((visibility("default")))
 void free(void* pointer);
 
+__attribute__((visibility("default")))
+void __aeabi_memcpy(void* destination, const void* source, fixture_size_t count);
+__attribute__((visibility("default")))
+void __aeabi_memcpy4(void* destination, const void* source, fixture_size_t count);
+__attribute__((visibility("default")))
+void __aeabi_memcpy8(void* destination, const void* source, fixture_size_t count);
+__attribute__((visibility("default")))
+void __aeabi_memmove(void* destination, const void* source, fixture_size_t count);
+__attribute__((visibility("default")))
+void __aeabi_memmove4(void* destination, const void* source, fixture_size_t count);
+__attribute__((visibility("default")))
+void __aeabi_memmove8(void* destination, const void* source, fixture_size_t count);
+__attribute__((visibility("default")))
+void __aeabi_memset(void* destination, fixture_size_t count, int value);
+__attribute__((visibility("default")))
+void __aeabi_memset4(void* destination, fixture_size_t count, int value);
+__attribute__((visibility("default")))
+void __aeabi_memset8(void* destination, fixture_size_t count, int value);
+__attribute__((visibility("default")))
+void __aeabi_memclr(void* destination, fixture_size_t count);
+__attribute__((visibility("default")))
+void __aeabi_memclr4(void* destination, fixture_size_t count);
+__attribute__((visibility("default")))
+void __aeabi_memclr8(void* destination, fixture_size_t count);
+
 __attribute__((visibility("default"), noinline))
 void* fixture_memcpy(void* destination, const void* source, fixture_size_t count) {
     return memcpy(destination, source, count);
+}
+
+__attribute__((visibility("default"), noinline))
+void* fixture_memmove(void* destination, const void* source, fixture_size_t count) {
+    return memmove(destination, source, count);
 }
 
 __attribute__((visibility("default"), noinline))
@@ -123,4 +155,53 @@ void* fixture_realloc(void* pointer, fixture_size_t size) {
 __attribute__((visibility("default"), noinline))
 void fixture_free(void* pointer) {
     free(pointer);
+}
+
+__attribute__((visibility("default"), noinline))
+void fixture_aeabi_memcpy(void* destination, const void* source, fixture_size_t count) {
+    __aeabi_memcpy(destination, source, count);
+}
+__attribute__((visibility("default"), noinline))
+void fixture_aeabi_memcpy4(void* destination, const void* source, fixture_size_t count) {
+    __aeabi_memcpy4(destination, source, count);
+}
+__attribute__((visibility("default"), noinline))
+void fixture_aeabi_memcpy8(void* destination, const void* source, fixture_size_t count) {
+    __aeabi_memcpy8(destination, source, count);
+}
+__attribute__((visibility("default"), noinline))
+void fixture_aeabi_memmove(void* destination, const void* source, fixture_size_t count) {
+    __aeabi_memmove(destination, source, count);
+}
+__attribute__((visibility("default"), noinline))
+void fixture_aeabi_memmove4(void* destination, const void* source, fixture_size_t count) {
+    __aeabi_memmove4(destination, source, count);
+}
+__attribute__((visibility("default"), noinline))
+void fixture_aeabi_memmove8(void* destination, const void* source, fixture_size_t count) {
+    __aeabi_memmove8(destination, source, count);
+}
+__attribute__((visibility("default"), noinline))
+void fixture_aeabi_memset(void* destination, fixture_size_t count, int value) {
+    __aeabi_memset(destination, count, value);
+}
+__attribute__((visibility("default"), noinline))
+void fixture_aeabi_memset4(void* destination, fixture_size_t count, int value) {
+    __aeabi_memset4(destination, count, value);
+}
+__attribute__((visibility("default"), noinline))
+void fixture_aeabi_memset8(void* destination, fixture_size_t count, int value) {
+    __aeabi_memset8(destination, count, value);
+}
+__attribute__((visibility("default"), noinline))
+void fixture_aeabi_memclr(void* destination, fixture_size_t count) {
+    __aeabi_memclr(destination, count);
+}
+__attribute__((visibility("default"), noinline))
+void fixture_aeabi_memclr4(void* destination, fixture_size_t count) {
+    __aeabi_memclr4(destination, count);
+}
+__attribute__((visibility("default"), noinline))
+void fixture_aeabi_memclr8(void* destination, fixture_size_t count) {
+    __aeabi_memclr8(destination, count);
 }

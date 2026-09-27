@@ -17,6 +17,7 @@ using liba32android::compat::A32LibcMemoryStringService;
 using liba32android::compat::kA32LibcMemchrSvcImmediate;
 using liba32android::compat::kA32LibcMemcmpSvcImmediate;
 using liba32android::compat::kA32LibcMemcpySvcImmediate;
+using liba32android::compat::kA32LibcMemmoveSvcImmediate;
 using liba32android::compat::kA32LibcMemsetSvcImmediate;
 using liba32android::compat::kA32LibcStrcmpSvcImmediate;
 using liba32android::compat::kA32LibcStrlenSvcImmediate;
@@ -120,6 +121,77 @@ int test_memory_primitives() {
             A32HostServiceDisposition::Handled ||
         regs[0] != 0U) {
         return fail("memchr service miss did not return null");
+    }
+    return 0;
+}
+
+
+int test_memmove_overlap_and_bounds() {
+    LinearGuestMemory memory{512};
+    A32LibcMemoryStringService service{
+        A32LibcMemoryStringOptions{16, 16}};
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t cpsr{};
+
+    constexpr std::array<std::uint8_t, 8> original{{1,2,3,4,5,6,7,8}};
+    if (!memory.write(0x100U, original)) {
+        return fail("could not stage memmove overlap fixture");
+    }
+
+    regs[0] = 0x102U;
+    regs[1] = 0x100U;
+    regs[2] = 6U;
+    if (service.handle(memory, kA32LibcMemmoveSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0x102U) {
+        return fail("forward-overlap memmove failed");
+    }
+    std::array<std::uint8_t, 8> observed{};
+    if (!memory.read(0x100U, observed) ||
+        observed != std::array<std::uint8_t, 8>{{1,2,1,2,3,4,5,6}}) {
+        return fail("forward-overlap memmove corrupted source ordering");
+    }
+
+    if (!memory.write(0x100U, original)) {
+        return fail("could not reset memmove overlap fixture");
+    }
+    regs = {};
+    regs[0] = 0x100U;
+    regs[1] = 0x102U;
+    regs[2] = 6U;
+    if (service.handle(memory, kA32LibcMemmoveSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        !memory.read(0x100U, observed) ||
+        observed != std::array<std::uint8_t, 8>{{3,4,5,6,7,8,7,8}}) {
+        return fail("backward-overlap memmove corrupted source ordering");
+    }
+
+    regs = {};
+    regs[0] = 0xffffffffU;
+    regs[1] = 0xffffffffU;
+    regs[2] = 0U;
+    if (service.handle(memory, kA32LibcMemmoveSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0xffffffffU) {
+        return fail("zero-count memmove accessed guest memory");
+    }
+
+    regs = {};
+    regs[0] = 0x100U;
+    regs[1] = 0x120U;
+    regs[2] = 17U;
+    if (service.handle(memory, kA32LibcMemmoveSvcImmediate, regs, cpsr) !=
+        A32HostServiceDisposition::Failed) {
+        return fail("memmove transfer ceiling was not enforced");
+    }
+
+    regs = {};
+    regs[0] = 0xfffffffeU;
+    regs[1] = 0x100U;
+    regs[2] = 4U;
+    if (service.handle(memory, kA32LibcMemmoveSvcImmediate, regs, cpsr) !=
+        A32HostServiceDisposition::Failed) {
+        return fail("memmove destination wrap was not rejected");
     }
     return 0;
 }
@@ -296,6 +368,9 @@ int test_arm_registry_integration() {
 
 int main() {
     if (const int status = test_memory_primitives(); status != 0) {
+        return status;
+    }
+    if (const int status = test_memmove_overlap_and_bounds(); status != 0) {
         return status;
     }
     if (const int status = test_string_primitives(); status != 0) {

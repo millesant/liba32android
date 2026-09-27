@@ -111,6 +111,28 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
         return A32HostServiceDisposition::Handled;
     }
 
+    case kA32LibcMemmoveSvcImmediate: {
+        const std::uint32_t destination = regs[0];
+        const std::uint32_t source = regs[1];
+        const std::uint32_t count = regs[2];
+        if (count > options_.max_transfer_bytes ||
+            !range_fits_u32(destination, count) ||
+            !range_fits_u32(source, count)) {
+            return A32HostServiceDisposition::Failed;
+        }
+        if (count == 0) {
+            return A32HostServiceDisposition::Handled;
+        }
+
+        std::vector<std::uint8_t> bytes(count);
+        if (!memory.read(source, bytes) ||
+            !memory.write(destination, bytes)) {
+            return A32HostServiceDisposition::Failed;
+        }
+        regs[0] = destination;
+        return A32HostServiceDisposition::Handled;
+    }
+
     case kA32LibcMemsetSvcImmediate: {
         const std::uint32_t destination = regs[0];
         const std::uint8_t value =

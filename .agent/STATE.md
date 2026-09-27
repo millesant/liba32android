@@ -3,7 +3,7 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `043` — prepared next; implementation not yet integrated.
+Active acceptance gate: `043-a32-libc-eabi-memory-helpers` — IMPLEMENTED, exact-head validation NOT RUN.
 
 ## Phase
 
@@ -68,12 +68,20 @@ Feature 042 passed all five required exact-head checks at
 
 ## Prepared lineage
 
+Feature 043 is now integrated. It adds bounded plain `memmove` at private SVC
+`0xB2` and extends the partial ARM32 `libc.so` from seventeen to thirty
+symbols with the twelve bionic ARM EABI memory helpers. The real fixture covers
+overlapping memmove, all memcpy/memmove alignment variants, EABI memset
+argument reordering, and memclr zeroing.
+
+Feature 043 exact-head validation: NOT RUN.
+
 Prepared order remains:
-`043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
+`044 -> 045 -> 046 -> 047 -> 048 -> 049`.
 
 ## Deferred / partial
 
-Legacy DT_INIT/DT_FINI and persistent lifecycle state,
-ARM EABI memory helpers, pthread/semaphore scheduling boundaries, libdl, libm,
+Legacy DT_INIT/DT_FINI, __aeabi_atexit/static-destructor registration, and
+persistent lifecycle state, pthread/semaphore scheduling boundaries, libdl, libm,
 Android filesystem/search, stable embedding API, and device execution remain
 later work.

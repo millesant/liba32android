@@ -44,6 +44,7 @@ using liba32android::compat::A32LibcMemoryStringService;
 using liba32android::compat::kA32LibcMemchrSvcImmediate;
 using liba32android::compat::kA32LibcMemcmpSvcImmediate;
 using liba32android::compat::kA32LibcMemcpySvcImmediate;
+using liba32android::compat::kA32LibcMemmoveSvcImmediate;
 using liba32android::compat::kA32AndroidErange;
 using liba32android::compat::kA32LibcAtoiSvcImmediate;
 using liba32android::compat::kA32LibcCallocSvcImmediate;
@@ -302,12 +303,16 @@ int main(int argc, char** argv) {
         return fail("libc shim dependency/provider metadata was incorrect");
     }
 
-    constexpr std::array<std::string_view, 17> shim_names{{
-        "memcpy", "memset", "memcmp", "memchr",
+    constexpr std::array<std::string_view, 30> shim_names{{
+        "memcpy", "memmove", "memset", "memcmp", "memchr",
         "strlen", "strcmp", "strncmp",
         "memmem", "strcpy", "strncpy",
         "atoi", "strtol", "__errno",
         "malloc", "calloc", "realloc", "free",
+        "__aeabi_memcpy", "__aeabi_memcpy4", "__aeabi_memcpy8",
+        "__aeabi_memmove", "__aeabi_memmove4", "__aeabi_memmove8",
+        "__aeabi_memset", "__aeabi_memset4", "__aeabi_memset8",
+        "__aeabi_memclr", "__aeabi_memclr4", "__aeabi_memclr8",
     }};
     std::array<std::uint32_t, shim_names.size()> shim_targets{};
     for (std::size_t i = 0; i < shim_names.size(); ++i) {
@@ -416,8 +421,9 @@ int main(int argc, char** argv) {
             static_cast<std::uint64_t>(*heap_region) + memory.page_size()},
         std::span{heap_metadata},
     };
-    const std::array<A32HostServiceRegistryEntry, 17> services{{
+    const std::array<A32HostServiceRegistryEntry, 18> services{{
         {kA32LibcMemcpySvcImmediate, &service},
+        {kA32LibcMemmoveSvcImmediate, &service},
         {kA32LibcMemsetSvcImmediate, &service},
         {kA32LibcMemcmpSvcImmediate, &service},
         {kA32LibcMemchrSvcImmediate, &service},
@@ -451,6 +457,122 @@ int main(int argc, char** argv) {
     std::array<std::uint8_t, 4> copied{};
     if (!memory.read(destination_address, copied) || copied != source) {
         return fail("real libc memcpy wrapper did not copy bytes");
+    }
+
+
+    const std::uint32_t move_address = *data + 0x300U;
+    constexpr std::array<std::uint8_t, 8> move_input{{1,2,3,4,5,6,7,8}};
+    constexpr std::array<std::uint8_t, 8> move_expected{{1,2,1,2,3,4,5,6}};
+    if (!memory.write(move_address, move_input)) {
+        return fail("could not stage real libc memmove input");
+    }
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_memmove", registry,
+        stack_top, *stop, move_address + 2U, move_address, 6U);
+    std::array<std::uint8_t, 8> move_observed{};
+    if (!result || !*result || result->services_handled != 1 ||
+        result->regs[0] != move_address + 2U ||
+        !memory.read(move_address, move_observed) ||
+        move_observed != move_expected) {
+        return fail("real libc memmove wrapper overlap semantics failed");
+    }
+    ++completed_calls;
+
+    const std::uint32_t helper_source = *data + 0x340U;
+    const std::uint32_t helper_destination = *data + 0x380U;
+    constexpr std::array<std::uint8_t, 6> helper_bytes{{9,8,7,6,5,4}};
+    constexpr std::array<std::uint8_t, 6> helper_zero{{0,0,0,0,0,0}};
+    if (!memory.write(helper_source, helper_bytes)) {
+        return fail("could not stage EABI helper source");
+    }
+
+    constexpr std::array<std::string_view, 3> aeabi_memcpy_wrappers{{
+        "fixture_aeabi_memcpy",
+        "fixture_aeabi_memcpy4",
+        "fixture_aeabi_memcpy8",
+    }};
+    for (const auto name : aeabi_memcpy_wrappers) {
+        if (!memory.write(helper_destination, helper_zero)) {
+            return fail("could not reset EABI memcpy destination");
+        }
+        result = run_wrapper(
+            memory, graph_result.graph, name, registry,
+            stack_top, *stop, helper_destination, helper_source,
+            static_cast<std::uint32_t>(helper_bytes.size()));
+        std::array<std::uint8_t, helper_bytes.size()> observed_helper{};
+        if (!result || !*result || result->services_handled != 1 ||
+            !memory.read(helper_destination, observed_helper) ||
+            observed_helper != helper_bytes) {
+            return fail("real EABI memcpy wrapper failed");
+        }
+        ++completed_calls;
+    }
+
+    const std::uint32_t helper_move = *data + 0x3c0U;
+    constexpr std::array<std::string_view, 3> aeabi_memmove_wrappers{{
+        "fixture_aeabi_memmove",
+        "fixture_aeabi_memmove4",
+        "fixture_aeabi_memmove8",
+    }};
+    for (const auto name : aeabi_memmove_wrappers) {
+        if (!memory.write(helper_move, move_input)) {
+            return fail("could not reset EABI memmove source");
+        }
+        result = run_wrapper(
+            memory, graph_result.graph, name, registry,
+            stack_top, *stop, helper_move + 2U, helper_move, 6U);
+        move_observed = {};
+        if (!result || !*result || result->services_handled != 1 ||
+            !memory.read(helper_move, move_observed) ||
+            move_observed != move_expected) {
+            return fail("real EABI memmove wrapper failed");
+        }
+        ++completed_calls;
+    }
+
+    constexpr std::array<std::string_view, 3> aeabi_memset_wrappers{{
+        "fixture_aeabi_memset",
+        "fixture_aeabi_memset4",
+        "fixture_aeabi_memset8",
+    }};
+    constexpr std::array<std::uint8_t, 3> helper_filled{{0x5a,0x5a,0x5a}};
+    for (const auto name : aeabi_memset_wrappers) {
+        if (!memory.write(helper_destination, helper_zero)) {
+            return fail("could not reset EABI memset destination");
+        }
+        result = run_wrapper(
+            memory, graph_result.graph, name, registry,
+            stack_top, *stop, helper_destination, 3U, 0x5aU);
+        std::array<std::uint8_t, 3> observed_filled{};
+        if (!result || !*result || result->services_handled != 1 ||
+            !memory.read(helper_destination, observed_filled) ||
+            observed_filled != helper_filled) {
+            return fail("real EABI memset wrapper argument order failed");
+        }
+        ++completed_calls;
+    }
+
+    constexpr std::array<std::string_view, 3> aeabi_memclr_wrappers{{
+        "fixture_aeabi_memclr",
+        "fixture_aeabi_memclr4",
+        "fixture_aeabi_memclr8",
+    }};
+    constexpr std::array<std::uint8_t, 4> helper_dirty{{1,2,3,4}};
+    constexpr std::array<std::uint8_t, 4> helper_cleared{{0,0,0,0}};
+    for (const auto name : aeabi_memclr_wrappers) {
+        if (!memory.write(helper_destination, helper_dirty)) {
+            return fail("could not dirty EABI memclr destination");
+        }
+        result = run_wrapper(
+            memory, graph_result.graph, name, registry,
+            stack_top, *stop, helper_destination, 4U, 0U);
+        std::array<std::uint8_t, 4> observed_cleared{};
+        if (!result || !*result || result->services_handled != 1 ||
+            !memory.read(helper_destination, observed_cleared) ||
+            observed_cleared != helper_cleared) {
+            return fail("real EABI memclr wrapper failed");
+        }
+        ++completed_calls;
     }
 
     result = run_wrapper(
