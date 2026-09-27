@@ -98,6 +98,10 @@ public:
         std::span<const A32LibDlHandle> handles,
         const elf::Elf32LifecycleState& lifecycle) const noexcept;
 
+    void forget_learned_binding(std::size_t object_index) noexcept {
+        registrations_.forget_binding_for_object(object_index);
+    }
+
 private:
     [[nodiscard]] bool options_valid() const noexcept;
     [[nodiscard]] std::optional<std::size_t> find_handle(
