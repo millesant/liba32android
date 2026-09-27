@@ -3,7 +3,7 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `post-roadmap-resident-dlclose-lifecycle-transaction` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: `post-roadmap-resident-dlclose-lifecycle-transaction` — IMPLEMENTED, corrected exact-head validation PENDING.
 
 ## Phase
 
@@ -39,7 +39,20 @@ libdl SVC path passes `regs[13]`, and both FINI_ARRAY and DT_FINI execute below
 that active caller frame. A focused regression writes the effective SP from
 guest FINI code and verifies the live-stack override.
 
-Corrected exact-head validation: NOT RUN.
+Corrected exact-head validation at `124deba7bfff005696058d9f67d41e779e32427e`: FAILED only in ARM32 libdl integration.
+
+The diagnostic run reached the exact provider FINI transaction and reported
+`fini_array_execution_failed`, with r0 == -1, marker still zero, and the
+provider lifecycle state latched Failed.
+
+Root cause was in the integration harness rather than the dlclose transaction:
+`apply_elf32_combined_relocations(..., object_index, ...)` relocates one graph
+object only, but the harness had relocated object 0 (the consumer) and then
+executed the provider's FINI_ARRAY and global-marker code without applying the
+provider's own relocations.
+
+The harness now relocates every loaded graph object before guest execution.
+Next exact-head validation target: `af6c69d090d99ac89fc47ef3b47820c9fa235959`.
 
 ## Deferred / partial
 
