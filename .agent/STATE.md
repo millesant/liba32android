@@ -3,41 +3,32 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `047-a32-libm-shared-service` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: none; feature 047 is accepted and feature 048 is next to integrate.
 
 ## Phase
 
-Features 011-046 are accepted.
+Features 011-047 are accepted.
 
 ## Validation and repository-truth evidence
 
-Feature 043 passed all five required exact-head checks at
-`99e79d710db7271557e64e608cf0523c663df169`.
+Feature 046 passed all six required exact-head checks at
+`6696d15513e8a7d7867ec2f4dd19adfa961e3450`.
 
-Feature 044 passed all five required exact-head checks at
-`d9e6dcfd7cf49bfc08f40a1f4db4862c7e570fdd`.
+Feature 047 adds the exact seventeen-symbol scalar `libm.so` surface shared
+by the supplied FMOD/VLC ARMv7 targets, Android ARMv7 softfp register
+marshalling, guest `frexp` exponent publication, host errno/fenv restoration,
+and a generated ARM32 `libm.so` exercised through real namespace-gated ELF
+integration.
 
-Feature 045 passed all five required exact-head checks at
-`f03514571104ae0c20c401432674583b5fba3ec9`.
-
-Feature 046 adds resident-object ARM32 `libdl.so`
-`dlopen/dlsym/dlclose/dlerror/dladdr` compatibility over the persistent
-ELF32 link map and passed all six exact-head checks at
-`6696d15513e8a7d7867ec2f4dd19adfa961e3450`:
-- Linux A32 smoke `108657382257` — PASS.
-- Android x86_64 address-space probe `108657382148` — PASS.
-- Android arm64-v8a cross-build `108657382074` — PASS.
-- ARM32 liblog shim integration `108657381943` — PASS.
-- ARM32 libdl shim integration `108657381862` — PASS.
-- ARM32 libc memory string shim integration `108657381727` — PASS.
-
-Feature 047 is now integrated. It adds the exact seventeen-symbol scalar
-`libm.so` surface shared by the supplied FMOD/VLC ARMv7 targets, explicit
-Android ARMv7 softfp register marshalling, logical guest `frexp` exponent
-publication, host errno/fenv restoration, a generated ARM32 `libm.so`, and
-a real namespace-gated consumer that exercises all seventeen wrappers.
-
-Feature 047 exact-head validation: NOT RUN.
+Feature 047 passed all seven exact-head checks at
+`8790fec8894159e034a60c5b86e5552dd375d39b`:
+- Android x86_64 address-space probe `108671947901` — PASS.
+- Android arm64-v8a cross-build `108671947841` — PASS.
+- Linux A32 smoke `108671947779` — PASS.
+- ARM32 libc memory string shim integration `108671905642` — PASS.
+- ARM32 libm shim integration `108671905481` — PASS.
+- ARM32 liblog shim integration `108671905332` — PASS.
+- ARM32 libdl shim integration `108671905307` — PASS.
 
 Prepared order remains:
 `048 -> 049`.

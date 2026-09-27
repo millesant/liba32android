@@ -1,6 +1,6 @@
 # ARM32 shared libm compatibility
 
-Status: feature 047 implemented; exact-head validation pending
+Status: feature 047 accepted; exact-head validation PASSed
 
 ## Scope
 

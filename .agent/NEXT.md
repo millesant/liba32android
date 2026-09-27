@@ -1,13 +1,11 @@
 # Next Work
 
-Features 011 through 046 are DONE.
+Features 011 through 047 are DONE.
 
-`047-a32-libm-shared-service` is IMPLEMENTED on `bleeding`; its exact-head
-required checks are the immediate acceptance gate.
+Integrate prepared feature `048-a32-android-library-search-provider` next,
+then close it only after terminal exact-head required checks succeed.
 
-Once terminal success is observed, close 047 and integrate prepared feature 048.
-
-Prepared order after 047:
+Prepared order:
 
 `048 -> 049`.
 
