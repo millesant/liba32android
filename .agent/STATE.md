@@ -52,7 +52,7 @@ executed the provider's FINI_ARRAY and global-marker code without applying the
 provider's own relocations.
 
 The harness now relocates every loaded graph object before guest execution.
-Next exact-head validation target: `af6c69d090d99ac89fc47ef3b47820c9fa235959`.
+Next exact-head validation target: the current `bleeding` head containing the graph-wide relocation correction.
 
 ## Deferred / partial
 
