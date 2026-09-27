@@ -151,6 +151,16 @@ if(LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH AND
 endif()
 
 liba32android_add_test_executable(
+    compat_libdl_test
+    tests/compat/a32_libdl.cpp
+)
+
+add_test(
+    NAME a32_libdl_service
+    COMMAND compat_libdl_test
+)
+
+liba32android_add_test_executable(
     compat_libdl_shim_integration_test
     tests/compat/a32_libdl_shim.cpp
 )
