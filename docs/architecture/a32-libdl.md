@@ -1,6 +1,6 @@
 # ARM32 resident-object libdl compatibility
 
-Status: feature 046 implemented; exact-head validation pending
+Status: feature 046 accepted; exact-head validation PASSed
 
 ## Goal
 
