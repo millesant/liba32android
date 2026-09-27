@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -18,6 +19,9 @@ using liba32android::elf::Elf32DependencyLoadSource;
 using liba32android::elf::Elf32DependencyProvider;
 using liba32android::elf::Elf32LinkMap;
 using liba32android::elf::Elf32LinkMapRootPolicy;
+using liba32android::elf::Elf32LinkMapReclamationError;
+using liba32android::elf::Elf32LinkMapReclamationOptions;
+using liba32android::elf::plan_elf32_link_map_reclamation;
 using liba32android::elf::kElf32Df1Global;
 using liba32android::elf::Elf32DependencyProviderError;
 using liba32android::elf::Elf32DependencyProviderResult;
@@ -718,6 +722,180 @@ int test_persistent_link_map_limits_and_invalid_state() {
     return 0;
 }
 
+int test_persistent_link_map_reclamation_planning() {
+    Elf32LinkMap link_map;
+    constexpr const char* identities[] = {
+        "root", "shared", "leaf", "handle-root",
+        "global-only", "cycle-a", "cycle-b",
+    };
+    for (const char* identity : identities) {
+        link_map.graph.objects.emplace_back();
+        link_map.graph.objects.back().identity = identity;
+    }
+
+    link_map.graph.objects[0].dependencies.push_back(
+        Elf32DependencyEdge{
+            .requested_name = "shared.so",
+            .target_object = 1U,
+        });
+    link_map.graph.objects[1].dependencies.push_back(
+        Elf32DependencyEdge{
+            .requested_name = "leaf.so",
+            .target_object = 2U,
+        });
+    link_map.graph.objects[3].dependencies.push_back(
+        Elf32DependencyEdge{
+            .requested_name = "shared-from-handle.so",
+            .target_object = 1U,
+        });
+    link_map.graph.objects[5].dependencies.push_back(
+        Elf32DependencyEdge{
+            .requested_name = "cycle-b.so",
+            .target_object = 6U,
+        });
+    link_map.graph.objects[6].dependencies.push_back(
+        Elf32DependencyEdge{
+            .requested_name = "cycle-a.so",
+            .target_object = 5U,
+        });
+
+    link_map.roots.push_back(
+        {.object_index = 0U, .policy = Elf32LinkMapRootPolicy::Local});
+    link_map.graph.objects[4].linker_metadata.global = true;
+    link_map.global_scope_objects = {4U};
+
+    const std::vector<std::size_t> live_anchors{3U, 3U, 5U};
+    const auto with_handles = plan_elf32_link_map_reclamation(
+        link_map,
+        std::span<const std::size_t>{live_anchors},
+        Elf32LinkMapReclamationOptions{.max_objects = 7U});
+    if (!with_handles ||
+        with_handles.plan.reachable_objects !=
+            std::vector<std::size_t>{0U, 1U, 2U, 3U, 5U, 6U} ||
+        with_handles.plan.reclaimable_objects !=
+            std::vector<std::size_t>{4U} ||
+        link_map.global_scope_objects != std::vector<std::size_t>{4U}) {
+        return fail(
+            "persistent roots/live handles did not define exact reclamation reachability");
+    }
+
+    const std::span<const std::size_t> no_live_anchors{};
+    const auto without_handles = plan_elf32_link_map_reclamation(
+        link_map,
+        no_live_anchors,
+        Elf32LinkMapReclamationOptions{.max_objects = 7U});
+    if (!without_handles ||
+        without_handles.plan.reachable_objects !=
+            std::vector<std::size_t>{0U, 1U, 2U} ||
+        without_handles.plan.reclaimable_objects !=
+            std::vector<std::size_t>{3U, 4U, 6U, 5U}) {
+        return fail(
+            "unowned handle/cycle/global objects were not reclaimed deterministically");
+    }
+
+    Elf32LinkMap ordering;
+    for (const char* identity :
+         {"independent", "older-dependency", "leaf", "newer-requester"}) {
+        ordering.graph.objects.emplace_back();
+        ordering.graph.objects.back().identity = identity;
+    }
+    ordering.graph.objects[1].dependencies.push_back(
+        Elf32DependencyEdge{
+            .requested_name = "leaf.so",
+            .target_object = 2U,
+        });
+    ordering.graph.objects[3].dependencies.push_back(
+        Elf32DependencyEdge{
+            .requested_name = "older.so",
+            .target_object = 1U,
+        });
+
+    const auto ordered = plan_elf32_link_map_reclamation(
+        ordering,
+        no_live_anchors,
+        Elf32LinkMapReclamationOptions{.max_objects = 4U});
+    if (!ordered || !ordered.plan.reachable_objects.empty() ||
+        ordered.plan.reclaimable_objects !=
+            std::vector<std::size_t>{0U, 3U, 1U, 2U}) {
+        return fail(
+            "reclamation order did not keep requesters before dependencies");
+    }
+    return 0;
+}
+
+int test_persistent_link_map_reclamation_validation() {
+    Elf32LinkMap link_map;
+    for (const char* identity : {"root", "child"}) {
+        link_map.graph.objects.emplace_back();
+        link_map.graph.objects.back().identity = identity;
+    }
+    link_map.graph.objects[0].dependencies.push_back(
+        Elf32DependencyEdge{
+            .requested_name = "child.so",
+            .target_object = 1U,
+        });
+    link_map.roots.push_back(
+        {.object_index = 0U, .policy = Elf32LinkMapRootPolicy::Local});
+
+    const std::span<const std::size_t> no_live_anchors{};
+    const auto invalid_options = plan_elf32_link_map_reclamation(
+        link_map,
+        no_live_anchors,
+        Elf32LinkMapReclamationOptions{});
+    if (invalid_options.error !=
+        Elf32LinkMapReclamationError::InvalidOptions) {
+        return fail("reclamation planner accepted zero object ceiling");
+    }
+
+    const auto object_limit = plan_elf32_link_map_reclamation(
+        link_map,
+        no_live_anchors,
+        Elf32LinkMapReclamationOptions{.max_objects = 1U});
+    if (object_limit.error !=
+        Elf32LinkMapReclamationError::ObjectLimitExceeded) {
+        return fail("reclamation planner ignored accumulated object ceiling");
+    }
+
+    const std::vector<std::size_t> bad_anchor{2U};
+    const auto invalid_anchor = plan_elf32_link_map_reclamation(
+        link_map,
+        std::span<const std::size_t>{bad_anchor},
+        Elf32LinkMapReclamationOptions{.max_objects = 2U});
+    if (invalid_anchor.error !=
+            Elf32LinkMapReclamationError::InvalidLiveAnchor ||
+        invalid_anchor.failing_object != 2U) {
+        return fail("reclamation planner accepted out-of-range live anchor");
+    }
+
+    link_map.roots.push_back(link_map.roots.front());
+    const auto duplicate_root = plan_elf32_link_map_reclamation(
+        link_map,
+        no_live_anchors,
+        Elf32LinkMapReclamationOptions{.max_objects = 2U});
+    if (duplicate_root.error !=
+            Elf32LinkMapReclamationError::InvalidLinkMap ||
+        duplicate_root.failing_object != 0U) {
+        return fail("reclamation planner accepted duplicate persistent root");
+    }
+
+    link_map.roots.resize(1U);
+    link_map.graph.objects[1].dependencies.push_back(
+        Elf32DependencyEdge{
+            .requested_name = "broken.so",
+            .target_object = 9U,
+        });
+    const auto invalid_edge = plan_elf32_link_map_reclamation(
+        link_map,
+        no_live_anchors,
+        Elf32LinkMapReclamationOptions{.max_objects = 2U});
+    if (invalid_edge.error !=
+            Elf32LinkMapReclamationError::InvalidLinkMap ||
+        invalid_edge.failing_object != 1U) {
+        return fail("reclamation planner accepted invalid dependency edge");
+    }
+    return 0;
+}
+
 int test_exec_root_without_dynamic() {
     constexpr std::uint32_t fixed_base = 0x10000;
     MappedGuestMemory memory;
@@ -1387,6 +1565,8 @@ int main() {
     if (const int status = test_persistent_link_map_promotion_preserves_discovery_order(); status != 0) return status;
     if (const int status = test_persistent_link_map_append_failure_preserves_prior_state(); status != 0) return status;
     if (const int status = test_persistent_link_map_limits_and_invalid_state(); status != 0) return status;
+    if (const int status = test_persistent_link_map_reclamation_planning(); status != 0) return status;
+    if (const int status = test_persistent_link_map_reclamation_validation(); status != 0) return status;
     if (const int status = test_exec_root_without_dynamic(); status != 0) return status;
     if (const int status = test_dynamic_root_automatic_placement(); status != 0) return status;
     if (const int status = test_preflight_failures_do_not_mutate_memory(); status != 0) return status;
