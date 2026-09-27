@@ -241,7 +241,7 @@ A32LibDlOpenTransactionResult A32LibDlOpenTransaction::open(
     bool root_added = false;
 
     if (!object_index.has_value()) {
-        const auto provided = provider_.resolve(
+        auto provided = provider_.resolve(
             requested_name, options_.load.max_image_bytes);
         if (!provided) {
             auto result = failure(
