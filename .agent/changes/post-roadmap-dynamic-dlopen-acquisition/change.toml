@@ -2,10 +2,11 @@ schema = 1
 id = "post-roadmap-dynamic-dlopen-acquisition"
 kind = "feature"
 size = "S2"
-status = "implemented"
+status = "done"
 workflow = "feature"
 control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
 base_revision = "1acff26e88a7d00b3f1271ce8d8230819c819aa0"
+result_revision = "40479ffebe61c22c90d7d523292fc9e787be635d"
 acceptance = [
   "an optional bounded A32 libdl open transaction owns named dlopen initialization while A32LibDlService remains the guest ABI surface",
   "resident named lookup ignores Retired link-map slots and dynamic open rejects ambiguous, failed-constructor, or already-destructed active objects",
@@ -27,5 +28,5 @@ tests = "aligned"
 documentation = "aligned"
 decisions = "not_applicable"
 tasks = "aligned"
-evidence = "pending"
+evidence = "aligned"
 repository = "aligned"
