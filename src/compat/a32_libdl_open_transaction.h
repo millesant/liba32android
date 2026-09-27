@@ -99,6 +99,10 @@ public:
         return options_.handle_base;
     }
 
+    [[nodiscard]] std::uint32_t max_objects() const noexcept {
+        return options_.load.max_objects;
+    }
+
 private:
     [[nodiscard]] bool options_valid() const noexcept;
     [[nodiscard]] std::optional<std::size_t> find_active_object(
