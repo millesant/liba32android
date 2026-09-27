@@ -80,9 +80,20 @@ bool A32LibDlCloseTransaction::registrations_complete(
     return true;
 }
 
-A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
+bool A32LibDlCloseTransaction::matches_state(
+    const elf::Elf32LinkMap& link_map,
+    std::span<const A32LibDlHandle> handles,
+    const elf::Elf32LifecycleState& lifecycle) const noexcept {
+    return &link_map == &link_map_ &&
+           handles.data() == handles_.data() &&
+           handles.size() == handles_.size() &&
+           &lifecycle == &lifecycle_;
+}
+
+A32LibDlCloseTransactionResult
+A32LibDlCloseTransaction::finalize_object(
     memory::GuestMemory& memory,
-    std::uint32_t guest_handle,
+    std::size_t object_index,
     std::optional<std::uint32_t> nested_stack_top) {
     if (!options_valid()) {
         return failure(A32LibDlCloseTransactionError::InvalidOptions);
@@ -97,31 +108,12 @@ A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
         execution.stack_top = *nested_stack_top;
     }
 
-    const auto slot = find_handle(guest_handle);
-    if (!slot.has_value()) {
-        return failure(A32LibDlCloseTransactionError::InvalidHandle);
+    if (object_index >= link_map_.graph.objects.size() ||
+        !link_map_.object_active(object_index)) {
+        return failure(
+            A32LibDlCloseTransactionError::InvalidObject,
+            object_index);
     }
-
-    A32LibDlHandle& handle = handles_[*slot];
-    const std::size_t object_index = handle.object_index;
-    if (object_index >= link_map_.graph.objects.size()) {
-        return failure(A32LibDlCloseTransactionError::InvalidObject, object_index);
-    }
-
-    if (handle.refcount > 1U) {
-        --handle.refcount;
-        A32LibDlCloseTransactionResult result;
-        result.outcome = A32LibDlCloseTransactionOutcome::RefcountDecremented;
-        result.object_index = object_index;
-        return result;
-    }
-
-    bool ambiguous = false;
-    const auto dso_handle = dso_for_object(object_index, ambiguous);
-    if (!dso_handle.has_value() || ambiguous) {
-        return failure(A32LibDlCloseTransactionError::InvalidBinding, object_index);
-    }
-
     if (lifecycle_.objects.size() > link_map_.graph.objects.size()) {
         return failure(
             A32LibDlCloseTransactionError::InvalidLifecycleState,
@@ -131,9 +123,23 @@ A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
 
     auto& state = lifecycle_.objects[object_index];
     if (state.constructors != elf::Elf32LifecycleObjectStatus::Complete ||
-        state.destructors != elf::Elf32LifecycleObjectStatus::Pending) {
+        state.destructors == elf::Elf32LifecycleObjectStatus::Failed) {
         return failure(
             A32LibDlCloseTransactionError::InvalidLifecycleState,
+            object_index);
+    }
+    if (state.destructors == elf::Elf32LifecycleObjectStatus::Complete) {
+        A32LibDlCloseTransactionResult result;
+        result.object_index = object_index;
+        result.outcome = A32LibDlCloseTransactionOutcome::ObjectFinalized;
+        return result;
+    }
+
+    bool ambiguous = false;
+    const auto dso_handle = dso_for_object(object_index, ambiguous);
+    if (!dso_handle.has_value() || ambiguous) {
+        return failure(
+            A32LibDlCloseTransactionError::InvalidBinding,
             object_index);
     }
 
@@ -151,7 +157,8 @@ A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
         if (!decoded) {
             result.decode_error = decoded.error;
             result.error =
-                decoded.error == elf::Elf32FunctionArrayDecodeError::TooManyEntries
+                decoded.error ==
+                        elf::Elf32FunctionArrayDecodeError::TooManyEntries
                     ? A32LibDlCloseTransactionError::EntryLimitExceeded
                     : A32LibDlCloseTransactionError::DecodeFailed;
             return result;
@@ -159,7 +166,9 @@ A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
 
         std::vector<elf::Elf32FiniCall> calls;
         calls.reserve(decoded.entries.size());
-        for (std::size_t reverse = decoded.entries.size(); reverse > 0U; --reverse) {
+        for (std::size_t reverse = decoded.entries.size();
+             reverse > 0U;
+             --reverse) {
             const std::size_t array_index = reverse - 1U;
             const std::uint32_t function = decoded.entries[array_index];
             if (!callable(function)) {
@@ -177,9 +186,11 @@ A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
                 memory, calls, execution);
             result.fini_calls_completed += executed.calls_completed;
             if (!executed) {
-                state.destructors = elf::Elf32LifecycleObjectStatus::Failed;
+                state.destructors =
+                    elf::Elf32LifecycleObjectStatus::Failed;
                 result.error =
-                    A32LibDlCloseTransactionError::FiniArrayExecutionFailed;
+                    A32LibDlCloseTransactionError::
+                        FiniArrayExecutionFailed;
                 result.execution_error = executed.error;
                 result.failing_svc_immediate =
                     executed.failing_svc_immediate;
@@ -191,7 +202,8 @@ A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
     if (!registrations_complete(*dso_handle)) {
         state.destructors = elf::Elf32LifecycleObjectStatus::Failed;
         result.error =
-            A32LibDlCloseTransactionError::RegisteredFinalizationIncomplete;
+            A32LibDlCloseTransactionError::
+                RegisteredFinalizationIncomplete;
         return result;
     }
 
@@ -199,7 +211,8 @@ A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
         callable(*object.linker_metadata.fini_function)) {
         const elf::Elf32FiniCall call{
             .object_index = object_index,
-            .array_index = std::numeric_limits<std::uint32_t>::max(),
+            .array_index =
+                std::numeric_limits<std::uint32_t>::max(),
             .function = *object.linker_metadata.fini_function,
         };
         const auto executed = elf::execute_elf32_fini_calls(
@@ -208,17 +221,62 @@ A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
             execution);
         result.fini_calls_completed += executed.calls_completed;
         if (!executed) {
-            state.destructors = elf::Elf32LifecycleObjectStatus::Failed;
-            result.error = A32LibDlCloseTransactionError::DtFiniExecutionFailed;
+            state.destructors =
+                elf::Elf32LifecycleObjectStatus::Failed;
+            result.error =
+                A32LibDlCloseTransactionError::DtFiniExecutionFailed;
             result.execution_error = executed.error;
-            result.failing_svc_immediate = executed.failing_svc_immediate;
+            result.failing_svc_immediate =
+                executed.failing_svc_immediate;
             return result;
         }
     }
 
     state.destructors = elf::Elf32LifecycleObjectStatus::Complete;
-    handle = {};
     result.outcome = A32LibDlCloseTransactionOutcome::ObjectFinalized;
+    return result;
+}
+
+A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
+    memory::GuestMemory& memory,
+    std::uint32_t guest_handle,
+    std::optional<std::uint32_t> nested_stack_top) {
+    if (!options_valid()) {
+        return failure(A32LibDlCloseTransactionError::InvalidOptions);
+    }
+
+    const auto slot = find_handle(guest_handle);
+    if (!slot.has_value()) {
+        return failure(A32LibDlCloseTransactionError::InvalidHandle);
+    }
+
+    A32LibDlHandle& handle = handles_[*slot];
+    const std::size_t object_index = handle.object_index;
+    if (object_index >= link_map_.graph.objects.size() ||
+        !link_map_.object_active(object_index)) {
+        return failure(
+            A32LibDlCloseTransactionError::InvalidObject,
+            object_index);
+    }
+
+    if (handle.refcount > 1U) {
+        --handle.refcount;
+        A32LibDlCloseTransactionResult result;
+        result.outcome =
+            A32LibDlCloseTransactionOutcome::RefcountDecremented;
+        result.object_index = object_index;
+        return result;
+    }
+
+    auto result = finalize_object(
+        memory,
+        object_index,
+        nested_stack_top);
+    if (!result) {
+        return result;
+    }
+
+    handle = {};
     return result;
 }
 
