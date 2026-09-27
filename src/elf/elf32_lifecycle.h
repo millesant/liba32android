@@ -93,6 +93,50 @@ struct Elf32InitPlanResult {
 
 [[nodiscard]] const char* to_string(Elf32InitPlanError error) noexcept;
 
+using Elf32FiniCall = Elf32InitCall;
+
+struct Elf32FiniPlanOptions {
+    std::uint32_t max_objects{};
+    // Total raw FINI_ARRAY entries decoded across all visited objects.
+    // Sentinel entries consume this budget even though they are not calls.
+    std::uint32_t max_entries{};
+};
+
+enum class Elf32FiniPlanError : std::uint8_t {
+    None = 0,
+    InvalidOptions,
+    InvalidRootObject,
+    InvalidGraphEdge,
+    ObjectLimitExceeded,
+    EntryLimitExceeded,
+    DecodeFailed,
+};
+
+struct Elf32FiniPlanResult {
+    Elf32FiniPlanError error{Elf32FiniPlanError::None};
+    Elf32FunctionArrayDecodeError decode_error{
+        Elf32FunctionArrayDecodeError::None};
+    std::optional<std::size_t> failing_object;
+    std::vector<Elf32FiniCall> calls;
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return error == Elf32FiniPlanError::None;
+    }
+};
+
+// Build one root-scoped destructor plan without guest execution. The object
+// order is the exact reverse of dependency-first constructor traversal and
+// each object's FINI_ARRAY entries are emitted in reverse declaration order.
+// Cycles/shared dependencies contribute each object at most once. Raw null and
+// all-ones entries count against max_entries but are omitted as calls.
+[[nodiscard]] Elf32FiniPlanResult plan_elf32_fini_array_calls(
+    const memory::GuestMemory& memory,
+    const Elf32DependencyGraph& graph,
+    std::size_t root_object,
+    const Elf32FiniPlanOptions& options);
+
+[[nodiscard]] const char* to_string(Elf32FiniPlanError error) noexcept;
+
 struct Elf32InitExecutionOptions {
     // Caller-owned writable stack top. The executor does not map or unmap it.
     std::uint32_t stack_top{};
@@ -135,5 +179,16 @@ struct Elf32InitExecutionResult {
 
 [[nodiscard]] const char* to_string(
     Elf32InitExecutionError error) noexcept;
+
+using Elf32FiniExecutionOptions = Elf32InitExecutionOptions;
+using Elf32FiniExecutionError = Elf32InitExecutionError;
+using Elf32FiniExecutionResult = Elf32InitExecutionResult;
+
+// FINI_ARRAY calls use the same bounded A32 call seam as constructors; only
+// planning order differs.
+[[nodiscard]] Elf32FiniExecutionResult execute_elf32_fini_calls(
+    memory::GuestMemory& memory,
+    std::span<const Elf32FiniCall> calls,
+    const Elf32FiniExecutionOptions& options);
 
 }  // namespace liba32android::elf

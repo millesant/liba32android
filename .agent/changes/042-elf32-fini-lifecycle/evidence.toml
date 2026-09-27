@@ -1,0 +1,29 @@
+schema = 1
+change = "042-elf32-fini-lifecycle"
+
+[[evidence]]
+id = "fini-planning-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused lifecycle tests cover exact reverse reachable-object order across shared dependencies/cycles, reverse FINI_ARRAY declaration order, sentinel filtering, and bounded planner failures."
+source = "tests/elf/unit/elf32_lifecycle.cpp"
+result = "Feature 042 source/tests are integrated; exact-head execution has not yet been observed."
+limitations = "Synthetic lifecycle fixtures validate the bounded planner contract, not third-party application unload."
+
+[[evidence]]
+id = "fini-execution-composition"
+kind = "test"
+status = "not_run"
+claim = "A planned root/dependency FINI_ARRAY sequence executes requester-first through the bounded ARM/Thumb call seam and leaves ordered guest-memory side effects."
+source = "tests/elf/unit/elf32_lifecycle.cpp"
+result = "Feature 042 source/tests are integrated; exact-head execution has not yet been observed."
+limitations = "The executor has no persistent called-state or unload/refcount orchestration."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "Feature 042 passes required exact-head checks after feature 041 is accepted."
+source = "GitHub commit checks on the feature-042 integration revision"
+result = ""
+limitations = "Feature 042 remains implemented rather than done until terminal exact-head checks are observed."

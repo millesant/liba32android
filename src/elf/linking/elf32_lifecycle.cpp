@@ -212,6 +212,148 @@ const char* to_string(Elf32InitPlanError error) noexcept {
     return "unknown";
 }
 
+
+namespace {
+
+enum class FiniVisitState : std::uint8_t {
+    Unseen = 0,
+    Visiting,
+    Complete,
+};
+
+[[nodiscard]] Elf32FiniPlanResult fini_plan_failure(
+    Elf32FiniPlanError error,
+    std::optional<std::size_t> failing_object = std::nullopt,
+    Elf32FunctionArrayDecodeError decode_error =
+        Elf32FunctionArrayDecodeError::None) {
+    Elf32FiniPlanResult result;
+    result.error = error;
+    result.decode_error = decode_error;
+    result.failing_object = failing_object;
+    return result;
+}
+
+struct FiniPlanContext {
+    const Elf32DependencyGraph& graph;
+    const Elf32FiniPlanOptions& options;
+    std::vector<FiniVisitState> states;
+    std::uint32_t visited_objects{};
+    std::vector<std::size_t> postorder;
+
+    [[nodiscard]] Elf32FiniPlanResult visit(std::size_t object_index) {
+        if (states[object_index] == FiniVisitState::Complete ||
+            states[object_index] == FiniVisitState::Visiting) {
+            return {};
+        }
+        if (visited_objects >= options.max_objects) {
+            return fini_plan_failure(
+                Elf32FiniPlanError::ObjectLimitExceeded, object_index);
+        }
+
+        ++visited_objects;
+        states[object_index] = FiniVisitState::Visiting;
+        const auto& object = graph.objects[object_index];
+        for (const auto& edge : object.dependencies) {
+            if (edge.target_object >= graph.objects.size()) {
+                return fini_plan_failure(
+                    Elf32FiniPlanError::InvalidGraphEdge, object_index);
+            }
+            auto nested = visit(edge.target_object);
+            if (!nested) return nested;
+        }
+
+        states[object_index] = FiniVisitState::Complete;
+        postorder.push_back(object_index);
+        return {};
+    }
+};
+
+}  // namespace
+
+Elf32FiniPlanResult plan_elf32_fini_array_calls(
+    const memory::GuestMemory& memory,
+    const Elf32DependencyGraph& graph,
+    std::size_t root_object,
+    const Elf32FiniPlanOptions& options) {
+    if (options.max_objects == 0) {
+        return fini_plan_failure(Elf32FiniPlanError::InvalidOptions);
+    }
+    if (root_object >= graph.objects.size()) {
+        return fini_plan_failure(
+            Elf32FiniPlanError::InvalidRootObject, root_object);
+    }
+
+    FiniPlanContext context{
+        .graph = graph,
+        .options = options,
+        .states = std::vector<FiniVisitState>(
+            graph.objects.size(), FiniVisitState::Unseen),
+    };
+    auto traversal = context.visit(root_object);
+    if (!traversal) return traversal;
+
+    std::uint32_t decoded_entries{};
+    std::vector<Elf32FiniCall> calls;
+    for (auto object_it = context.postorder.rbegin();
+         object_it != context.postorder.rend(); ++object_it) {
+        const std::size_t object_index = *object_it;
+        const auto& object = graph.objects[object_index];
+        if (!object.linker_metadata.fini_array.has_value()) {
+            continue;
+        }
+
+        const std::uint32_t remaining =
+            options.max_entries - decoded_entries;
+        const auto decoded = decode_elf32_function_array(
+            memory, *object.linker_metadata.fini_array,
+            Elf32FunctionArrayDecodeOptions{.max_entries = remaining});
+        if (!decoded) {
+            const Elf32FiniPlanError error =
+                decoded.error ==
+                        Elf32FunctionArrayDecodeError::TooManyEntries
+                    ? Elf32FiniPlanError::EntryLimitExceeded
+                    : Elf32FiniPlanError::DecodeFailed;
+            return fini_plan_failure(error, object_index, decoded.error);
+        }
+
+        decoded_entries +=
+            static_cast<std::uint32_t>(decoded.entries.size());
+        for (std::size_t reverse_index = decoded.entries.size();
+             reverse_index > 0; --reverse_index) {
+            const std::size_t index = reverse_index - 1U;
+            const std::uint32_t function = decoded.entries[index];
+            if (function == 0U ||
+                function == std::numeric_limits<std::uint32_t>::max()) {
+                continue;
+            }
+            calls.push_back(Elf32FiniCall{
+                .object_index = object_index,
+                .array_index = static_cast<std::uint32_t>(index),
+                .function = function,
+            });
+        }
+    }
+
+    Elf32FiniPlanResult result;
+    result.calls = std::move(calls);
+    return result;
+}
+
+const char* to_string(Elf32FiniPlanError error) noexcept {
+    switch (error) {
+    case Elf32FiniPlanError::None: return "none";
+    case Elf32FiniPlanError::InvalidOptions: return "invalid_options";
+    case Elf32FiniPlanError::InvalidRootObject: return "invalid_root_object";
+    case Elf32FiniPlanError::InvalidGraphEdge: return "invalid_graph_edge";
+    case Elf32FiniPlanError::ObjectLimitExceeded:
+        return "object_limit_exceeded";
+    case Elf32FiniPlanError::EntryLimitExceeded:
+        return "entry_limit_exceeded";
+    case Elf32FiniPlanError::DecodeFailed: return "decode_failed";
+    }
+    return "unknown";
+}
+
 namespace {
 
 [[nodiscard]] Elf32InitExecutionResult execution_failure(
@@ -309,6 +451,13 @@ const char* to_string(Elf32InitExecutionError error) noexcept {
         return "instruction_limit_exceeded";
     }
     return "unknown";
+}
+
+Elf32FiniExecutionResult execute_elf32_fini_calls(
+    memory::GuestMemory& memory,
+    std::span<const Elf32FiniCall> calls,
+    const Elf32FiniExecutionOptions& options) {
+    return execute_elf32_init_calls(memory, calls, options);
 }
 
 }  // namespace liba32android::elf

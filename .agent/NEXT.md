@@ -1,15 +1,15 @@
 # Next Work
 
-Features 011 through 040 are DONE.
+Features 011 through 041 are DONE.
 
-`041-a32-libc-allocator-shim` is IMPLEMENTED on `bleeding`; its exact-head
+`042-elf32-fini-lifecycle` is IMPLEMENTED on `bleeding`; its exact-head
 required checks are the immediate acceptance gate.
 
-Once terminal success is observed, close 041 and integrate prepared feature 042.
+Once terminal success is observed, close 042 and integrate prepared feature 043.
 
-Prepared order after 041:
+Prepared order after 042:
 
-`042 -> 043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
+`043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
 
 ## Local-machine validation note
 

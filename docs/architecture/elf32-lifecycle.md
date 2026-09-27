@@ -1,6 +1,6 @@
 # ELF32 lifecycle arrays
 
-Status: feature 019 bounded INIT_ARRAY execution complete; exact-head implementation CI PASSed
+Status: feature 042 FINI_ARRAY destructor planning/execution implemented; exact-head validation pending
 
 ## Boundary
 
@@ -135,7 +135,7 @@ No later call is claimed or attempted.
 
 The executor does not allocate a stack, map/protect/unmap memory, roll back
 constructor side effects, persist constructor-called state, or implement
-legacy INIT/PREINIT/destructor lifecycle.
+legacy INIT/PREINIT lifecycle.
 
 
 ## Feature 019 validation
@@ -151,3 +151,35 @@ instruction budget, initial stop-before-fetch, planner-to-executor composition,
 ordered guest side effects, failure provenance, memory-fault precedence,
 exception handling, instruction exhaustion, and no execution of later calls
 after failure.
+
+## Feature 042 bounded FINI_ARRAY destructor lifecycle
+
+`plan_elf32_fini_array_calls` completes the array-based destructor half of the
+accepted lifecycle seam without introducing unload or persistent runtime state.
+It first computes the same dependency-first reachable-object postorder used by
+constructor semantics, with cycle/shared-object suppression and the caller's
+object ceiling. It then walks that object order backwards, so requesters are
+destroyed before their dependencies. Each object's FINI_ARRAY is decoded under
+one total raw-entry ceiling and its entries are emitted in reverse declaration
+order, matching Android's array-call direction. Null and all-ones sentinels
+consume the decode budget but are omitted from executable calls.
+
+The planner is read-only. Invalid roots or graph edges, object/entry ceilings,
+and nested decode errors fail with object provenance and return no successful
+partial call vector.
+
+`execute_elf32_fini_calls` deliberately reuses feature 019's bounded call
+executor contract. ARM/Thumb selection, caller-owned aligned stack, normalized
+return-stop PC, per-call instruction ceiling, fault precedence, and preservation
+of completed guest side effects are unchanged. The distinction between init and
+fini is planning order, not a second CPU ABI.
+
+Focused regression coverage proves exact reverse object order across shared
+dependencies/cycles, reverse per-array order and sentinel filtering, bounded
+failure surfaces, and an end-to-end requester-before-dependency destructor
+sequence with observable guest-memory side effects.
+
+Legacy `DT_INIT/DT_FINI`, `DT_PREINIT_ARRAY`, persisted constructor-called
+or recursion state, process argv/envp constructor ABI, `dlopen`/`dlsym`,
+unload/refcount orchestration, and Android device execution remain separate
+work.
