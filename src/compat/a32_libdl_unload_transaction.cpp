@@ -27,7 +27,7 @@ bool A32LibDlUnloadTransaction::options_valid() const noexcept {
                options_.planning.max_objects &&
            options_.reclamation.max_segments != 0U &&
            options_.reclamation.max_snapshot_bytes != 0U &&
-           lifecycle_.objects.size() <= link_map_.graph.objects.size() &&
+           lifecycle_.objects.size() == link_map_.graph.objects.size() &&
            finalizer_.matches_state(link_map_, handles_, lifecycle_);
 }
 
