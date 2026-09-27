@@ -130,6 +130,30 @@ namespace accessibility, LD_PRELOAD, or RTLD policy.
 
 The underlying single-image loader remains responsible for rolling back its own partially failed object load before the graph layer records that object as successful.
 
+## Reclamation planning
+
+Post-roadmap reclamation planning keeps the feature-016 stable-index storage
+model intact. It does not erase graph objects or unmap memory.
+
+`plan_elf32_link_map_reclamation` treats persistent root records as ownership
+anchors and accepts a borrowed set of additional live object anchors for
+external owners such as active libdl handles. Reachability follows ordinary
+dependency edges transitively with repeated edges, shared dependencies, and
+cycles visited once. Global-scope membership is symbol-visibility state only
+and does not keep an otherwise unreachable object alive.
+
+The planner returns reachable indexes in stable ascending order and unreachable
+indexes in deterministic reverse-postorder teardown order. Outside cycles this
+places requesters before their unreachable dependencies; cycle members remain
+deterministic but cannot satisfy a strict requester-first ordering for every
+edge simultaneously.
+
+The operation is read-only and bounded by the caller's accumulated-object
+ceiling. It validates the graph edges, persistent root records, and additional
+live anchors that it consumes before returning a successful plan. Destructor
+execution, root/global removal, stable-slot tombstoning/reuse, and guest
+unmapping remain later transactions.
+
 ## Failure surface
 
 The graph layer distinguishes root/options/image limits, object/depth/occurrence limits, nested dependency-resolution errors, identity/image mismatch, malformed or non-dynamic dependencies, placement/load failures, dynamic/metadata/string failures, and rollback failure.
