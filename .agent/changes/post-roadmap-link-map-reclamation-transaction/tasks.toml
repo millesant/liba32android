@@ -3,24 +3,24 @@ change = "post-roadmap-link-map-reclamation-transaction"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Add stable Active/Retired link-map slot state and make append/planning tombstone-aware without recycling indexes."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Implement bounded root-release reclamation with lifecycle preflight, exact global-scope recomputation, mapping snapshots, rollback, and atomic link-map publication."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Add focused regressions for retention, lifecycle eligibility, global pruning, rollback, same-identity reload after retirement, and resource ceilings; converge specs/docs."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Run exact-head required checks and reconcile closure evidence/state."
