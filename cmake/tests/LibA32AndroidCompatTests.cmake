@@ -182,6 +182,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_libdl_unload_transaction_test
+    tests/compat/a32_libdl_unload_transaction.cpp
+)
+
+add_test(
+    NAME a32_libdl_unload_transaction
+    COMMAND compat_libdl_unload_transaction_test
+)
+
+liba32android_add_test_executable(
     compat_libdl_open_transaction_test
     tests/compat/a32_libdl_open_transaction.cpp
 )
