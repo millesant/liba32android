@@ -3,11 +3,13 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `post-roadmap-android-filesystem-library-source` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: none.
 
 ## Phase
 
 Features 011-049 are accepted. The numbered roadmap remains COMPLETE.
+
+The post-roadmap Android filesystem-library-source follow-up is also accepted.
 
 ## Final numbered-roadmap validation
 
@@ -16,26 +18,22 @@ Feature 049 passed all nine required exact-head checks at
 
 The numbered 011-049 roadmap is accepted at 100%.
 
-## Post-roadmap follow-up
+## Post-roadmap validation
 
-The active follow-up adds a concrete bounded regular-file implementation of
-`A32AndroidLibrarySource`. It reads exact caller-supplied filesystem candidate
-paths, distinguishes NotFound from hard I/O failure, enforces independent path
-and image ceilings, rejects non-regular/empty files, and publishes exact path
-identity without canonicalization.
+The concrete bounded regular-file implementation of
+`A32AndroidLibrarySource` passed all nine exact-head checks at
+`05e6729b64628c2df0bfca5f8010afc31ad526b8`.
 
-The ARM32 app-search integration now acquires its real child DSO through this
+The ARM32 app-search integration now acquires its real child DSO through the
 filesystem source before generic dependency loading, eager relocation, and A32
-execution. The existing focused policy regression still covers APK-style
-virtual path construction.
+execution. Focused policy coverage retains the synthetic APK-style virtual-root
+case independently.
 
-Exact-head validation: NOT RUN.
-
-## Deferred / partial after this follow-up
+## Deferred / partial
 
 Legacy DT_INIT/DT_FINI, __aeabi_atexit/static-destructor registration and
 persistent lifecycle state, broader pthread/thread creation/TLS services,
 dynamic libdl acquisition/unload semantics, broader/exceptional libm semantics,
 concrete APK/ZIP byte acquisition and richer Android search policy,
-higher-level public ELF/platform orchestration, and device execution remain
-separate follow-up work.
+higher-level public ELF/platform orchestration, JNI/graphics/audio surfaces,
+and real Android device execution remain separate follow-up work.

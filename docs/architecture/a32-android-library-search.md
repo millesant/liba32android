@@ -1,6 +1,6 @@
 # Requester-scoped Android application library search
 
-Status: feature 048 accepted; post-roadmap filesystem source implemented, exact-head validation pending
+Status: feature 048 accepted; post-roadmap filesystem source accepted; exact-head validation PASSed
 
 ## Goal
 
@@ -25,15 +25,15 @@ without putting archive/search semantics into the ELF loader.
 
 ## Concrete filesystem source
 
-The post-roadmap follow-up adds `A32FilesystemLibrarySource` for caller-owned
-filesystem paths such as extracted/native-library directories.
+The accepted post-roadmap follow-up adds `A32FilesystemLibrarySource` for
+caller-owned filesystem paths such as extracted/native-library directories.
 
 The source consumes the candidate path exactly as supplied. It rejects empty,
 embedded-NUL, over-ceiling paths, zero image ceilings, non-regular files,
 empty files, and files exceeding the caller's exact `max_image_bytes` bound.
 `ENOENT` and `ENOTDIR` map to `NotFound`; other open/stat/read failures map
-to `Failed`. Reads retry interrupted syscalls and require the complete
-size observed by `fstat`.
+to `Failed`. Reads retry interrupted syscalls and require the complete size
+observed by `fstat`.
 
 Successful identity is the exact path string used for the read. There is no
 canonicalization, basename substitution, package-manager lookup, symlink policy,
@@ -74,16 +74,15 @@ platform SONAME can fall through to the feature-031 namespace-gated catalog.
 
 The pinned-NDK fixture builds:
 
-- `libfixture_app_root.so`, which needs
-  `libfixture_app_child.so`;
+- `libfixture_app_root.so`, which needs `libfixture_app_child.so`;
 - `libfixture_app_child.so`, which returns a known value.
 
-The host integration supplies only the root image directly. The child is
-acquired through `A32FilesystemLibrarySource` from the caller-provided fixture
-directory. The generic dependency loader must propagate the root identity,
-construct the exact candidate path, read the child under the image ceiling,
-form a two-object graph, relocate the root's one JUMP_SLOT, and execute the root
-wrapper to the child value.
+The exact-head accepted integration supplies only the root image directly. The
+child is acquired through `A32FilesystemLibrarySource` from the
+caller-provided fixture directory. The generic dependency loader propagates the
+root identity, constructs the exact candidate path, reads the child under the
+image ceiling, forms a two-object graph, relocates the root's one JUMP_SLOT,
+and executes the root wrapper to the child value.
 
 The focused policy regression retains the original synthetic APK-style virtual
 root case so archive-like path construction remains covered independently of

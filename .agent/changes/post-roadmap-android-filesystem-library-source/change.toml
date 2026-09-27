@@ -2,10 +2,11 @@ schema = 1
 id = "post-roadmap-android-filesystem-library-source"
 kind = "feature"
 size = "S1"
-status = "implemented"
+status = "done"
 workflow = "feature"
 control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
 base_revision = "08224fc407e73ea3079263c2070c9332cb94fbf0"
+result_revision = "05e6729b64628c2df0bfca5f8010afc31ad526b8"
 acceptance = [
   "A32FilesystemLibrarySource implements concrete regular-file acquisition without changing the generic ELF dependency-provider contract",
   "source paths are non-empty, NUL-free, bounded by caller max_path_bytes, and consumed without canonicalization or basename/path rewriting",
@@ -26,5 +27,5 @@ tests = "aligned"
 documentation = "aligned"
 decisions = "not_applicable"
 tasks = "aligned"
-evidence = "pending"
+evidence = "aligned"
 repository = "aligned"
