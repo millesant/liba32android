@@ -11,6 +11,7 @@
 
 #include "compat/a32_libdl_close_transaction.h"
 #include "compat/a32_libdl_open_transaction.h"
+#include "compat/a32_libdl_unload_transaction.h"
 #include "elf/elf32_linker_strings.h"
 #include "memory/guest_memory.h"
 
@@ -48,12 +49,14 @@ A32LibDlService::A32LibDlService(
     std::span<A32LibDlHandle> handles,
     A32LibDlOptions options,
     A32LibDlCloseTransaction* close_transaction,
-    A32LibDlOpenTransaction* open_transaction) noexcept
+    A32LibDlOpenTransaction* open_transaction,
+    A32LibDlUnloadTransaction* unload_transaction) noexcept
     : link_map_(link_map),
       handles_(handles),
       options_(options),
       close_transaction_(close_transaction),
-      open_transaction_(open_transaction) {
+      open_transaction_(open_transaction),
+      unload_transaction_(unload_transaction) {
     for (auto& handle : handles_) {
         handle = {};
     }
@@ -543,6 +546,32 @@ runtime::A32HostServiceDisposition A32LibDlService::handle(
     }
 
     if (svc_immediate == kA32LibDlDlcloseSvcImmediate) {
+        if (unload_transaction_ != nullptr) {
+            auto* mapped =
+                dynamic_cast<memory::MappedGuestMemory*>(&memory);
+            if (mapped == nullptr) {
+                set_error("dlclose: physical unload requires mapped memory");
+                regs[0] = 0xffffffffU;
+                return A32HostServiceDisposition::Handled;
+            }
+            const auto unloaded = unload_transaction_->close(
+                *mapped,
+                regs[0],
+                regs[13]);
+            if (!unloaded) {
+                set_error(
+                    unloaded.error ==
+                            A32LibDlUnloadTransactionError::InvalidHandle
+                        ? "dlclose: invalid handle"
+                        : std::string{"dlclose: unload transaction failed: "} +
+                              to_string(unloaded.error));
+                regs[0] = 0xffffffffU;
+                return A32HostServiceDisposition::Handled;
+            }
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+
         if (close_transaction_ != nullptr) {
             const auto closed = close_transaction_->close(
                 memory,
