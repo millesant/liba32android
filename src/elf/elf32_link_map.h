@@ -52,8 +52,9 @@ struct Elf32LinkMapReclamationPlan {
     // Stable ascending object indexes reachable from persistent roots or
     // caller-supplied live anchors.
     std::vector<std::size_t> reachable_objects;
-    // Unreachable objects exactly once in deterministic
-    // requester-before-dependency teardown order.
+    // Unreachable objects exactly once in deterministic reverse-postorder.
+    // Acyclic requesters precede unreachable dependencies; cycles remain
+    // deterministic and once-only.
     std::vector<std::size_t> reclaimable_objects;
 };
 
