@@ -454,3 +454,46 @@ This feature does not implement pthread creation/join/detach, attrs beyond
 null mutex attrs, recursive/errorcheck mutex types, condition variables,
 rwlocks, pthread_once, TLS keys, pthread_self ABI, process-shared semaphores,
 signals, host futexes, or a complete scheduler.
+
+## L32-C021 — Resident-object ARM32 libdl compatibility
+
+The compatibility layer may expose private SVC IDs `0xBC` through `0xC0`
+for ARM32 `dlopen`, `dlsym`, `dlclose`, `dlerror`, and `dladdr`.
+
+`A32LibDlService` borrows one caller-owned persistent `Elf32LinkMap`, a
+finite handle table, and caller-owned guest scratch buffers for `dlerror` and
+`Dl_info` strings. Synthetic guest handles are logical 32-bit opaque values
+chosen from a caller-selected range; host pointers are never exposed.
+
+This slice is resident-object only. `dlopen` accepts `RTLD_LAZY` or
+`RTLD_NOW` and may acquire/refcount only an object already present in the
+persistent link map by exact SONAME/identity, or the first root for a null
+filename. A missing resident object returns null and records a bounded
+`dlerror`. No filesystem/APK search, provider acquisition, new ELF mapping,
+relocation, constructor execution, or namespace mutation occurs inside the
+service.
+
+`dlsym` resolves a synthetic handle through the existing bounded graph-local
+symbol lookup. `RTLD_DEFAULT` searches the first root closure followed by
+caller-recorded global roots. `RTLD_NEXT` is explicitly unsupported and
+reports an error. `dlclose` decrements only the synthetic handle refcount;
+loaded objects remain mapped and no destructor/unload behavior is implied.
+
+`dlerror` copies one pending bounded error string into caller-provided guest
+scratch and clears it after one read. `dladdr` identifies the loaded object
+whose PT_LOAD range contains the guest address, publishes ARM32
+`Dl_info { dli_fname, dli_fbase, dli_sname, dli_saddr }` through logical guest
+pointers, and may report the nearest preceding dynamic symbol using the
+existing bounded symbol index/string-table readers.
+
+A reproducible freestanding ARM32 `libdl.so` shim exports the five functions
+as direct private-SVC stubs. Real integration must load it through the existing
+namespace-gated finite platform catalog beside one application-resident target
+DSO, eagerly relocate the consumer, execute all five shim paths, prove
+resident-object `dlopen`/exact `dlsym`, `dladdr` module/symbol metadata,
+refcount-only `dlclose`, and clear-on-read `dlerror`.
+
+Dynamic acquisition of missing objects, RTLD_GLOBAL/NOLOAD/NODELETE semantics,
+RTLD_NEXT caller-relative lookup, unload/refcount-driven FINI_ARRAY execution,
+persistent constructor/destructor called-state, and Android filesystem/search
+policy remain deferred.

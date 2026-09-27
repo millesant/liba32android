@@ -1,0 +1,101 @@
+name: ARM32 libdl shim
+
+on:
+  push:
+    branches: [bleeding]
+  pull_request:
+    branches: [bleeding]
+
+permissions:
+  contents: read
+
+jobs:
+  arm32-libdl-shim:
+    name: ARM32 libdl shim integration
+    runs-on: ubuntu-24.04
+    env:
+      NDK_VERSION: 27.3.13750724
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libboost-dev binutils
+
+      - name: Ensure pinned NDK
+        run: |
+          set -euxo pipefail
+          if [ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION"
+          fi
+          test -x "$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi26-clang"
+
+      - name: Build reproducible ARM32 libdl fixture
+        run: |
+          set -euxo pipefail
+          bash -n tools/fixtures/build_arm32_libdl_shim_fixture.sh
+          rm -rf build-fixtures/libdl build-fixtures/libdl-second
+          bash tools/fixtures/build_arm32_libdl_shim_fixture.sh             "$ANDROID_HOME/ndk/$NDK_VERSION"             build-fixtures/libdl
+          bash tools/fixtures/build_arm32_libdl_shim_fixture.sh             "$ANDROID_HOME/ndk/$NDK_VERSION"             build-fixtures/libdl-second
+
+          for file in libdl.so liba32android_libdl_consumer.so libfixture_dl_target.so; do
+            cmp "build-fixtures/libdl/$file" "build-fixtures/libdl-second/$file"
+          done
+
+          readelf -dW build-fixtures/libdl/libdl.so |
+            tee build-fixtures/libdl-shim-dynamic.txt
+          readelf -sW build-fixtures/libdl/libdl.so |
+            tee build-fixtures/libdl-shim-symbols.txt
+          readelf -dW build-fixtures/libdl/liba32android_libdl_consumer.so |
+            tee build-fixtures/libdl-consumer-dynamic.txt
+          readelf -rW build-fixtures/libdl/liba32android_libdl_consumer.so |
+            tee build-fixtures/libdl-consumer-relocations.txt
+          readelf -sW build-fixtures/libdl/libfixture_dl_target.so |
+            tee build-fixtures/libdl-provider-symbols.txt
+
+          grep -F 'Library soname: [libdl.so]' build-fixtures/libdl-shim-dynamic.txt
+          grep -F 'Shared library: [libdl.so]' build-fixtures/libdl-consumer-dynamic.txt
+          grep -F 'Shared library: [libfixture_dl_target.so]' build-fixtures/libdl-consumer-dynamic.txt
+          for symbol in dlopen dlsym dlclose dlerror dladdr; do
+            grep -F "$symbol" build-fixtures/libdl-shim-symbols.txt
+            grep -F 'R_ARM_JUMP_SLOT' build-fixtures/libdl-consumer-relocations.txt |
+              grep -F "$symbol"
+          done
+          grep -F 'fixture_dynamic_value' build-fixtures/libdl-provider-symbols.txt
+          sha256sum             build-fixtures/libdl/libdl.so             build-fixtures/libdl/liba32android_libdl_consumer.so             build-fixtures/libdl/libfixture_dl_target.so
+
+      - name: Configure integration
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLIBA32ANDROID_BUILD_TESTS=ON -DLIBA32ANDROID_ARM32_LIBDL_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/libdl/liba32android_libdl_consumer.so" -DLIBA32ANDROID_ARM32_LIBDL_SHIM_PATH="$GITHUB_WORKSPACE/build-fixtures/libdl/libdl.so" -DLIBA32ANDROID_ARM32_LIBDL_PROVIDER_PATH="$GITHUB_WORKSPACE/build-fixtures/libdl/libfixture_dl_target.so"
+
+      - name: Build integration
+        run: cmake --build build --target compat_libdl_shim_integration_test --parallel 2
+
+      - name: Test integration
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build --output-on-failure -R '^a32_libdl_shim_integration$'
+          build/compat_libdl_shim_integration_test             build-fixtures/libdl/liba32android_libdl_consumer.so             build-fixtures/libdl/libdl.so             build-fixtures/libdl/libfixture_dl_target.so |
+            tee build-fixtures/libdl-integration-evidence.txt
+          grep -F 'fixture.libdl.object_count=3' build-fixtures/libdl-integration-evidence.txt
+          grep -F 'fixture.libdl.needed=libdl.so' build-fixtures/libdl-integration-evidence.txt
+          grep -F 'fixture.libdl.namespace_access=linked' build-fixtures/libdl-integration-evidence.txt
+          grep -F 'fixture.libdl.service_calls=6' build-fixtures/libdl-integration-evidence.txt
+          grep -F 'fixture.libdl.status=PASS' build-fixtures/libdl-integration-evidence.txt
+
+      - name: Upload libdl integration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm32-libdl-shim
+          path: |
+            build-fixtures/libdl/libdl.so
+            build-fixtures/libdl/liba32android_libdl_consumer.so
+            build-fixtures/libdl/libfixture_dl_target.so
+            build-fixtures/libdl-shim-dynamic.txt
+            build-fixtures/libdl-shim-symbols.txt
+            build-fixtures/libdl-consumer-dynamic.txt
+            build-fixtures/libdl-consumer-relocations.txt
+            build-fixtures/libdl-provider-symbols.txt
+            build-fixtures/libdl-integration-evidence.txt
+          if-no-files-found: error
+          retention-days: 14

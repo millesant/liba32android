@@ -39,6 +39,12 @@ set(LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH "" CACHE FILEPATH
     "Optional generated ARM32 Android partial-libc consumer DSO used by feature-032 integration")
 set(LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH "" CACHE FILEPATH
     "Optional generated ARM32 Android partial libc.so shim used by feature-032 integration")
+set(LIBA32ANDROID_ARM32_LIBDL_CONSUMER_PATH "" CACHE FILEPATH
+    "Optional generated ARM32 Android libdl consumer DSO used by feature-046 integration")
+set(LIBA32ANDROID_ARM32_LIBDL_SHIM_PATH "" CACHE FILEPATH
+    "Optional generated ARM32 Android libdl.so compatibility shim used by feature-046 integration")
+set(LIBA32ANDROID_ARM32_LIBDL_PROVIDER_PATH "" CACHE FILEPATH
+    "Optional generated ARM32 Android resident libdl target DSO used by feature-046 integration")
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibA32AndroidDependencies.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibA32AndroidRuntime.cmake)

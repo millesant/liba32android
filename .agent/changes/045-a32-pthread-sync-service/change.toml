@@ -2,10 +2,11 @@ schema = 1
 id = "045-a32-pthread-sync-service"
 kind = "feature"
 size = "S2"
-status = "implemented"
+status = "done"
 workflow = "feature"
 control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
 base_revision = "d9e6dcfd7cf49bfc08f40a1f4db4862c7e570fdd"
+result_revision = "f03514571104ae0c20c401432674583b5fba3ec9"
 acceptance = [
   "supplied FMOD/VLC evidence identifies default mutex and semaphore APIs in the shared pthread/semaphore import surface while broader thread/TLS APIs remain explicitly deferred",
   "A32PthreadSyncService uses finite caller-owned mutex, semaphore, and waiter metadata keyed only by logical guest object addresses and a caller-selected non-zero logical thread ID",
@@ -25,5 +26,5 @@ tests = "aligned"
 documentation = "aligned"
 decisions = "not_applicable"
 tasks = "aligned"
-evidence = "pending"
+evidence = "aligned"
 repository = "aligned"

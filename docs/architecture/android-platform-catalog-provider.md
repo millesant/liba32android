@@ -1,6 +1,6 @@
 # Android finite platform compatibility catalog
 
-Status: feature 031 implementation prepared OFF-REF; exact-head validation NOT RUN
+Status: feature 031 accepted; finite catalog reused by features 032+ including feature 046 libdl
 
 ## Need
 
@@ -37,10 +37,12 @@ The existing feature-028 `A32AndroidPlatformProvider` remains as a
 source-compatible one-slot `liblog.so` convenience provider.
 
 The new finite provider composes directly with feature 029's namespace policy.
-Focused coverage uses a two-entry `liblog.so` + `libc.so` catalog and an
-`app -> platform` explicit SONAME link, proving `libc.so` can be gated by the
-same requester-aware namespace policy before any future guest libc shim is
-added.
+Focused coverage established a two-entry `liblog.so` + `libc.so` catalog and
+an `app -> platform` explicit SONAME link. Later partial-libc integrations
+reuse the same seam. Feature 046 additionally uses the generic finite catalog
+for generated `libdl.so` while an application catalog supplies a separate
+resident target DSO, proving platform libdl selection remains namespace-gated
+without embedding pathname/search policy.
 
 ## Ownership
 

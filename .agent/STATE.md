@@ -3,11 +3,11 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `045-a32-pthread-sync-service` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: `046-a32-libdl-resident-service` — IMPLEMENTED, exact-head validation NOT RUN.
 
 ## Phase
 
-Features 011-044 are accepted.
+Features 011-045 are accepted.
 
 Feature 039 passed all five exact-head checks at
 `9160aa24c9f1cebdfe65a79ecc1543a662bec5c4`.
@@ -101,14 +101,31 @@ feature-044 Suspended seam for contended lock/zero-count wait, transfers grants
 before wake publication, and extends the real partial `libc.so` from thirty
 to thirty-nine exports with five mutex and four semaphore functions.
 
-Feature 045 exact-head validation: NOT RUN.
+Feature 045 passed all five required exact-head checks at
+`f03514571104ae0c20c401432674583b5fba3ec9`:
+- Android arm64-v8a cross-build `108570667500` — PASS.
+- Android x86_64 address-space probe `108570667456` — PASS.
+- Linux A32 smoke `108570667328` — PASS.
+- ARM32 liblog shim integration `108570666873` — PASS.
+- ARM32 libc memory string shim integration `108570666417` — PASS.
+
+Feature 046 is now integrated. It adds a resident-object ARM32 `libdl.so`
+compatibility service/shim for `dlopen/dlsym/dlclose/dlerror/dladdr` over the
+persistent ELF32 link map. Handles and returned pointers remain logical guest
+values; missing-object acquisition, unload, and filesystem/search stay outside
+this slice. A dedicated real ARM32 fixture joins namespace-gated `libdl.so`
+with an application-resident target DSO and exercises lookup/address/error
+paths through guest wrappers.
+
+Feature 046 exact-head validation: NOT RUN.
 
 Prepared order remains:
-`046 -> 047 -> 048 -> 049`.
+`047 -> 048 -> 049`.
 
 ## Deferred / partial
 
 Legacy DT_INIT/DT_FINI, __aeabi_atexit/static-destructor registration, and
-persistent lifecycle state, broader pthread/thread creation/TLS services, libdl, libm,
-Android filesystem/search, stable embedding API, and device execution remain
+persistent lifecycle state, broader pthread/thread creation/TLS services,
+dynamic libdl acquisition/unload semantics, libm, Android filesystem/search,
+stable embedding API, and device execution remain
 later work.

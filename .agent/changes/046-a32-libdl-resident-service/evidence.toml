@@ -1,0 +1,38 @@
+schema = 1
+change = "046-a32-libdl-resident-service"
+
+[[evidence]]
+id = "target-libdl-surface"
+kind = "artifact"
+status = "observed"
+claim = "The supplied FMOD ARM32 library imports dlopen/dlsym/dlclose/dlerror and the supplied VLC ARMv7 set additionally imports dladdr."
+source = "docs/research/evidence/arm32-libdl-imports-2026-09-27.md"
+result = "Bounded readelf inspection records the five-function union and identifies FMOD/VLC objects using each surface."
+limitations = "Static imports and embedded SONAME strings do not prove which libraries are opened on every runtime path."
+
+[[evidence]]
+id = "resident-libdl-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused direct coverage proves resident exact-name dlopen/refcount, logical handle recycling, missing dlsym error publication/clear, invalid close, and Dl_info module publication."
+source = "tests/compat/a32_libdl.cpp"
+result = "Feature 046 source/tests are integrated; exact-head execution has not yet been observed."
+limitations = "Synthetic link-map coverage does not prove Android filesystem/search or unload behavior."
+
+[[evidence]]
+id = "real-libdl-shim-integration"
+kind = "test"
+status = "not_run"
+claim = "Pinned-NDK libdl.so/consumer/provider integration loads through app plus namespace-gated platform catalogs, eagerly relocates the consumer, and executes dlopen/dlsym/dladdr/dlclose/dlerror against a resident provider."
+source = "tests/compat/a32_libdl_shim.cpp and .github/workflows/compat-libdl-shim.yml"
+result = "Feature 046 real integration is prepared; exact-head execution has not yet been observed."
+limitations = "The provider is intentionally preloaded/resident; missing-object dynamic acquisition is outside this feature."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "Feature 046 passes the required exact-head checks after feature 045 is accepted."
+source = "GitHub commit checks on the feature-046 integration revision"
+result = ""
+limitations = "Feature 046 remains implemented rather than done until terminal exact-head checks are observed."

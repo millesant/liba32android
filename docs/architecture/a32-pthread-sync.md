@@ -1,6 +1,6 @@
 # A32 pthread mutex/semaphore synchronization service
 
-Status: feature 045 implemented; exact-head validation pending
+Status: feature 045 accepted; exact-head validation PASSed
 
 ## Goal
 
