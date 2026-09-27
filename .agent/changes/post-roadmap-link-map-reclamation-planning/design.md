@@ -14,9 +14,12 @@ counter and cannot underflow or double-release. `global_scope_objects` is
 visibility metadata only and does not retain an otherwise unreachable object.
 
 A successful plan contains reachable object indexes in stable ascending index
-order and unreachable objects in deterministic requester-before-dependency
-teardown order. The latter is produced from the unreachable subgraph only and
-is suitable as input to a later lifecycle/reclamation transaction.
+order and unreachable objects in deterministic reverse-postorder teardown order. For
+acyclic edges this places requesters before unreachable dependencies; cycle
+members are visited once in deterministic traversal order because no strict
+requester-first order can satisfy every edge in a cycle. The latter is produced
+from the unreachable subgraph only and is suitable as input to a later
+lifecycle/reclamation transaction.
 
 Before success the planner validates its bounded object ceiling, persistent root
 records, dependency-edge targets/names, and additional live anchors. It is
