@@ -7,16 +7,22 @@
 #include <string_view>
 #include <vector>
 
+#include "compat/a32_aeabi_atexit.h"
 #include "compat/a32_libdl.h"
 #include "compat/a32_libdl_open_transaction.h"
 #include "elf/elf32_dependency_resolver.h"
 #include "elf/elf32_link_map.h"
 #include "memory/guest_memory.h"
 #include "runtime/a32_service_dispatch.h"
+#include "runtime/a32_service_registry.h"
 
 namespace {
 
+using liba32android::compat::A32AeabiAtexitRecord;
+using liba32android::compat::A32AeabiAtexitService;
+using liba32android::compat::A32AeabiObjectDsoBinding;
 using liba32android::compat::A32LibDlHandle;
+using liba32android::compat::kA32AeabiAtexitSvcImmediate;
 using liba32android::compat::A32LibDlOpenTransaction;
 using liba32android::compat::A32LibDlOpenTransactionError;
 using liba32android::compat::A32LibDlOpenTransactionOptions;
@@ -26,6 +32,7 @@ using liba32android::compat::kA32LibDlDlopenSvcImmediate;
 using liba32android::compat::kA32RtldNow;
 using liba32android::elf::Elf32DependencyCatalogEntry;
 using liba32android::elf::Elf32DependencyCatalogProvider;
+using liba32android::elf::Elf32LifecycleExecutionContext;
 using liba32android::elf::Elf32LifecycleObjectStatus;
 using liba32android::elf::Elf32LifecycleState;
 using liba32android::elf::Elf32LinkMap;
@@ -33,6 +40,8 @@ using liba32android::elf::Elf32LinkMapObjectState;
 using liba32android::memory::MappedGuestMemory;
 using liba32android::memory::MemoryPermission;
 using liba32android::runtime::A32HostServiceDisposition;
+using liba32android::runtime::A32HostServiceRegistry;
+using liba32android::runtime::A32HostServiceRegistryEntry;
 
 constexpr std::size_t kHeaderSize = 52U;
 constexpr std::size_t kProgramHeaderSize = 32U;
@@ -355,6 +364,93 @@ int test_preconstructor_failure_reclaims_added_root() {
     return 0;
 }
 
+int test_open_constructor_learns_dso_binding() {
+    MappedGuestMemory memory;
+    const auto rwx =
+        MemoryPermission::Read |
+        MemoryPermission::Write |
+        MemoryPermission::Execute;
+    const std::uint32_t code_page = 0x10000U;
+    if (!memory.map(code_page, memory.page_size(), rwx)) {
+        return fail("could not map DSO-binding constructor page");
+    }
+
+    constexpr std::array<std::uint8_t, 32> code{
+        0x0C, 0x00, 0x9F, 0xE5,  // ldr r0, [pc, #12]
+        0x0C, 0x10, 0x9F, 0xE5,  // ldr r1, [pc, #12]
+        0x0C, 0x20, 0x9F, 0xE5,  // ldr r2, [pc, #12]
+        0xD2, 0x00, 0x00, 0xEF,  // svc #0xd2
+        0x1E, 0xFF, 0x2F, 0xE1,  // bx lr
+        0xDD, 0xCC, 0xBB, 0xAA,  // object
+        0x40, 0x00, 0x01, 0x00,  // destructor word
+        0x00, 0x00, 0x2D, 0xA3,  // opaque DSO
+    };
+    if (!memory.write(code_page, code)) {
+        return fail("could not stage DSO-binding constructor code");
+    }
+
+    const std::array<Elf32DependencyCatalogEntry, 0> entries{};
+    Elf32DependencyCatalogProvider provider{std::span{entries}};
+    Elf32LinkMap link_map;
+    link_map.graph.objects.emplace_back();
+    link_map.graph.objects[0].identity = "resident-binding";
+    link_map.graph.objects[0].linker_metadata.init_function = code_page;
+    link_map.roots.push_back({
+        .object_index = 0U,
+        .policy = liba32android::elf::Elf32LinkMapRootPolicy::Local,
+    });
+    link_map.object_states = {Elf32LinkMapObjectState::Active};
+
+    Elf32LifecycleState lifecycle;
+    lifecycle.objects.resize(1U);
+    std::array<A32LibDlHandle, 1> handles{};
+    std::array<A32AeabiAtexitRecord, 2> records{};
+    std::array<A32AeabiObjectDsoBinding, 1> bindings{};
+    Elf32LifecycleExecutionContext context;
+    A32AeabiAtexitService registrations{
+        std::span{records},
+        std::span{bindings},
+        &context,
+    };
+    const std::array<A32HostServiceRegistryEntry, 1> service_entries{{
+        {kA32AeabiAtexitSvcImmediate, &registrations},
+    }};
+    A32HostServiceRegistry registry{std::span{service_entries}};
+
+    auto options = transaction_options();
+    options.lifecycle.execution.service_handler = &registry;
+    options.lifecycle.execution.max_service_calls_per_call = 1U;
+    options.lifecycle.execution.execution_context = &context;
+    A32LibDlOpenTransaction transaction{
+        memory,
+        link_map,
+        provider,
+        std::span{handles},
+        lifecycle,
+        options,
+    };
+
+    const auto opened =
+        transaction.open("resident-binding", 0x8ff8U);
+    bool ambiguous = false;
+    const auto learned =
+        registrations.dso_for_object(0U, ambiguous);
+    if (!opened ||
+        opened.guest_handle != 0x70000000U ||
+        opened.object_index != std::optional<std::size_t>{0U} ||
+        lifecycle.objects[0].constructors !=
+            Elf32LifecycleObjectStatus::Complete ||
+        registrations.record_count() != 1U ||
+        registrations.binding_count() != 1U ||
+        ambiguous ||
+        learned != 0xA32D0000U ||
+        context.object_index.has_value() ||
+        handles[0].refcount != 1U) {
+        return fail("dlopen constructor did not learn DSO binding before handle publication");
+    }
+    return 0;
+}
+
 int test_constructor_failure_remains_resident_and_latched() {
     MappedGuestMemory memory;
     const std::array<Elf32DependencyCatalogEntry, 0> entries{};
@@ -410,6 +506,10 @@ int main() {
     }
     if (const int status =
             test_preconstructor_failure_reclaims_added_root();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_open_constructor_learns_dso_binding();
         status != 0) {
         return status;
     }
