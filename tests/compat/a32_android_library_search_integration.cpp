@@ -191,7 +191,7 @@ int main(int argc, char** argv) {
     const auto loaded = load_elf32_dependency_graph(
         memory,
         Elf32DependencyLoadSource{
-            .identity = kRootIdentity,
+            .identity = std::string{kRootIdentity},
             .image = root_image,
         },
         provider,
