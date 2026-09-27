@@ -36,7 +36,7 @@ enum class Elf32LinkMapReleaseError : std::uint8_t {
 
 struct Elf32LinkMapReleaseResult {
     Elf32LinkMapReleaseError error{Elf32LinkMapReleaseError::None};
-    std::size_t released_root{};
+    std::optional<std::size_t> released_root;
     std::vector<std::size_t> reclaimed_objects;
     std::size_t mappings_unmapped{};
     std::optional<std::size_t> failing_object;
@@ -46,6 +46,17 @@ struct Elf32LinkMapReleaseResult {
         return error == Elf32LinkMapReleaseError::None;
     }
 };
+
+// Physically reclaim every currently Active object that is unreachable from
+// persistent roots plus additional live anchors. This is the sweep used after
+// an external owner disappears without removing another persistent root.
+[[nodiscard]] Elf32LinkMapReleaseResult
+reclaim_elf32_link_map_unreachable(
+    memory::MappedGuestMemory& memory,
+    Elf32LinkMap& link_map,
+    const Elf32LifecycleState& lifecycle,
+    std::span<const std::size_t> additional_live_anchors,
+    const Elf32LinkMapReleaseOptions& options);
 
 // Release one exact persistent root and physically reclaim objects that become
 // unreachable from all remaining persistent roots plus additional live anchors.
