@@ -85,6 +85,19 @@ public:
         std::uint32_t guest_handle,
         std::optional<std::uint32_t> nested_stack_top = std::nullopt);
 
+    // Finalize one exact object without changing synthetic-handle ownership.
+    // Complete destructor state is an idempotent success so a higher ownership
+    // transaction may safely retry after a later object or reclamation failed.
+    [[nodiscard]] A32LibDlCloseTransactionResult finalize_object(
+        memory::GuestMemory& memory,
+        std::size_t object_index,
+        std::optional<std::uint32_t> nested_stack_top = std::nullopt);
+
+    [[nodiscard]] bool matches_state(
+        const elf::Elf32LinkMap& link_map,
+        std::span<const A32LibDlHandle> handles,
+        const elf::Elf32LifecycleState& lifecycle) const noexcept;
+
 private:
     [[nodiscard]] bool options_valid() const noexcept;
     [[nodiscard]] std::optional<std::size_t> find_handle(
