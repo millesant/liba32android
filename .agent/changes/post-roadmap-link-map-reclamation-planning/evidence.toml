@@ -1,0 +1,29 @@
+schema = 1
+change = "post-roadmap-link-map-reclamation-planning"
+
+[[evidence]]
+id = "stable-index-boundary"
+kind = "repository"
+status = "observed"
+claim = "Persistent link-map object indexes are stable and existing append operations only add objects without reordering prior entries."
+source = "src/elf/elf32_link_map.h and src/elf/elf32_dependency_loader.h"
+result = "Accepted feature-016 contracts require stable accumulated object indexes, so reclamation planning must not assume vector erasure is safe."
+limitations = "This establishes the storage constraint, not unload semantics."
+
+[[evidence]]
+id = "focused-reclamation-planner"
+kind = "test"
+status = "not_run"
+claim = "Focused regression proves persistent roots plus live anchors determine cycle-safe reachability, global-only visibility does not retain objects, and unreachable output is deterministic and bounded."
+source = "tests/elf/unit/elf32_dependency_loader.cpp"
+result = ""
+limitations = "Actual destructor execution and guest unmapping remain out of scope."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "The reclamation-planning follow-up passes required exact-head checks before closure."
+source = "GitHub commit checks on the eventual integration revision"
+result = ""
+limitations = "The change remains active until terminal exact-head success is observed."
