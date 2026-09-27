@@ -15,6 +15,7 @@ using liba32android::elf::Elf32DependencyGraph;
 using liba32android::elf::Elf32FunctionArrayDecodeError;
 using liba32android::elf::Elf32FunctionArrayDecodeOptions;
 using liba32android::elf::Elf32FunctionArrayMetadata;
+using liba32android::elf::Elf32FiniExecutionOptions;
 using liba32android::elf::Elf32FiniPlanError;
 using liba32android::elf::Elf32FiniPlanOptions;
 using liba32android::elf::Elf32InitCall;

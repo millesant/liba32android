@@ -813,46 +813,40 @@ int main(int argc, char** argv) {
     ++completed_calls;
 
 
-    const auto registered_destructor = lookup_elf32_graph_symbol(
-        memory,
-        graph_result.graph,
-        0U,
-        "fixture_registered_destructor",
-        symbol_options());
-    const auto dso_handle_symbol = lookup_elf32_graph_symbol(
-        memory,
-        graph_result.graph,
-        0U,
-        "fixture_dso_handle",
-        symbol_options());
-    if (!registered_destructor || !dso_handle_symbol ||
-        registered_destructor.symbol.object_index != 0U ||
-        dso_handle_symbol.symbol.object_index != 0U) {
-        return fail("could not resolve libc finalization fixture symbols");
-    }
-
     const std::uint32_t atexit_object = *data + 0x580U;
     constexpr std::array<std::uint8_t, 4> zero_finalize_marker{{0,0,0,0}};
     if (!memory.write(atexit_object, zero_finalize_marker)) {
         return fail("could not clear registered destructor marker");
     }
-    const std::uint32_t atexit_destructor =
-        registered_destructor.symbol.symbol.guest_value;
-    const std::uint32_t atexit_dso_handle =
-        dso_handle_symbol.symbol.symbol.guest_value;
+
+    // Let the ARM32 consumer compute both the destructor function value and
+    // &fixture_dso_handle. This is the same guest relocation path later used
+    // by fixture_on_dlclose -> __cxa_finalize(&fixture_dso_handle), so the
+    // registration selector and FINI selector cannot diverge due to a
+    // host-side symbol-address assumption.
     result = run_wrapper(
-        memory, graph_result.graph, "fixture_aeabi_atexit", registry,
-        stack_top, *stop,
-        atexit_object, atexit_destructor, atexit_dso_handle);
+        memory,
+        graph_result.graph,
+        "fixture_register_static_destructor",
+        registry,
+        stack_top,
+        *stop,
+        atexit_object,
+        0U,
+        0U);
     if (!result || !*result ||
         result->services_handled != 1U ||
         result->regs[0] != 0U ||
         atexit_service.record_count() != 1U ||
         atexit_service.records()[0].object != atexit_object ||
-        atexit_service.records()[0].destructor != atexit_destructor ||
-        atexit_service.records()[0].dso_handle != atexit_dso_handle) {
-        return fail("real __aeabi_atexit wrapper registration failed");
+        atexit_service.records()[0].destructor == 0U ||
+        atexit_service.records()[0].dso_handle == 0U) {
+        return fail("real guest static-destructor registration failed");
     }
+    const std::uint32_t atexit_destructor =
+        atexit_service.records()[0].destructor;
+    const std::uint32_t atexit_dso_handle =
+        atexit_service.records()[0].dso_handle;
     ++completed_calls;
 
     const auto fini_plan = plan_elf32_fini_array_calls(
@@ -884,6 +878,28 @@ int main(int argc, char** argv) {
         !cxa_finalize_service.last_result().has_value() ||
         !*cxa_finalize_service.last_result() ||
         cxa_finalize_service.last_result()->callbacks_completed != 1U) {
+        std::cerr
+            << "service-aware FINI diagnostic: lifecycle_error="
+            << static_cast<unsigned>(fini_executed.error)
+            << " calls=" << fini_executed.calls_completed
+            << " svc="
+            << fini_executed.failing_svc_immediate.value_or(0U)
+            << " marker=" << read_u32_le(memory, atexit_object)
+            << " record_status="
+            << static_cast<unsigned>(atexit_service.records()[0].status)
+            << " destructor=" << atexit_destructor
+            << " dso=" << atexit_dso_handle;
+        if (cxa_finalize_service.last_result().has_value()) {
+            std::cerr
+                << " finalize_error="
+                << static_cast<unsigned>(
+                    cxa_finalize_service.last_result()->error)
+                << " finalize_callbacks="
+                << cxa_finalize_service.last_result()->callbacks_completed;
+        } else {
+            std::cerr << " finalize_result=missing";
+        }
+        std::cerr << '\n';
         return fail("service-aware FINI_ARRAY did not run linked __cxa_finalize path");
     }
     fini_array_calls = fini_executed.calls_completed;

@@ -29,10 +29,19 @@ result = "Integrated on bleeding; exact-head execution has not yet been observed
 limitations = "The integration does not yet bind the DSO word to libdl/link-map ownership or unmap objects."
 
 [[evidence]]
+id = "failed-initial-exact-head"
+kind = "validation"
+status = "failed"
+claim = "The first linked __cxa_finalize/service-aware FINI integration revision was not acceptable."
+source = "GitHub commit checks at 07ab332fc0566da3218cc3dcee6c66d12b143ded"
+result = "Seven checks passed. Linux A32 smoke 108704827414 failed in Build because tests/elf/unit/elf32_lifecycle.cpp omitted the Elf32FiniExecutionOptions alias. ARM32 libc memory string shim integration 108704826917 built successfully but failed its controlled service-aware FINI_ARRAY assertion."
+limitations = "Failure logs identified the compile defect exactly. The original libc assertion did not expose which subcondition failed, so the correction also adds bounded failure diagnostics."
+
+[[evidence]]
 id = "exact-head-validation"
 kind = "validation"
 status = "not_run"
-claim = "The linked __cxa_finalize/service-aware FINI follow-up passes required exact-head checks before closure."
-source = "GitHub commit checks on the integration revision"
+claim = "The corrected linked __cxa_finalize/service-aware FINI follow-up passes required exact-head checks before closure."
+source = "GitHub commit checks on the corrected integration revision"
 result = ""
 limitations = "The follow-up remains implemented rather than done until terminal exact-head success is observed."

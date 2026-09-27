@@ -29,7 +29,17 @@ executes FINI through the service-aware lifecycle seam, verifies the guest
 destructor side effect and Complete state, then proves a repeated direct
 finalize wrapper does not replay it.
 
-Exact-head validation: NOT RUN.
+Exact-head validation: FAILED at `07ab332fc0566da3218cc3dcee6c66d12b143ded`.
+Linux A32 smoke failed to compile the new lifecycle regression because its
+`Elf32FiniExecutionOptions` test alias was missing. The ARM32 partial-libc
+integration reached its controlled FINI_ARRAY assertion but did not complete
+the expected registered-finalizer path. The correction restores the alias and
+moves static-destructor registration into the ARM32 consumer, so the registered
+destructor/DSO words and later `__cxa_finalize(&fixture_dso_handle)` use the
+same guest relocation path. A bounded diagnostic is emitted only if the FINI
+assertion fails again.
+
+Corrected exact-head validation: NOT RUN.
 
 ## Deferred / partial
 

@@ -199,6 +199,14 @@ void fixture_registered_destructor(void* object) {
 }
 
 __attribute__((visibility("default"), noinline))
+int fixture_register_static_destructor(void* object) {
+    return __aeabi_atexit(
+        object,
+        fixture_registered_destructor,
+        &fixture_dso_handle);
+}
+
+__attribute__((visibility("default"), noinline))
 void fixture_cxa_finalize(void* dso_handle) {
     __cxa_finalize(dso_handle);
 }
