@@ -1,0 +1,38 @@
+schema = 1
+change = "post-roadmap-a32-libc-cxa-service-aware-fini"
+
+[[evidence]]
+id = "android-finalize-order"
+kind = "research"
+status = "observed"
+claim = "Android shared-object CRT uses __cxa_finalize from teardown and linker destruction runs reverse FINI_ARRAY before DT_FINI."
+source = "docs/research/evidence/android-cxa-finalize-dlclose-2026-09-27.md"
+result = "Accepted primary-source evidence establishes the Android lifecycle shape targeted by the integration."
+limitations = "The project does not yet own dlclose reachability or mapping reclamation."
+
+[[evidence]]
+id = "service-aware-lifecycle-regression"
+kind = "test"
+status = "not_run"
+claim = "A real ARM FINI call executes an SVC through the bounded host-service registry and resumes to the lifecycle return PC."
+source = "tests/elf/unit/elf32_lifecycle.cpp"
+result = "Integrated on bleeding; exact-head execution has not yet been observed."
+limitations = "Focused regression uses a synthetic marker service rather than the libc finalizer."
+
+[[evidence]]
+id = "real-linked-cxa-fini-integration"
+kind = "test"
+status = "not_run"
+claim = "The forty-one-symbol partial libc resolves __cxa_finalize and a controlled consumer FINI_ARRAY entry reaches SVC 0xD3, finalizes an exact registration, executes the guest destructor, resumes FINI, and preserves once-only state."
+source = "tests/compat/a32_libc_memory_string_shim.cpp and .github/workflows/compat-libc-shim.yml"
+result = "Integrated on bleeding; exact-head execution has not yet been observed."
+limitations = "The integration does not yet bind the DSO word to libdl/link-map ownership or unmap objects."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "The linked __cxa_finalize/service-aware FINI follow-up passes required exact-head checks before closure."
+source = "GitHub commit checks on the integration revision"
+result = ""
+limitations = "The follow-up remains implemented rather than done until terminal exact-head success is observed."

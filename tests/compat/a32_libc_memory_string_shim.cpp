@@ -23,6 +23,7 @@
 #include "cpu/a32_cpu.h"
 #include "elf/elf32_dependency_graph.h"
 #include "elf/elf32_dependency_loader.h"
+#include "elf/elf32_lifecycle.h"
 #include "elf/elf32_relocation.h"
 #include "elf/elf32_symbol_lookup.h"
 #include "memory/guest_memory.h"
@@ -36,7 +37,10 @@ using liba32android::compat::A32AndroidNamespaceBinding;
 using liba32android::compat::A32AndroidNamespaceLink;
 using liba32android::compat::A32AndroidPlatformCatalogProvider;
 using liba32android::compat::A32AeabiAtexitRecord;
+using liba32android::compat::A32AeabiAtexitRecordStatus;
 using liba32android::compat::A32AeabiAtexitService;
+using liba32android::compat::A32AeabiFinalizeOptions;
+using liba32android::compat::A32CxaFinalizeService;
 using liba32android::compat::A32LibcGuestErrnoState;
 using liba32android::compat::A32LibcGuestHeap;
 using liba32android::compat::A32LibcHeapBlock;
@@ -50,6 +54,7 @@ using liba32android::compat::A32LibcIntegerService;
 using liba32android::compat::A32LibcMemoryStringOptions;
 using liba32android::compat::A32LibcMemoryStringService;
 using liba32android::compat::kA32AeabiAtexitSvcImmediate;
+using liba32android::compat::kA32CxaFinalizeSvcImmediate;
 using liba32android::compat::kA32LibcMemchrSvcImmediate;
 using liba32android::compat::kA32LibcMemcmpSvcImmediate;
 using liba32android::compat::kA32LibcMemcpySvcImmediate;
@@ -91,12 +96,16 @@ using liba32android::elf::Elf32DependencyLoadOptions;
 using liba32android::elf::Elf32DependencyLoadSource;
 using liba32android::elf::Elf32DependencyProvider;
 using liba32android::elf::Elf32DependencyProviderChain;
+using liba32android::elf::Elf32FiniExecutionOptions;
+using liba32android::elf::Elf32FiniPlanOptions;
 using liba32android::elf::Elf32GraphSymbolLookupResult;
 using liba32android::elf::Elf32RelocationOptions;
 using liba32android::elf::Elf32SymbolLookupOptions;
 using liba32android::elf::apply_elf32_combined_relocations;
+using liba32android::elf::execute_elf32_fini_calls;
 using liba32android::elf::kRArmJumpSlot;
 using liba32android::elf::load_elf32_dependency_graph;
+using liba32android::elf::plan_elf32_fini_array_calls;
 using liba32android::elf::lookup_elf32_graph_symbol;
 using liba32android::memory::MappedGuestMemory;
 using liba32android::memory::MemoryPermission;
@@ -322,13 +331,13 @@ int main(int argc, char** argv) {
         return fail("libc shim dependency/provider metadata was incorrect");
     }
 
-    constexpr std::array<std::string_view, 40> shim_names{{
+    constexpr std::array<std::string_view, 41> shim_names{{
         "memcpy", "memmove", "memset", "memcmp", "memchr",
         "strlen", "strcmp", "strncmp",
         "memmem", "strcpy", "strncpy",
         "atoi", "strtol", "__errno",
         "malloc", "calloc", "realloc", "free",
-        "__aeabi_atexit",
+        "__aeabi_atexit", "__cxa_finalize",
         "__aeabi_memcpy", "__aeabi_memcpy4", "__aeabi_memcpy8",
         "__aeabi_memmove", "__aeabi_memmove4", "__aeabi_memmove8",
         "__aeabi_memset", "__aeabi_memset4", "__aeabi_memset8",
@@ -456,8 +465,17 @@ int main(int argc, char** argv) {
     sync_service.set_current_thread_id(1U);
     std::array<A32AeabiAtexitRecord, 8> atexit_records{};
     A32AeabiAtexitService atexit_service{std::span{atexit_records}};
+    A32CxaFinalizeService cxa_finalize_service{
+        atexit_service,
+        A32AeabiFinalizeOptions{
+            .stack_top = stack_top,
+            .return_pc = *stop,
+            .max_instructions_per_call = kInstructionBudget,
+            .max_callbacks = 8U,
+        },
+    };
 
-    const std::array<A32HostServiceRegistryEntry, 28> services{{
+    const std::array<A32HostServiceRegistryEntry, 29> services{{
         {kA32LibcMemcpySvcImmediate, &service},
         {kA32LibcMemmoveSvcImmediate, &service},
         {kA32LibcMemsetSvcImmediate, &service},
@@ -486,10 +504,12 @@ int main(int argc, char** argv) {
         {kA32SemWaitSvcImmediate, &sync_service},
         {kA32SemPostSvcImmediate, &sync_service},
         {kA32AeabiAtexitSvcImmediate, &atexit_service},
+        {kA32CxaFinalizeSvcImmediate, &cxa_finalize_service},
     }};
     A32HostServiceRegistry registry{std::span{services}};
 
     std::size_t completed_calls = 0;
+    std::size_t fini_array_calls = 0;
 
     auto result = run_wrapper(
         memory, graph_result.graph, "fixture_memcpy", registry,
@@ -793,9 +813,33 @@ int main(int argc, char** argv) {
     ++completed_calls;
 
 
+    const auto registered_destructor = lookup_elf32_graph_symbol(
+        memory,
+        graph_result.graph,
+        0U,
+        "fixture_registered_destructor",
+        symbol_options());
+    const auto dso_handle_symbol = lookup_elf32_graph_symbol(
+        memory,
+        graph_result.graph,
+        0U,
+        "fixture_dso_handle",
+        symbol_options());
+    if (!registered_destructor || !dso_handle_symbol ||
+        registered_destructor.symbol.object_index != 0U ||
+        dso_handle_symbol.symbol.object_index != 0U) {
+        return fail("could not resolve libc finalization fixture symbols");
+    }
+
     const std::uint32_t atexit_object = *data + 0x580U;
-    const std::uint32_t atexit_destructor = 0x12345001U;
-    const std::uint32_t atexit_dso_handle = *data + 0x5c0U;
+    constexpr std::array<std::uint8_t, 4> zero_finalize_marker{{0,0,0,0}};
+    if (!memory.write(atexit_object, zero_finalize_marker)) {
+        return fail("could not clear registered destructor marker");
+    }
+    const std::uint32_t atexit_destructor =
+        registered_destructor.symbol.symbol.guest_value;
+    const std::uint32_t atexit_dso_handle =
+        dso_handle_symbol.symbol.symbol.guest_value;
     result = run_wrapper(
         memory, graph_result.graph, "fixture_aeabi_atexit", registry,
         stack_top, *stop,
@@ -808,6 +852,51 @@ int main(int argc, char** argv) {
         atexit_service.records()[0].destructor != atexit_destructor ||
         atexit_service.records()[0].dso_handle != atexit_dso_handle) {
         return fail("real __aeabi_atexit wrapper registration failed");
+    }
+    ++completed_calls;
+
+    const auto fini_plan = plan_elf32_fini_array_calls(
+        memory,
+        graph_result.graph,
+        0U,
+        Elf32FiniPlanOptions{
+            .max_objects = 2U,
+            .max_entries = 4U,
+        });
+    if (!fini_plan || fini_plan.calls.size() != 1U) {
+        return fail("real libc consumer did not expose one controlled FINI_ARRAY call");
+    }
+    const auto fini_executed = execute_elf32_fini_calls(
+        memory,
+        fini_plan.calls,
+        Elf32FiniExecutionOptions{
+            .stack_top = stack_top,
+            .return_pc = *stop,
+            .max_instructions_per_call = kInstructionBudget,
+            .service_handler = &registry,
+            .max_service_calls_per_call = 2U,
+        });
+    if (!fini_executed ||
+        fini_executed.calls_completed != 1U ||
+        read_u32_le(memory, atexit_object) != 0xC0DEC0DEU ||
+        atexit_service.records()[0].status !=
+            A32AeabiAtexitRecordStatus::Complete ||
+        !cxa_finalize_service.last_result().has_value() ||
+        !*cxa_finalize_service.last_result() ||
+        cxa_finalize_service.last_result()->callbacks_completed != 1U) {
+        return fail("service-aware FINI_ARRAY did not run linked __cxa_finalize path");
+    }
+    fini_array_calls = fini_executed.calls_completed;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_cxa_finalize", registry,
+        stack_top, *stop, atexit_dso_handle, 0U, 0U);
+    if (!result || !*result ||
+        result->services_handled != 1U ||
+        !cxa_finalize_service.last_result().has_value() ||
+        !*cxa_finalize_service.last_result() ||
+        cxa_finalize_service.last_result()->callbacks_completed != 0U) {
+        return fail("direct __cxa_finalize wrapper did not preserve once-only state");
     }
     ++completed_calls;
 
@@ -892,6 +981,7 @@ int main(int argc, char** argv) {
         << "fixture.libc.namespace_access=linked\n"
         << "fixture.libc.required_jump_slots=" << shim_targets.size() << '\n'
         << "fixture.libc.completed_service_calls=" << completed_calls << '\n'
+        << "fixture.libc.fini_array_calls=" << fini_array_calls << '\n'
         << "fixture.libc.status=PASS\n";
     return 0;
 }

@@ -651,3 +651,36 @@ This service boundary exists because Android shared-object CRT code places an
 in reverse before DT_FINI. The service itself does not yet export a
 `__cxa_finalize` libc shim, make ELF lifecycle execution service-aware, bind
 DSO handles to link-map objects, or own dlclose/unmapping.
+
+
+## L32-C027 — Linked __cxa_finalize and service-aware ELF FINI execution
+
+The partial ARM32 `libc.so` compatibility shim exports `__cxa_finalize` as
+private SVC `0xD3`, extending the bounded shim surface from forty to forty-one
+target-backed functions. A freestanding ARM32 consumer may therefore resolve an
+ordinary eager JUMP_SLOT for `__cxa_finalize`.
+
+ELF lifecycle execution may optionally receive a borrowed
+`A32HostServiceHandler` and a finite per-lifecycle-call service ceiling. With
+no handler, constructor/destructor execution retains the accepted direct CPU
+behavior. With a handler, each lifecycle call executes through the bounded
+service-dispatch loop and must still return to the normalized lifecycle stop PC
+within its instruction budget.
+
+Lifecycle execution classifies service-limit, unhandled-service, failed-service,
+and suspended-service outcomes explicitly and records the failing SVC immediate
+when available. Persistent lifecycle failure propagates that SVC identity and
+continues to latch the affected object Failed, preserving the no-replay
+guarantee.
+
+The real partial-libc integration provides one controlled FINI_ARRAY entry in
+the consumer. That FINI function calls linked `__cxa_finalize`, whose JUMP_SLOT
+lands in the libc SVC stub. Service-aware FINI execution dispatches SVC 0xD3,
+finalizes an exact prior `__aeabi_atexit` registration, runs its guest
+destructor with the exact registered object in r0, and resumes the FINI function
+to its return PC. A repeated direct `__cxa_finalize` wrapper call proves the
+registration remains Complete and is not replayed.
+
+This contract does not yet bind DSO handles to link-map ownership, decide the
+last-reference dlclose transaction, reclaim mappings, or make registered
+destructor callbacks themselves service-aware.

@@ -1,0 +1,26 @@
+schema = 1
+change = "post-roadmap-a32-libc-cxa-service-aware-fini"
+
+[[tasks]]
+id = "T001"
+status = "implemented"
+depends_on = []
+acceptance = "Add optional bounded host-service dispatch to ELF lifecycle execution with explicit service error projection."
+
+[[tasks]]
+id = "T002"
+status = "implemented"
+depends_on = ["T001"]
+acceptance = "Export __cxa_finalize from the partial libc shim and add a controlled ARM32 FINI_ARRAY consumer path."
+
+[[tasks]]
+id = "T003"
+status = "implemented"
+depends_on = ["T002"]
+acceptance = "Prove linked FINI_ARRAY -> __cxa_finalize -> registered guest destructor -> FINI resume end to end."
+
+[[tasks]]
+id = "T004"
+status = "active"
+depends_on = ["T003"]
+acceptance = "Run exact-head required checks and reconcile closure evidence/state."

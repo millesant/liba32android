@@ -46,6 +46,8 @@ int __aeabi_atexit(
     void (*destructor)(void*),
     void* dso_handle);
 __attribute__((visibility("default")))
+void __cxa_finalize(void* dso_handle);
+__attribute__((visibility("default")))
 int pthread_mutex_init(void* mutex, const void* attr);
 __attribute__((visibility("default")))
 int pthread_mutex_destroy(void* mutex);
@@ -187,6 +189,27 @@ int fixture_aeabi_atexit(
     void* dso_handle) {
     return __aeabi_atexit(object, destructor, dso_handle);
 }
+
+__attribute__((visibility("default")))
+unsigned int fixture_dso_handle;
+
+__attribute__((visibility("default"), noinline))
+void fixture_registered_destructor(void* object) {
+    *(volatile unsigned int*)object = 0xC0DEC0DEU;
+}
+
+__attribute__((visibility("default"), noinline))
+void fixture_cxa_finalize(void* dso_handle) {
+    __cxa_finalize(dso_handle);
+}
+
+__attribute__((visibility("default"), noinline))
+void fixture_on_dlclose(void) {
+    __cxa_finalize(&fixture_dso_handle);
+}
+
+__attribute__((section(".fini_array"), used))
+static void (*const fixture_fini_entry)(void) = fixture_on_dlclose;
 
 __attribute__((visibility("default"), noinline))
 void fixture_aeabi_memcpy(void* destination, const void* source, fixture_size_t count) {
