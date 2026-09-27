@@ -67,6 +67,29 @@ std::optional<std::uint32_t> A32AeabiAtexitService::dso_for_object(
     return result;
 }
 
+void A32AeabiAtexitService::forget_binding_for_object(
+    std::size_t object_index) noexcept {
+    std::size_t write_index = 0U;
+    for (std::size_t read_index = 0U;
+         read_index < binding_count_;
+         ++read_index) {
+        if (learned_bindings_[read_index].object_index == object_index) {
+            continue;
+        }
+        if (write_index != read_index) {
+            learned_bindings_[write_index] =
+                learned_bindings_[read_index];
+        }
+        ++write_index;
+    }
+    for (std::size_t index = write_index;
+         index < binding_count_;
+         ++index) {
+        learned_bindings_[index] = {};
+    }
+    binding_count_ = write_index;
+}
+
 runtime::A32HostServiceDisposition A32AeabiAtexitService::handle(
     memory::GuestMemory&,
     std::uint32_t svc_immediate,
