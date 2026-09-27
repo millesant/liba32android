@@ -3,7 +3,7 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `post-roadmap-a32-aeabi-atexit-registration` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: none.
 
 ## Phase
 
@@ -13,19 +13,16 @@ The post-roadmap Android filesystem-library-source follow-up is accepted.
 
 The post-roadmap persistent ELF lifecycle/legacy DT_INIT/DT_FINI follow-up is accepted.
 
-## Active post-roadmap follow-up
+The post-roadmap bounded ARM EABI `__aeabi_atexit` registration follow-up is accepted.
 
-Bounded ARM EABI `__aeabi_atexit` registration is integrated.
+## Post-roadmap atexit validation
 
-Private SVC `0xD2` records exact logical guest object, destructor, and DSO
-handle values in finite caller-owned storage. Success returns zero; bounded
-capacity exhaustion returns ARM32 -1 without mutating prior registrations.
+The registration slice passed all nine exact-head checks at
+`3272ec52fa54208a9435f3991c92172fd71b2be0`.
 
-The partial ARM32 libc shim/consumer now exposes/imports forty symbols, with
-`__aeabi_atexit` as the new eager JUMP_SLOT path. Focused direct/ARM registry
-tests and the real partial-libc integration are present.
-
-Exact-head validation: NOT RUN.
+Private SVC `0xD2` records exact guest object/destructor/DSO values into finite
+caller-owned storage; success returns 0 and capacity exhaustion returns -1.
+The real partial-libc path now resolves and executes forty eager wrapper calls.
 
 ## Deferred / partial
 

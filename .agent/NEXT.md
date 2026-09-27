@@ -2,14 +2,19 @@
 
 The numbered 011-049 roadmap is COMPLETE.
 
-The Android filesystem source and persistent legacy lifecycle follow-ups are DONE.
+The Android filesystem source, persistent legacy lifecycle, and bounded
+`__aeabi_atexit` registration follow-ups are DONE.
 
-`post-roadmap-a32-aeabi-atexit-registration` is IMPLEMENTED on `bleeding`;
-exact-head required checks are its current acceptance gate.
+No acceptance gate is currently active.
 
-After terminal success, close registration and implement bounded registered
-destructor finalization / per-DSO reverse execution. That will be the lifecycle
-substrate needed before real dlclose/unload ownership.
+## Ready next follow-up
+
+Implement bounded registered-destructor finalization / per-DSO reverse
+execution over the accepted `__aeabi_atexit` record state. Preserve failed
+callback state to avoid replaying partial guest side effects.
+
+After that, bind DSO handles to resident link-map ownership and connect
+finalization to real dlclose/unload transactions.
 
 ## Other ready follow-up candidates
 
