@@ -3,24 +3,24 @@ change = "post-roadmap-resident-dlclose-lifecycle-transaction"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Define exact stable object/DSO binding and bounded final-close transaction state/result model."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Implement non-final decrement and exact-object reverse FINI_ARRAY -> registered-finalization verification -> DT_FINI -> handle-release ordering."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Wire the transaction into optional A32LibDlService dlclose handling and add focused plus real ARM lifecycle regressions."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Run exact-head required checks and reconcile closure evidence/state."
