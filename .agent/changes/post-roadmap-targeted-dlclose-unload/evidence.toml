@@ -13,7 +13,7 @@ limitations = "Automatic dynamic object-to-DSO-handle discovery remains separate
 [[evidence]]
 id = "focused-targeted-unload"
 kind = "test"
-status = "not_run"
+status = "passed"
 claim = "Focused regressions prove shared-root/live-handle retention, exact newly-unreachable teardown, failure ownership preservation, retry without replay, service delegation, and physical retirement/unmapping."
 source = "tests/compat/a32_libdl_unload_transaction.cpp"
 result = "Integrated focused coverage exercises shared-root retention, live-handle retention, service-level physical unload delegation, deterministic requester-before-dependency teardown, pre-existing orphan rejection, mid-sequence failure ownership preservation, retry without replay, non-final refcount-only behavior, and final retirement/unmapping."
@@ -22,8 +22,8 @@ limitations = "The concrete memory backend still has no deterministic OS unmap-f
 [[evidence]]
 id = "exact-head-validation"
 kind = "validation"
-status = "not_run"
+status = "passed"
 claim = "The targeted final-close unload follow-up passes required exact-head checks before closure."
 source = "GitHub commit checks on the eventual integration revision"
-result = "Implementation, focused regressions, accepted ELF/compat contracts, and architecture documentation are integrated; exact-head validation is pending."
-limitations = "The change remains implemented rather than done until terminal exact-head success is observed."
+result = "Project operator confirmed all required exact-head CI checks at 742590cbc6740c9467e4b9d5f04884deeda16c1e were green."
+limitations = "Automatic dynamic object-to-DSO-handle discovery remains separate; deterministic OS unmap-failure injection remains unavailable in the concrete memory backend."
