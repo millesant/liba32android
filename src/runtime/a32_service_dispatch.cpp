@@ -74,6 +74,11 @@ A32ServiceDispatchResult execute_a32_with_services(
             }
 
             ++result.services_handled;
+            if (disposition == A32HostServiceDisposition::Suspended) {
+                result.service_suspended = true;
+                result.suspended_svc_immediate = immediate;
+                return result;
+            }
 
             if (stop_pc.has_value() && result.regs[15] == *stop_pc) {
                 result.stop_pc_reached = true;
@@ -110,6 +115,29 @@ A32ServiceDispatchResult execute_a32_with_services(
         }
         return result;
     }
+}
+
+std::optional<cpu::ExecutionRequest> make_a32_service_resume_request(
+    const A32ServiceDispatchResult& suspended_result,
+    std::size_t instruction_budget,
+    std::optional<std::uint32_t> stop_pc) {
+    if (!suspended_result.service_suspended ||
+        !suspended_result.suspended_svc_immediate.has_value() ||
+        instruction_budget == 0U) {
+        return std::nullopt;
+    }
+
+    cpu::ExecutionRequest request{};
+    request.instruction_set =
+        (suspended_result.cpsr & 0x20U) != 0U
+            ? cpu::InstructionSet::Thumb
+            : cpu::InstructionSet::Arm;
+    request.entry_pc = suspended_result.regs[15];
+    request.regs = suspended_result.regs;
+    request.instruction_count = instruction_budget;
+    request.stop_pc = stop_pc;
+    request.initial_cpsr = suspended_result.cpsr;
+    return request;
 }
 
 const char* to_string(A32ServiceDispatchError error) noexcept {

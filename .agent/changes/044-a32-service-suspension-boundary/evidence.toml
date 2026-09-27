@@ -1,0 +1,29 @@
+schema = 1
+change = "044-a32-service-suspension-boundary"
+
+[[evidence]]
+id = "target-pthread-semaphore-surface"
+kind = "artifact"
+status = "observed"
+claim = "The supplied FMOD and VLC ARMv7 sets share eighteen pthread/semaphore imports including thread creation, mutex lock, and semaphore wait surfaces that can require scheduling."
+source = "docs/research/evidence/pthread-semaphore-scheduling-boundary-2026-09-27.md"
+result = "Bounded artifact inspection records the common import list and separates VLC-only pthread additions."
+limitations = "Static imports do not prove which calls contend at runtime."
+
+[[evidence]]
+id = "suspend-resume-regressions"
+kind = "test"
+status = "not_run"
+claim = "ARM and Thumb service dispatch can suspend after SVC with exact state, execute no later instruction, and resume from that state under a new finite budget without replaying the SVC."
+source = "tests/runtime/a32_service_dispatch.cpp"
+result = "Feature 044 implementation/tests are integrated; exact-head execution has not yet been observed."
+limitations = "Synthetic service programs validate the scheduling boundary, not pthread/semaphore ABI semantics."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "Feature 044 passes required exact-head checks after feature 043 is accepted."
+source = "GitHub commit checks on the feature-044 integration revision"
+result = ""
+limitations = "Feature 044 remains implemented rather than done until terminal exact-head checks are observed."

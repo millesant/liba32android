@@ -17,6 +17,7 @@ enum class A32HostServiceDisposition : std::uint8_t {
     Handled = 0,
     Unhandled,
     Failed,
+    Suspended,
 };
 
 class A32HostServiceHandler {
@@ -47,7 +48,9 @@ struct A32ServiceDispatchResult {
     std::size_t instructions_executed{};
     std::size_t services_handled{};
     bool stop_pc_reached{};
+    bool service_suspended{};
     std::optional<std::uint32_t> failing_svc_immediate;
+    std::optional<std::uint32_t> suspended_svc_immediate;
 
     [[nodiscard]] explicit operator bool() const noexcept {
         return error == A32ServiceDispatchError::None;
@@ -56,7 +59,9 @@ struct A32ServiceDispatchResult {
 
 // Execute under one total guest-instruction budget while synchronously handling
 // resumable SVC traps. request.instruction_count is the total budget across all
-// CPU slices. Handler/register/memory side effects are never rolled back.
+// CPU slices. A Suspended handler result returns a successful terminal snapshot
+// immediately after the trapped SVC so an external scheduler can resume later.
+// Handler/register/memory side effects are never rolled back.
 [[nodiscard]] A32ServiceDispatchResult execute_a32_with_services(
     memory::GuestMemory& memory,
     cpu::ExecutionRequest request,
@@ -65,5 +70,16 @@ struct A32ServiceDispatchResult {
 
 [[nodiscard]] const char* to_string(
     A32ServiceDispatchError error) noexcept;
+
+// Build one independently bounded continuation request from a suspended service
+// result. The resumed request starts at the logical PC after the trapped SVC,
+// preserves the exact returned CPSR/register snapshot, and derives ARM/Thumb
+// state from CPSR. Non-suspended results or a zero new instruction budget do
+// not produce a continuation.
+[[nodiscard]] std::optional<cpu::ExecutionRequest>
+make_a32_service_resume_request(
+    const A32ServiceDispatchResult& suspended_result,
+    std::size_t instruction_budget,
+    std::optional<std::uint32_t> stop_pc = std::nullopt);
 
 }  // namespace liba32android::runtime

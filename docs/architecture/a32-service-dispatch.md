@@ -1,6 +1,6 @@
 # A32 host-service dispatch
 
-Status: feature 024 complete; exact-head implementation CI PASSed
+Status: feature 024 complete; feature 044 service-suspension extension implemented, exact-head validation pending
 
 ## Boundary
 
@@ -16,7 +16,7 @@ passes:
 - mutable A32 general registers, including the logical guest PC;
 - mutable CPSR.
 
-The handler returns `Handled`, `Unhandled`, or `Failed`. No service-number
+The handler returns `Handled`, `Unhandled`, `Failed`, or `Suspended`. No service-number
 registry or ABI interpretation exists in this layer.
 
 ## Bounded loop
@@ -80,3 +80,29 @@ The Linux runtime suite covers ARM/Thumb service resume, exact service IDs,
 handler register/memory mutation, service limits, unhandled/failed handlers,
 preservation of completed handler side effects, CPU faults/exceptions,
 requested-stop budget exhaustion, and no-stop fixed-budget completion.
+
+## Feature 044 external scheduling boundary
+
+Feature 044 adds one fourth host-service disposition: `Suspended`. It is for
+guest operations whose synchronous fast path cannot complete until some
+external scheduler changes runnable state — for example a future contended
+pthread mutex, semaphore wait, condition wait, or thread join.
+
+When a handler returns `Suspended`, the dispatcher counts that delivered
+service against the finite service ceiling and returns immediately with no
+error. The result identifies the exact SVC and carries the post-SVC register,
+logical-PC, and CPSR snapshot. No instruction after the SVC executes before the
+caller gets control back, and completed handler memory/register effects are not
+rolled back.
+
+`make_a32_service_resume_request` turns that terminal snapshot into a new
+independently bounded execution request after the embedding decides the guest
+thread may run again. It restores every register and CPSR bit, derives ARM vs
+Thumb from CPSR, starts at the logical PC already advanced past SVC, and uses a
+new caller-selected finite instruction budget and optional stop PC. This avoids
+replaying the blocking service on wake.
+
+The runtime still owns no scheduler, host thread, futex wait, pthread object,
+TLS selection, or synchronization policy. Feature 044 establishes the
+game-agnostic suspend/resume seam required before pthread/semaphore compatibility
+can safely model blocking instead of spinning or blocking the host executor.

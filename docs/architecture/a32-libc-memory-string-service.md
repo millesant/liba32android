@@ -1,6 +1,6 @@
 # A32 libc memory/string host service
 
-Status: features 030/033 accepted; feature 043 memmove/EABI extension implemented, exact-head validation pending
+Status: features 030/033/043 accepted; exact-head validation PASSed
 
 ## Motivation
 

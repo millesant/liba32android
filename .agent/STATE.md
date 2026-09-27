@@ -3,11 +3,11 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `043-a32-libc-eabi-memory-helpers` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: `044-a32-service-suspension-boundary` — IMPLEMENTED, exact-head validation NOT RUN.
 
 ## Phase
 
-Features 011-042 are accepted.
+Features 011-043 are accepted.
 
 Feature 039 passed all five exact-head checks at
 `9160aa24c9f1cebdfe65a79ecc1543a662bec5c4`.
@@ -74,14 +74,27 @@ symbols with the twelve bionic ARM EABI memory helpers. The real fixture covers
 overlapping memmove, all memcpy/memmove alignment variants, EABI memset
 argument reordering, and memclr zeroing.
 
-Feature 043 exact-head validation: NOT RUN.
+Feature 043 passed all five required exact-head checks at
+`99e79d710db7271557e64e608cf0523c663df169`:
+- Android arm64-v8a cross-build `108565884707` — PASS.
+- Linux A32 smoke `108565884589` — PASS.
+- Android x86_64 address-space probe `108565884447` — PASS.
+- ARM32 libc memory string shim integration `108565884330` — PASS.
+- ARM32 liblog shim integration `108565884235` — PASS.
+
+Feature 044 is now integrated. It adds a game-agnostic host-service suspension
+result and exact bounded resume-request reconstruction so future blocking
+pthread/semaphore compatibility can hand control to an external scheduler
+without spinning, blocking the host executor, or replaying the trapped SVC.
+
+Feature 044 exact-head validation: NOT RUN.
 
 Prepared order remains:
-`044 -> 045 -> 046 -> 047 -> 048 -> 049`.
+`045 -> 046 -> 047 -> 048 -> 049`.
 
 ## Deferred / partial
 
 Legacy DT_INIT/DT_FINI, __aeabi_atexit/static-destructor registration, and
-persistent lifecycle state, pthread/semaphore scheduling boundaries, libdl, libm,
+persistent lifecycle state, pthread/semaphore ABI/services, libdl, libm,
 Android filesystem/search, stable embedding API, and device execution remain
 later work.

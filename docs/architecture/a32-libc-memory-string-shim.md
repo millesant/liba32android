@@ -1,6 +1,6 @@
 # ARM32 guest libc memory/string shim/provider path
 
-Status: features 032/034/036/038/041 accepted; feature 043 EABI memory extension implemented, exact-head validation pending
+Status: features 032/034/036/038/041/043 accepted; exact-head validation PASSed
 
 ## Goal
 

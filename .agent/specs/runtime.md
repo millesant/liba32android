@@ -1,7 +1,7 @@
 # Runtime contract
 
 Status: Accepted current project contract
-Last reconciled: 2026-09-26
+Last reconciled: 2026-09-27
 
 ## L32-R001 — Game-agnostic runtime
 
@@ -59,3 +59,27 @@ returns `Failed` before any child handler is invoked. Invalid entries for
 unrelated immediates do not affect exact lookup. The registry performs no ABI
 argument decoding, platform/API semantics, symbol resolution, shim generation,
 syscall emulation, or namespace/search policy.
+
+## L32-R012 — Bounded service suspension and external scheduling
+
+A host-service handler may return `Suspended` when completing the current guest
+call requires an external scheduling decision rather than synchronous service
+completion. Suspension is a successful terminal dispatch outcome, not a CPU or
+service failure. The result preserves the exact post-SVC logical PC, registers,
+and CPSR, records the exact suspended SVC immediate, and executes no later guest
+instruction in that dispatch call.
+
+A suspended service consumes one entry from the caller's finite service-call
+budget. Register and guest-memory effects performed by the handler before
+suspension remain visible. `Unhandled` and `Failed` retain their existing
+failure semantics.
+
+`make_a32_service_resume_request` may turn only a suspended result into a new
+caller-bounded `cpu::ExecutionRequest`. The caller supplies a new finite
+instruction budget and optional stop PC; the helper resumes at the logical PC
+after the trapped SVC, preserves the exact register/CPSR snapshot, and derives
+ARM/Thumb state from CPSR. A zero new budget is rejected.
+
+This contract is a game-agnostic scheduling handoff only. It does not create
+host or guest threads, choose runnable-thread order, park on futexes, implement
+pthread/semaphore object layouts, or own TLS/errno/heap synchronization.

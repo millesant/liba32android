@@ -3,24 +3,24 @@ change = "043-a32-libc-eabi-memory-helpers"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Record supplied-target memmove/EABI imports and Android bionic helper semantics, explicitly separating __aeabi_atexit lifecycle state."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Add bounded overlap-safe memmove at private SVC 0xB2 with focused overlap/bounds regressions."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Extend the partial libc shim/consumer with plain memmove and twelve ARM EABI memory helpers, require thirty JUMP_SLOT targets, and execute all thirty wrappers."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Run exact-head required checks and reconcile closure evidence/state."

@@ -16,7 +16,9 @@ using liba32android::memory::LinearGuestMemory;
 using liba32android::runtime::A32HostServiceDisposition;
 using liba32android::runtime::A32HostServiceHandler;
 using liba32android::runtime::A32ServiceDispatchError;
+using liba32android::runtime::A32ServiceDispatchResult;
 using liba32android::runtime::execute_a32_with_services;
+using liba32android::runtime::make_a32_service_resume_request;
 
 constexpr std::size_t kMemorySize = 4096;
 constexpr std::uint32_t kStopPc = static_cast<std::uint32_t>(kMemorySize);
@@ -295,6 +297,122 @@ int test_cpu_failures_and_budget_compatibility() {
     return 0;
 }
 
+
+int test_service_suspension_and_resume() {
+    {
+        // svc #0x44; add r0,r0,#2; bx lr
+        constexpr std::array<std::uint8_t, 12> code{
+            0x44, 0x00, 0x00, 0xEF,
+            0x02, 0x00, 0x80, 0xE2,
+            0x1E, 0xFF, 0x2F, 0xE1,
+        };
+        LinearGuestMemory memory{kMemorySize};
+        if (!memory.write(0, code)) {
+            return fail("could not stage ARM suspension program");
+        }
+
+        RecordingHandler handler;
+        handler.disposition = A32HostServiceDisposition::Suspended;
+        handler.replacement_r0 = 40U;
+
+        ExecutionRequest request{};
+        request.regs[14] = kStopPc;
+        request.instruction_count = 3;
+        request.stop_pc = kStopPc;
+
+        const auto suspended =
+            execute_a32_with_services(memory, request, handler, 1);
+        if (!suspended || !suspended.service_suspended ||
+            !suspended.suspended_svc_immediate.has_value() ||
+            *suspended.suspended_svc_immediate != 0x44U ||
+            suspended.failing_svc_immediate.has_value() ||
+            suspended.services_handled != 1 ||
+            suspended.instructions_executed != 1 ||
+            suspended.stop_pc_reached ||
+            suspended.regs[0] != 40U ||
+            handler.calls != std::vector<std::uint32_t>{0x44U}) {
+            return fail("ARM service suspension snapshot was incorrect");
+        }
+
+        const auto resumed_request =
+            make_a32_service_resume_request(suspended, 2, kStopPc);
+        if (!resumed_request.has_value() ||
+            resumed_request->entry_pc != suspended.regs[15] ||
+            resumed_request->regs != suspended.regs ||
+            !resumed_request->initial_cpsr.has_value() ||
+            *resumed_request->initial_cpsr != suspended.cpsr ||
+            resumed_request->instruction_set != InstructionSet::Arm) {
+            return fail("ARM suspended service did not produce exact resume request");
+        }
+
+        RecordingHandler resumed_handler;
+        const auto resumed = execute_a32_with_services(
+            memory, *resumed_request, resumed_handler, 1);
+        if (!resumed || resumed.service_suspended ||
+            !resumed.stop_pc_reached ||
+            resumed.instructions_executed != 2 ||
+            resumed.regs[0] != 42U ||
+            !resumed_handler.calls.empty()) {
+            return fail("ARM suspended service did not resume after SVC");
+        }
+    }
+
+    {
+        // svc #0x55; adds r0,#1; bx lr
+        constexpr std::array<std::uint8_t, 6> code{
+            0x55, 0xDF,
+            0x01, 0x30,
+            0x70, 0x47,
+        };
+        LinearGuestMemory memory{kMemorySize};
+        if (!memory.write(0, code)) {
+            return fail("could not stage Thumb suspension program");
+        }
+
+        RecordingHandler handler;
+        handler.disposition = A32HostServiceDisposition::Suspended;
+        handler.replacement_r0 = 9U;
+
+        ExecutionRequest request{};
+        request.instruction_set = InstructionSet::Thumb;
+        request.regs[14] = kStopPc | 1U;
+        request.instruction_count = 3;
+        request.stop_pc = kStopPc;
+
+        const auto suspended =
+            execute_a32_with_services(memory, request, handler, 1);
+        const auto resumed_request =
+            make_a32_service_resume_request(suspended, 2, kStopPc);
+        if (!suspended || !suspended.service_suspended ||
+            !resumed_request.has_value() ||
+            resumed_request->instruction_set != InstructionSet::Thumb ||
+            !resumed_request->initial_cpsr.has_value() ||
+            (*resumed_request->initial_cpsr & 0x20U) == 0U) {
+            return fail("Thumb service suspension lost execution state");
+        }
+
+        RecordingHandler resumed_handler;
+        const auto resumed = execute_a32_with_services(
+            memory, *resumed_request, resumed_handler, 1);
+        if (!resumed || !resumed.stop_pc_reached ||
+            resumed.regs[0] != 10U ||
+            !resumed_handler.calls.empty()) {
+            return fail("Thumb suspended service did not resume after SVC");
+        }
+    }
+
+    A32ServiceDispatchResult ordinary{};
+    if (make_a32_service_resume_request(ordinary, 1).has_value()) {
+        return fail("non-suspended result unexpectedly produced continuation");
+    }
+    ordinary.service_suspended = true;
+    ordinary.suspended_svc_immediate = 1U;
+    if (make_a32_service_resume_request(ordinary, 0).has_value()) {
+        return fail("zero-budget suspended result unexpectedly produced continuation");
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -310,6 +428,10 @@ int main() {
         return status;
     }
     if (const int status = test_cpu_failures_and_budget_compatibility();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_service_suspension_and_resume();
         status != 0) {
         return status;
     }
