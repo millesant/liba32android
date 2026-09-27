@@ -3,40 +3,58 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: none — `post-roadmap-dynamic-dlopen-acquisition` is DONE.
+Active acceptance gate: `post-roadmap-targeted-dlclose-unload` — IMPLEMENTED, exact-head validation NOT RUN.
 
 ## Phase
 
 Features 011-049 remain accepted and the numbered roadmap remains COMPLETE.
 
 Accepted post-roadmap work includes service-aware ELF FINI, linked
-`__cxa_finalize`, resident last-reference `dlclose` lifecycle, persistent
+`__cxa_finalize`, resident exact-object final-close lifecycle, persistent
 ownership/reachability planning, physical link-map reclamation, and dynamic
 missing-object `dlopen` acquisition.
 
-Dynamic acquisition is accepted at
-`40479ffebe61c22c90d7d523292fc9e787be635d`. The project operator confirmed
-all required exact-head CI checks were green.
+Dynamic acquisition is DONE at
+`40479ffebe61c22c90d7d523292fc9e787be635d`.
 
-## Next post-roadmap direction
+## Active post-roadmap follow-up
 
-Implement targeted final-close unload lifecycle over only the objects that
-become unreachable after releasing one dynamic ownership root.
+Targeted final-close physical unload is implemented.
 
-The transaction must compute the post-release unreachable set before mutating
-ownership, preserve every object still retained by another root or live handle,
-execute registered/ELF teardown only for that newly unreachable set in
-deterministic requester-before-dependency order, and only then release the root
-and invoke physical reclamation.
+The ownership planner now supports a read-only exact-root-release query. It
+shares ordinary validation/reachability logic, excludes only the selected root
+from ownership, preserves caller live anchors, and mutates no graph/mapping
+state.
 
-Do not call the existing whole-root persistent destructor traversal for this
-job: that would finalize shared dependencies that remain owned elsewhere.
+Exact-object libdl teardown is now resumable without handle mutation. Complete
+destructor state is idempotent on retry; Failed state remains non-replayable.
+
+`A32LibDlUnloadTransaction` handles final synthetic references by preserving
+all other live handles, requiring a clean current ownership baseline, planning
+the exact post-root-release unreachable set, finalizing only that set in
+requester-before-dependency order, then invoking accepted physical root
+release/reclamation. The final synthetic handle is cleared only after physical
+release succeeds.
+
+Lifecycle or reclamation failure preserves the final handle/root. A later retry
+skips objects already finalized successfully. Pre-existing unowned Active
+objects block the transaction rather than being collected opportunistically.
+
+`A32LibDlService` may optionally delegate dlclose to this path. Physical
+service delegation requires `MappedGuestMemory`; legacy refcount-only and
+exact-object close paths remain available when targeted unload is absent.
+
+Focused regressions cover shared-root retention, live-handle retention,
+service-level unload, requester-before-dependency failure/retry, orphan
+rejection, non-final decrement, retirement, and physical unmapping.
+
+Exact-head validation: NOT RUN.
 
 ## Deferred / partial
 
-RTLD_NODELETE/global-group policy, RTLD_GLOBAL/LOCAL flag expansion, RTLD_NEXT,
-lazy binding, Retired-slot reuse/compaction, concurrent graph mutation,
-`DT_PREINIT_ARRAY`, process argv/envp constructor ABI, broader pthread/TLS,
-concrete APK/ZIP byte acquisition, higher-level public ELF/platform
-orchestration, JNI/graphics/audio surfaces, and real Android device execution
-remain separate.
+Automatic dynamic object-to-DSO-handle discovery, RTLD_NODELETE/global-group
+policy, RTLD_GLOBAL/LOCAL flag expansion, RTLD_NEXT, lazy binding, Retired-slot
+reuse/compaction, concurrent graph mutation, `DT_PREINIT_ARRAY`, process
+argv/envp constructor ABI, broader pthread/TLS, concrete APK/ZIP byte
+acquisition, higher-level public ELF/platform orchestration, JNI/graphics/audio
+surfaces, and real Android device execution remain separate.
