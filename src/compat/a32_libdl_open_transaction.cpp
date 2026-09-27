@@ -362,6 +362,9 @@ A32LibDlOpenTransactionResult A32LibDlOpenTransaction::open(
         result.root_added = root_added;
         result.objects_appended =
             link_map_.graph.objects.size() - initial_object_count;
+        if (root_added) {
+            return cleanup_failure(std::move(result), *object_index);
+        }
         return result;
     }
 
