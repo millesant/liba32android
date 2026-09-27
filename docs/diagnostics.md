@@ -1,6 +1,6 @@
 # Diagnostics and error sharing
 
-Status: current CI, address-space probe, Android runtime-smoke, and internal runtime-service behavior documented; stable public embedding/error API remains future work.
+Status: current CI, address-space probe, Android runtime-smoke, internal runtime-service behavior, and feature-049 public embedding/error API implementation documented; exact-head feature-049 validation pending.
 
 ## Goal
 
@@ -207,7 +207,11 @@ Android storage references:
 
 ## Runtime-wide structured error format
 
-A stable public embedding/runtime API is not implemented yet, so runtime-wide public error delivery remains **NOT IMPLEMENTED**. Internal game-agnostic orchestration under `src/runtime/` is implemented, including bounded host-service dispatch; it is not a stable external error API. The intended stable text shape is:
+Feature 049 implements the first stable public C embedding/error surface.
+`include/liba32android/liba32android.h` exposes versioned opaque-runtime
+memory/execution operations and an optional caller-owned error buffer.
+
+Public failures use this stable text shape:
 
 ```text
 A32ERR|component=<component>|code=<stable_code>|pc=<guest_pc>|addr=<guest_addr>|message=<human text>

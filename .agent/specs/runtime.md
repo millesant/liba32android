@@ -83,3 +83,49 @@ ARM/Thumb state from CPSR. A zero new budget is rejected.
 This contract is a game-agnostic scheduling handoff only. It does not create
 host or guest threads, choose runnable-thread order, park on futexes, implement
 pthread/semaphore object layouts, or own TLS/errno/heap synchronization.
+
+## L32-R013 — Stable public C embedding and error API
+
+The shared library exposes a versioned C-compatible embedding surface from
+`include/liba32android/liba32android.h`. Public callers do not include private
+`src/` headers, Dynarmic types, C++ standard-library types, or host pointers as
+guest addresses.
+
+`LIBA32ANDROID_API_VERSION` and `liba32android_api_version()` define the
+initial public API version. `liba32android_runtime` is opaque. Runtime creation
+owns one `MappedGuestMemory` 32-bit logical guest address space; destruction
+releases it.
+
+The public memory functions expose bounded map/protect/unmap/read/write
+operations using logical `uint32_t` guest addresses and explicit
+READ/WRITE/EXECUTE permission bits. Permission combinations preserve the
+accepted guest-memory rule that writable or executable mappings also carry
+read permission. Invalid arguments are distinguished from memory-operation
+failure.
+
+The public execution request/result structs are size-tagged for ABI evolution.
+A request selects ARM or Thumb, exact entry PC, sixteen core registers, a
+non-zero finite instruction budget, optional normalized stop PC, and optional
+initial CPSR. The result returns sixteen registers, CPSR, executed instruction
+count, and stable flags for stop-PC completion, SVC trap, fastmem use,
+memory fault, and non-SVC exception.
+
+An A32 SVC trap is a successful public execution outcome: the result exposes the
+exact immediate and post-trap CPU state so an embedding can decide how to
+continue. Guest memory faults and ordinary non-SVC exceptions return distinct
+public failure statuses while still publishing the execution snapshot.
+
+Every fallible public call accepts an optional caller-owned error buffer.
+Failures use the stable text prefix
+`A32ERR|component=<component>|code=<stable_code>` and append logical guest PC
+or address when available plus a human message. The buffer reports the complete
+required byte count excluding NUL and always NUL-terminates supplied storage
+when capacity is non-zero. Successful calls clear the buffer.
+
+CMake publishes the public include directory as a build/install interface and
+installs both `liba32android` and the public header tree.
+
+This first stable embedding surface deliberately does not expose ELF loading,
+dependency providers, compatibility-service registration, pthread scheduling,
+Android filesystem/APK I/O, dynamic dlopen transactions, or device/UI policy.
+Those remain composable internal contracts until separately promoted.

@@ -1,4 +1,5 @@
 add_library(liba32android SHARED
+    src/public/liba32android_c.cpp
     src/cpu/dynarmic_cpu.cpp
     src/runtime/a32_service_dispatch.cpp
     src/runtime/a32_service_registry.cpp
@@ -34,6 +35,9 @@ add_library(liba32android SHARED
 set_target_properties(liba32android PROPERTIES OUTPUT_NAME a32android)
 
 target_include_directories(liba32android
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
@@ -46,3 +50,14 @@ target_link_libraries(liba32android
 
 target_compile_features(liba32android PRIVATE cxx_std_20)
 liba32android_enable_android_16k_elf_alignment(liba32android)
+
+install(
+    TARGETS liba32android
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/liba32android
+    DESTINATION include
+)

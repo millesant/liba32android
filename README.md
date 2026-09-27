@@ -8,6 +8,7 @@ The project keeps CPU execution, guest memory, ELF loading, dynamic-linker seman
 
 The current C++20/CMake runtime provides:
 
+- a versioned installable C embedding API for opaque runtime lifetime, logical guest memory operations, bounded ARM/Thumb execution, exact SVC traps, and structured A32ERR diagnostics;
 - bounded ARM/Thumb execution with exact stop-PC termination, resumable SVC trap state, and game-agnostic bounded host-service dispatch;
 - A32 ARM/Thumb execution through an internal Dynarmic adapter;
 - an engine-independent `memory::GuestMemory` seam with deterministic and mapped backends;
@@ -26,7 +27,11 @@ Current accepted runtime and ELF behavior is defined by `.agent/specs/runtime.md
 ## Repository layout
 
 ```text
+include/
+  liba32android/       stable public C embedding API
+
 src/
+  public/              public C ABI implementation over private runtime seams
   cpu/                 CPU abstraction and Dynarmic adapter
   runtime/             game-agnostic execution/service orchestration
   memory/              guest-memory contracts and mapped address space
@@ -74,7 +79,12 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-The shared-library output is exactly `liba32android.so`.
+The shared-library output is exactly `liba32android.so`. The public C header is
+`include/liba32android/liba32android.h`. A staged install can be produced with:
+
+```sh
+cmake --install build --prefix /tmp/liba32android-install
+```
 
 GitHub Actions additionally builds reproducible ARM32 fixtures and validates Android `x86_64` address-space probing plus the Android `arm64-v8a` cross-build. See [docs/development/build-and-test.md](docs/development/build-and-test.md) for fixture options and CI scope.
 
@@ -91,7 +101,14 @@ See [docs/diagnostics.md](docs/diagnostics.md) for crash-marker, fastmem-fallbac
 
 Start at [docs/README.md](docs/README.md). The ELF pipeline is documented as distinct layers: load planning/mapping, structural dynamic metadata, linker metadata/strings, dependency graph loading, symbol resolution, relocation, and RELRO hardening.
 
-The generic runtime deliberately does **not** yet claim implementation of Android namespace/search-path/platform-provider policy, preload/RTLD semantics, full Android interposition behavior, lazy PLT binding, broad ARM relocation coverage, TLS, libc/JNI/graphics/audio compatibility layers, or general game compatibility.
+The compatibility stack includes bounded Android namespace/platform-provider
+policy, partial libc/liblog/libdl/libm shims, and requester-scoped application
+native-library search. It deliberately does **not** yet claim the complete
+Android linker/filesystem/APK search model, concrete APK I/O, full
+preload/RTLD/unload semantics, complete pthread/TLS, full libc/JNI/graphics/
+audio compatibility, or general game compatibility. The version-1 public C API
+also keeps ELF/linker/compatibility orchestration private rather than freezing
+those internal policy objects into the ABI.
 
 ## Project state and contribution workflow
 

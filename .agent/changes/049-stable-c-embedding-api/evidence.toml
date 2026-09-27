@@ -1,0 +1,38 @@
+schema = 1
+change = "049-stable-c-embedding-api"
+
+[[evidence]]
+id = "public-api-gap"
+kind = "repository"
+status = "observed"
+claim = "Before feature 049 the project has internal runtime orchestration but no public include tree, install surface, or stable public embedding/error ABI."
+source = "docs/research/evidence/stable-embedding-api-gap-2026-09-27.md"
+result = "Repository audit, diagnostics, CMake include visibility, and absent public header/install declarations establish the gap."
+limitations = "This is repository-state evidence, not runtime validation."
+
+[[evidence]]
+id = "pure-c-embedding-regression"
+kind = "test"
+status = "not_run"
+claim = "A pure-C caller uses only the public header to verify invalid guest-range classification, create mapped guest memory, execute ARM to result 42, observe SVC 0x12, validate structured memory error text, clear the error on success, and unmap/destroy."
+source = "tests/runtime/public_embedding_api.c and .github/workflows/public-embedding-api.yml"
+result = "Feature 049 C regression plus installed-header/external-C workflow are integrated; exact-head execution has not yet been observed."
+limitations = "Version 1 intentionally validates raw execution/memory embedding rather than public ELF/platform orchestration."
+
+[[evidence]]
+id = "public-install-surface"
+kind = "build"
+status = "not_run"
+claim = "CMake exposes include/liba32android as the build/install public interface and installs liba32android plus public headers."
+source = "cmake/LibA32AndroidRuntime.cmake and .github/workflows/public-embedding-api.yml"
+result = "Feature 049 packaging changes are integrated; exact-head staged-install/external-C validation has not yet been observed."
+limitations = "An explicit package-manager distribution format is not introduced."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "Feature 049 passes required checks only after features 046-048 are accepted and feature 049 is integrated on bleeding."
+source = "GitHub commit checks on the feature-049 integration revision"
+result = ""
+limitations = "Feature 049 remains implemented rather than done until terminal exact-head checks are observed."

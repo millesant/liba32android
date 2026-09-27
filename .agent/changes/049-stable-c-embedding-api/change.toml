@@ -1,0 +1,31 @@
+schema = 1
+id = "049-stable-c-embedding-api"
+kind = "feature"
+size = "S2"
+status = "implemented"
+workflow = "feature"
+control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
+base_revision = "84d4679b4d69bed4978de0609b77bf56f5d46211"
+acceptance = [
+  "repository evidence records that internal runtime orchestration exists while no installable stable public embedding/error API exists before feature 049",
+  "include/liba32android/liba32android.h is C-compatible, versioned, and exposes only opaque runtime state, fixed-width values, size-tagged structs, and caller buffers",
+  "public runtime lifetime owns mapped logical AArch32 guest memory without exposing host pointers as guest addresses",
+  "public map/protect/unmap/read/write operations preserve logical address, page alignment/range, and permission contracts with distinct invalid-argument versus memory-failure statuses",
+  "public bounded ARM/Thumb execution accepts registers, finite budget, optional stop PC/CPSR and returns registers/CPSR/count plus stop/SVC/fastmem/fault/exception flags",
+  "SVC traps are successful public outcomes with exact immediate and post-trap state while memory faults and ordinary exceptions return distinct failures",
+  "fallible calls emit optional stable A32ERR structured text with logical PC/address where available and clear the error buffer on success",
+  "a pure-C regression verifies invalid page/range classification, executes ARM result 42, observes SVC 0x12, verifies a structured unmapped-read error, and uses no private header",
+  "CMake publishes build/install include interfaces and installs liba32android plus the public header tree",
+  "ELF loading, compatibility service registration, pthread scheduling, Android filesystem/APK I/O, dynamic dlopen transactions, and device policy remain private/out of scope for API version 1"
+]
+
+[convergence]
+requirements = "aligned"
+specs = "aligned"
+implementation = "aligned"
+tests = "aligned"
+documentation = "aligned"
+decisions = "not_applicable"
+tasks = "aligned"
+evidence = "pending"
+repository = "aligned"

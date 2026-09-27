@@ -1,0 +1,75 @@
+name: Public C embedding API
+
+on:
+  push:
+    branches: [bleeding]
+  pull_request:
+    branches: [bleeding]
+
+permissions:
+  contents: read
+
+jobs:
+  public-c-api:
+    name: Public C embedding API integration
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libboost-dev
+
+      - name: Configure
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DLIBA32ANDROID_BUILD_TESTS=ON             -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/build-install"
+
+      - name: Build and run in-tree C API regression
+        run: |
+          set -euxo pipefail
+          cmake --build build --target public_embedding_api_test --parallel 2
+          ctest --test-dir build --output-on-failure -R '^public_embedding_api$'
+          build/public_embedding_api_test |
+            tee build/public-embedding-in-tree.txt
+          grep -F 'public.embedding.api_version=1' build/public-embedding-in-tree.txt
+          grep -F 'public.embedding.arm_result=42' build/public-embedding-in-tree.txt
+          grep -F 'public.embedding.svc=0x12' build/public-embedding-in-tree.txt
+          grep -F 'public.embedding.status=PASS' build/public-embedding-in-tree.txt
+
+      - name: Install public surface
+        run: |
+          set -euxo pipefail
+          cmake --build build --target liba32android --parallel 2
+          cmake --install build
+          test -f build-install/include/liba32android/liba32android.h
+          test -f build-install/lib/liba32android.so
+          nm -D --defined-only build-install/lib/liba32android.so |
+            tee build/public-embedding-symbols.txt
+          for symbol in             liba32android_api_version             liba32android_runtime_create             liba32android_runtime_destroy             liba32android_runtime_page_size             liba32android_runtime_map             liba32android_runtime_protect             liba32android_runtime_unmap             liba32android_runtime_read             liba32android_runtime_write             liba32android_runtime_execute; do
+            grep -F " $symbol" build/public-embedding-symbols.txt
+          done
+
+      - name: Compile and run external C caller
+        run: |
+          set -euxo pipefail
+          cc -std=c11 -Wall -Wextra -Werror             -I"$GITHUB_WORKSPACE/build-install/include"             tests/runtime/public_embedding_api.c             -L"$GITHUB_WORKSPACE/build-install/lib"             -Wl,-rpath,"$GITHUB_WORKSPACE/build-install/lib"             -la32android             -o build/public_embedding_external
+          build/public_embedding_external |
+            tee build/public-embedding-external.txt
+          grep -F 'public.embedding.api_version=1' build/public-embedding-external.txt
+          grep -F 'public.embedding.arm_result=42' build/public-embedding-external.txt
+          grep -F 'public.embedding.svc=0x12' build/public-embedding-external.txt
+          grep -F 'public.embedding.structured_error=PASS' build/public-embedding-external.txt
+          grep -F 'public.embedding.status=PASS' build/public-embedding-external.txt
+
+      - name: Upload public API evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-c-embedding-api
+          path: |
+            build/public-embedding-in-tree.txt
+            build/public-embedding-external.txt
+            build/public-embedding-symbols.txt
+            build-install/include/liba32android/liba32android.h
+            build-install/lib/liba32android.so
+          if-no-files-found: error
+          retention-days: 14

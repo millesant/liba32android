@@ -1,0 +1,26 @@
+schema = 1
+change = "049-stable-c-embedding-api"
+
+[[tasks]]
+id = "T001"
+status = "implemented"
+depends_on = []
+acceptance = "Define versioned C-compatible public status/error, opaque runtime, memory, and size-tagged execution ABI without private C++ types."
+
+[[tasks]]
+id = "T002"
+status = "implemented"
+depends_on = ["T001"]
+acceptance = "Implement opaque mapped-memory lifetime, logical guest memory operations, bounded A32 execution translation, successful SVC traps, and non-throwing structured error conversion."
+
+[[tasks]]
+id = "T003"
+status = "implemented"
+depends_on = ["T002"]
+acceptance = "Publish build/install header interfaces and add a pure-C regression for map/write/protect/execute/SVC/error/unmap behavior."
+
+[[tasks]]
+id = "T004"
+status = "active"
+depends_on = ["T003"]
+acceptance = "Run exact-head required checks and reconcile final numbered-roadmap closure evidence/state."
