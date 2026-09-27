@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "elf/elf32_dependency_loader.h"
+#include "elf/elf32_link_map_reclamation.h"
 #include "memory/guest_memory.h"
 
 namespace {
@@ -22,6 +23,13 @@ using liba32android::elf::Elf32LinkMapRootPolicy;
 using liba32android::elf::Elf32LinkMapReclamationError;
 using liba32android::elf::Elf32LinkMapReclamationOptions;
 using liba32android::elf::plan_elf32_link_map_reclamation;
+using liba32android::elf::Elf32LifecycleObjectStatus;
+using liba32android::elf::Elf32LifecycleState;
+using liba32android::elf::Elf32LinkMapObjectState;
+using liba32android::elf::Elf32LinkMapReleaseError;
+using liba32android::elf::Elf32LinkMapReleaseOptions;
+using liba32android::elf::reclaim_elf32_link_map_unreachable;
+using liba32android::elf::release_elf32_link_map_root;
 using liba32android::elf::kElf32Df1Global;
 using liba32android::elf::Elf32DependencyProviderError;
 using liba32android::elf::Elf32DependencyProviderResult;
@@ -896,6 +904,338 @@ int test_persistent_link_map_reclamation_validation() {
     return 0;
 }
 
+Elf32LinkMapReleaseOptions release_options() {
+    return Elf32LinkMapReleaseOptions{
+        .max_objects = 8U,
+        .max_segments = 32U,
+        .max_snapshot_bytes = 2U << 20,
+    };
+}
+
+bool object_mappings_are_mapped(
+    const MappedGuestMemory& memory,
+    const liba32android::elf::Elf32LoadedDependencyObject& object) {
+    for (const auto& segment : object.load.segments) {
+        if (!memory.is_mapped(segment.mapping_start)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool object_mappings_are_unmapped(
+    const MappedGuestMemory& memory,
+    const liba32android::elf::Elf32LoadedDependencyObject& object) {
+    for (const auto& segment : object.load.segments) {
+        if (memory.is_mapped(segment.mapping_start)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+int test_persistent_link_map_release_and_reload() {
+    MappedGuestMemory memory;
+    FailIfCalledProvider provider;
+    Elf32LinkMap link_map;
+    const auto image = make_image(3, 0, true, true);
+
+    const auto loaded = append_elf32_link_map_root(
+        memory,
+        link_map,
+        Elf32DependencyLoadSource{
+            .identity = "reload-root",
+            .image = image,
+        },
+        provider,
+        options(),
+        Elf32LinkMapRootPolicy::Local);
+    if (!loaded || !loaded.root_object_index.has_value() ||
+        *loaded.root_object_index != 0U ||
+        link_map.object_states !=
+            std::vector<Elf32LinkMapObjectState>{
+                Elf32LinkMapObjectState::Active}) {
+        return fail("could not stage reclaim/reload root");
+    }
+
+    const auto retired_load = link_map.graph.objects[0].load;
+    Elf32LifecycleState lifecycle;
+    lifecycle.objects.resize(1U);
+    const std::span<const std::size_t> no_live_anchors{};
+    const auto released = release_elf32_link_map_root(
+        memory,
+        link_map,
+        lifecycle,
+        0U,
+        no_live_anchors,
+        release_options());
+    if (!released ||
+        released.released_root != std::optional<std::size_t>{0U} ||
+        released.reclaimed_objects != std::vector<std::size_t>{0U} ||
+        released.mappings_unmapped != retired_load.segments.size() ||
+        !link_map.roots.empty() ||
+        !link_map.global_scope_objects.empty() ||
+        link_map.object_states.size() != 1U ||
+        link_map.object_states[0] != Elf32LinkMapObjectState::Retired ||
+        !object_mappings_are_unmapped(
+            memory, link_map.graph.objects[0])) {
+        return fail("root release did not retire and unmap exact object");
+    }
+
+    const auto empty_plan = plan_elf32_link_map_reclamation(
+        link_map,
+        no_live_anchors,
+        Elf32LinkMapReclamationOptions{.max_objects = 4U});
+    if (!empty_plan ||
+        !empty_plan.plan.reachable_objects.empty() ||
+        !empty_plan.plan.reclaimable_objects.empty()) {
+        return fail("retired slot remained visible to reclamation planning");
+    }
+
+    const auto reloaded = append_elf32_link_map_root(
+        memory,
+        link_map,
+        Elf32DependencyLoadSource{
+            .identity = "reload-root",
+            .image = image,
+        },
+        provider,
+        options(),
+        Elf32LinkMapRootPolicy::Local);
+    if (!reloaded || !reloaded.root_object_index.has_value() ||
+        *reloaded.root_object_index != 1U ||
+        reloaded.reused_existing_root ||
+        link_map.graph.objects.size() != 2U ||
+        link_map.object_states !=
+            std::vector<Elf32LinkMapObjectState>{
+                Elf32LinkMapObjectState::Retired,
+                Elf32LinkMapObjectState::Active} ||
+        link_map.roots.size() != 1U ||
+        link_map.roots[0].object_index != 1U ||
+        !object_mappings_are_mapped(
+            memory, link_map.graph.objects[1]) ||
+        provider.calls != 0U) {
+        return fail("same identity did not reload into a fresh stable slot");
+    }
+    return 0;
+}
+
+int test_persistent_link_map_release_retention_and_sweep() {
+    MappedGuestMemory memory;
+    Elf32LinkMap link_map;
+    const auto shared = make_image(3, 0, false, true);
+    RecordingProvider provider;
+    provider.responses = {
+        success("shared-id", shared),
+        success("shared-id", shared),
+    };
+
+    const auto root_a = append_elf32_link_map_root(
+        memory,
+        link_map,
+        Elf32DependencyLoadSource{
+            .identity = "root-a",
+            .image = make_needed_image(
+                3, 0, std::vector<std::string>{"shared-a.so"}),
+        },
+        provider,
+        options(),
+        Elf32LinkMapRootPolicy::Global);
+    const auto root_b = append_elf32_link_map_root(
+        memory,
+        link_map,
+        Elf32DependencyLoadSource{
+            .identity = "root-b",
+            .image = make_needed_image(
+                3, 0, std::vector<std::string>{"shared-b.so"}),
+        },
+        provider,
+        options(),
+        Elf32LinkMapRootPolicy::Local);
+    if (!root_a || !root_b ||
+        link_map.graph.objects.size() != 3U ||
+        !root_a.root_object_index.has_value() ||
+        !root_b.root_object_index.has_value() ||
+        *root_a.root_object_index != 0U ||
+        *root_b.root_object_index != 2U ||
+        link_map.global_scope_objects !=
+            std::vector<std::size_t>{0U}) {
+        return fail("could not stage shared-root reclamation fixture");
+    }
+
+    Elf32LifecycleState lifecycle;
+    lifecycle.objects.resize(3U);
+    const std::span<const std::size_t> no_live_anchors{};
+    const auto release_a = release_elf32_link_map_root(
+        memory,
+        link_map,
+        lifecycle,
+        0U,
+        no_live_anchors,
+        release_options());
+    if (!release_a ||
+        release_a.reclaimed_objects != std::vector<std::size_t>{0U} ||
+        link_map.roots.size() != 1U ||
+        link_map.roots[0].object_index != 2U ||
+        !link_map.global_scope_objects.empty() ||
+        link_map.object_states[0] != Elf32LinkMapObjectState::Retired ||
+        link_map.object_states[1] != Elf32LinkMapObjectState::Active ||
+        link_map.object_states[2] != Elf32LinkMapObjectState::Active ||
+        !object_mappings_are_unmapped(
+            memory, link_map.graph.objects[0]) ||
+        !object_mappings_are_mapped(
+            memory, link_map.graph.objects[1]) ||
+        !object_mappings_are_mapped(
+            memory, link_map.graph.objects[2])) {
+        return fail("shared dependency was not retained by remaining root");
+    }
+
+    const std::array<std::size_t, 1> root_b_handle{{2U}};
+    const auto release_b = release_elf32_link_map_root(
+        memory,
+        link_map,
+        lifecycle,
+        2U,
+        std::span<const std::size_t>{root_b_handle},
+        release_options());
+    if (!release_b ||
+        !release_b.reclaimed_objects.empty() ||
+        !link_map.roots.empty() ||
+        link_map.object_states[1] != Elf32LinkMapObjectState::Active ||
+        link_map.object_states[2] != Elf32LinkMapObjectState::Active ||
+        !object_mappings_are_mapped(
+            memory, link_map.graph.objects[1]) ||
+        !object_mappings_are_mapped(
+            memory, link_map.graph.objects[2])) {
+        return fail("live handle did not retain released root closure");
+    }
+
+    const auto swept = reclaim_elf32_link_map_unreachable(
+        memory,
+        link_map,
+        lifecycle,
+        no_live_anchors,
+        release_options());
+    if (!swept ||
+        swept.released_root.has_value() ||
+        swept.reclaimed_objects !=
+            std::vector<std::size_t>{2U, 1U} ||
+        link_map.object_states !=
+            std::vector<Elf32LinkMapObjectState>{
+                Elf32LinkMapObjectState::Retired,
+                Elf32LinkMapObjectState::Retired,
+                Elf32LinkMapObjectState::Retired} ||
+        !object_mappings_are_unmapped(
+            memory, link_map.graph.objects[1]) ||
+        !object_mappings_are_unmapped(
+            memory, link_map.graph.objects[2])) {
+        return fail("unreachable sweep did not reclaim released handle closure");
+    }
+    return 0;
+}
+
+int test_persistent_link_map_release_lifecycle_and_bounds() {
+    MappedGuestMemory memory;
+    FailIfCalledProvider provider;
+    Elf32LinkMap link_map;
+    const auto loaded = append_elf32_link_map_root(
+        memory,
+        link_map,
+        Elf32DependencyLoadSource{
+            .identity = "lifecycle-root",
+            .image = make_image(3, 0, true, true),
+        },
+        provider,
+        options(),
+        Elf32LinkMapRootPolicy::Local);
+    if (!loaded || link_map.graph.objects.size() != 1U) {
+        return fail("could not stage reclamation lifecycle fixture");
+    }
+
+    Elf32LifecycleState lifecycle;
+    lifecycle.objects.resize(1U);
+    lifecycle.objects[0].constructors =
+        Elf32LifecycleObjectStatus::Complete;
+    const std::span<const std::size_t> no_live_anchors{};
+
+    const auto partial = release_elf32_link_map_root(
+        memory,
+        link_map,
+        lifecycle,
+        0U,
+        no_live_anchors,
+        release_options());
+    if (partial.error !=
+            Elf32LinkMapReleaseError::InvalidLifecycleState ||
+        partial.failing_object != 0U ||
+        link_map.roots.size() != 1U ||
+        link_map.object_states[0] != Elf32LinkMapObjectState::Active ||
+        !object_mappings_are_mapped(
+            memory, link_map.graph.objects[0])) {
+        return fail("partial lifecycle state was physically reclaimed");
+    }
+
+    lifecycle.objects[0].constructors =
+        Elf32LifecycleObjectStatus::Pending;
+    auto segment_limited = release_options();
+    segment_limited.max_segments = 1U;
+    const auto segment_limit = release_elf32_link_map_root(
+        memory,
+        link_map,
+        lifecycle,
+        0U,
+        no_live_anchors,
+        segment_limited);
+    if (segment_limit.error !=
+            Elf32LinkMapReleaseError::SegmentLimitExceeded ||
+        link_map.roots.size() != 1U ||
+        link_map.object_states[0] != Elf32LinkMapObjectState::Active ||
+        !object_mappings_are_mapped(
+            memory, link_map.graph.objects[0])) {
+        return fail("segment ceiling failure mutated reclaimable root");
+    }
+
+    auto byte_limited = release_options();
+    byte_limited.max_snapshot_bytes = memory.page_size();
+    const auto byte_limit = release_elf32_link_map_root(
+        memory,
+        link_map,
+        lifecycle,
+        0U,
+        no_live_anchors,
+        byte_limited);
+    if (byte_limit.error !=
+            Elf32LinkMapReleaseError::SnapshotByteLimitExceeded ||
+        link_map.roots.size() != 1U ||
+        link_map.object_states[0] != Elf32LinkMapObjectState::Active ||
+        !object_mappings_are_mapped(
+            memory, link_map.graph.objects[0])) {
+        return fail("snapshot byte ceiling failure mutated reclaimable root");
+    }
+
+    lifecycle.objects[0].constructors =
+        Elf32LifecycleObjectStatus::Complete;
+    lifecycle.objects[0].destructors =
+        Elf32LifecycleObjectStatus::Complete;
+    const auto completed = release_elf32_link_map_root(
+        memory,
+        link_map,
+        lifecycle,
+        0U,
+        no_live_anchors,
+        release_options());
+    if (!completed ||
+        completed.reclaimed_objects !=
+            std::vector<std::size_t>{0U} ||
+        link_map.object_states[0] !=
+            Elf32LinkMapObjectState::Retired ||
+        !object_mappings_are_unmapped(
+            memory, link_map.graph.objects[0])) {
+        return fail("fully completed lifecycle object was not reclaimable");
+    }
+    return 0;
+}
+
 int test_exec_root_without_dynamic() {
     constexpr std::uint32_t fixed_base = 0x10000;
     MappedGuestMemory memory;
@@ -1567,6 +1907,9 @@ int main() {
     if (const int status = test_persistent_link_map_limits_and_invalid_state(); status != 0) return status;
     if (const int status = test_persistent_link_map_reclamation_planning(); status != 0) return status;
     if (const int status = test_persistent_link_map_reclamation_validation(); status != 0) return status;
+    if (const int status = test_persistent_link_map_release_and_reload(); status != 0) return status;
+    if (const int status = test_persistent_link_map_release_retention_and_sweep(); status != 0) return status;
+    if (const int status = test_persistent_link_map_release_lifecycle_and_bounds(); status != 0) return status;
     if (const int status = test_exec_root_without_dynamic(); status != 0) return status;
     if (const int status = test_dynamic_root_automatic_placement(); status != 0) return status;
     if (const int status = test_preflight_failures_do_not_mutate_memory(); status != 0) return status;
