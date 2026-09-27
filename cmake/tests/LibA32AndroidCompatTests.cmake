@@ -161,6 +161,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_libm_test
+    tests/compat/a32_libm.cpp
+)
+
+add_test(
+    NAME a32_libm_service
+    COMMAND compat_libm_test
+)
+
+liba32android_add_test_executable(
     compat_libdl_shim_integration_test
     tests/compat/a32_libdl_shim.cpp
 )
@@ -196,5 +206,36 @@ if(LIBA32ANDROID_ARM32_LIBDL_CONSUMER_PATH AND
                 "${LIBA32ANDROID_ARM32_LIBDL_CONSUMER_PATH}"
                 "${LIBA32ANDROID_ARM32_LIBDL_SHIM_PATH}"
                 "${LIBA32ANDROID_ARM32_LIBDL_PROVIDER_PATH}"
+    )
+endif()
+
+liba32android_add_test_executable(
+    compat_libm_shim_integration_test
+    tests/compat/a32_libm_shim.cpp
+)
+
+if((LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH AND
+    NOT LIBA32ANDROID_ARM32_LIBM_SHIM_PATH) OR
+   (LIBA32ANDROID_ARM32_LIBM_SHIM_PATH AND
+    NOT LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH))
+    message(FATAL_ERROR
+        "LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH and LIBA32ANDROID_ARM32_LIBM_SHIM_PATH must be supplied together")
+endif()
+
+if(LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH AND
+   LIBA32ANDROID_ARM32_LIBM_SHIM_PATH)
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH}")
+        message(FATAL_ERROR
+            "libm consumer fixture does not exist: ${LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH}")
+    endif()
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_LIBM_SHIM_PATH}")
+        message(FATAL_ERROR
+            "libm shim fixture does not exist: ${LIBA32ANDROID_ARM32_LIBM_SHIM_PATH}")
+    endif()
+    add_test(
+        NAME a32_libm_shim_integration
+        COMMAND compat_libm_shim_integration_test
+                "${LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH}"
+                "${LIBA32ANDROID_ARM32_LIBM_SHIM_PATH}"
     )
 endif()

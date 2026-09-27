@@ -10,6 +10,7 @@ add_library(liba32android SHARED
     src/compat/a32_libc_heap.cpp
     src/compat/a32_pthread_sync.cpp
     src/compat/a32_libdl.cpp
+    src/compat/a32_libm.cpp
     src/elf/loading/elf32_dynamic_placement.cpp
     src/elf/loading/elf32_load_plan.cpp
     src/elf/loading/elf32_loader.cpp
@@ -39,6 +40,7 @@ target_include_directories(liba32android
 target_link_libraries(liba32android
     PRIVATE
         dynarmic
+        m
 )
 
 target_compile_features(liba32android PRIVATE cxx_std_20)

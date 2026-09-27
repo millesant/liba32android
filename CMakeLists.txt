@@ -45,6 +45,10 @@ set(LIBA32ANDROID_ARM32_LIBDL_SHIM_PATH "" CACHE FILEPATH
     "Optional generated ARM32 Android libdl.so compatibility shim used by feature-046 integration")
 set(LIBA32ANDROID_ARM32_LIBDL_PROVIDER_PATH "" CACHE FILEPATH
     "Optional generated ARM32 Android resident libdl target DSO used by feature-046 integration")
+set(LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH "" CACHE FILEPATH
+    "Optional generated ARM32 Android libm consumer DSO used by feature-047 integration")
+set(LIBA32ANDROID_ARM32_LIBM_SHIM_PATH "" CACHE FILEPATH
+    "Optional generated ARM32 Android libm.so compatibility shim used by feature-047 integration")
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibA32AndroidDependencies.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibA32AndroidRuntime.cmake)

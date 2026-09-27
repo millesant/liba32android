@@ -497,3 +497,37 @@ Dynamic acquisition of missing objects, RTLD_GLOBAL/NOLOAD/NODELETE semantics,
 RTLD_NEXT caller-relative lookup, unload/refcount-driven FINI_ARRAY execution,
 persistent constructor/destructor called-state, and Android filesystem/search
 policy remain deferred.
+
+## L32-C022 — Shared target-backed ARM32 libm compatibility
+
+The compatibility layer may expose private SVC IDs `0xC1` through `0xD1`
+for the seventeen libm symbols observed in both supplied ARM32 target sets:
+`acos`, `asin`, `atan2`, `cos`, `cosf`, `exp`, `floor`,
+`frexp`, `ldexp`, `log`, `log10`, `log10f`, `pow`, `powf`,
+`sin`, `sinf`, and `tan`.
+
+The service implements the Android armeabi-v7a base soft-float calling
+convention explicitly through AAPCS32 core registers. A double occupies one
+little-endian register pair; a second double occupies r2/r3. Float values use
+one register word. `frexp` receives its logical guest `int*` in r2 and
+writes the signed exponent little-endian through `GuestMemory`; `ldexp`
+receives its signed exponent bits in r2. Results are returned in r0 or r0/r1
+as appropriate. No host pointer is exposed.
+
+Host `libm` may be used as the numerical engine for this bounded compatibility
+slice, but every call must preserve the embedding process's pre-call `errno`
+and floating-point environment. Guest errno/fenv exception publication is not
+invented by this feature.
+
+A reproducible freestanding ARM32 `libm.so` shim exports all seventeen names
+as direct private-SVC stubs. Its freestanding consumer is built explicitly
+with ARM softfp ABI and ordinary dynamic imports. Real integration must load
+the shim through the existing requester-aware Android namespace/platform
+catalog, require seventeen eager `R_ARM_JUMP_SLOT` relocations, and execute
+all seventeen guest wrappers with exact stable reference cases including
+`frexp` guest exponent publication.
+
+This feature does not claim complete Android `libm.so`, vector/complex math,
+the larger VLC-only math surface, guest floating-point exception flags,
+guest errno behavior for math domain/range errors, alternate rounding-mode
+semantics, or architecture-specific bionic assembly equivalence.

@@ -1,0 +1,26 @@
+schema = 1
+change = "047-a32-libm-shared-service"
+
+[[tasks]]
+id = "T001"
+status = "implemented"
+depends_on = []
+acceptance = "Record the exact seventeen-symbol FMOD/VLC libm intersection and define shared private SVC IDs plus Android ARMv7 softfp ABI mapping."
+
+[[tasks]]
+id = "T002"
+status = "implemented"
+depends_on = ["T001"]
+acceptance = "Implement host-state-preserving math services with focused exact-value and frexp guest-pointer regressions."
+
+[[tasks]]
+id = "T003"
+status = "implemented"
+depends_on = ["T002"]
+acceptance = "Build deterministic ARM32 libm.so/softfp consumer fixtures and execute all seventeen wrappers through namespace-gated eager-relocation integration."
+
+[[tasks]]
+id = "T004"
+status = "active"
+depends_on = ["T003"]
+acceptance = "Run exact-head required checks and reconcile closure evidence/state."

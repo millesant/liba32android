@@ -1,0 +1,38 @@
+schema = 1
+change = "047-a32-libm-shared-service"
+
+[[evidence]]
+id = "target-shared-libm-surface"
+kind = "artifact"
+status = "observed"
+claim = "The supplied FMOD and VLC ARMv7 native sets share exactly seventeen imported scalar libm functions selected for feature 047."
+source = "docs/research/evidence/shared-arm32-libm-imports-2026-09-27.md"
+result = "Bounded readelf inspection records acos/asin/atan2/cos/cosf/exp/floor/frexp/ldexp/log/log10/log10f/pow/powf/sin/sinf/tan as the exact target intersection."
+limitations = "Static imports do not establish runtime call frequency or exceptional-domain inputs."
+
+[[evidence]]
+id = "libm-service-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused tests cover every ABI shape, stable exact reference values, frexp exponent publication/failure, host errno/fenv preservation, and unknown-SVC behavior."
+source = "tests/compat/a32_libm.cpp"
+result = "Feature 047 source/tests are integrated; exact-head execution has not yet been observed."
+limitations = "Exact reference cases prove ABI/service wiring rather than broad numerical conformance."
+
+[[evidence]]
+id = "real-libm-shim-integration"
+kind = "test"
+status = "not_run"
+claim = "Pinned-NDK ARM32 libm.so/consumer integration requires seventeen eager JUMP_SLOT relocations and executes all seventeen softfp guest wrappers."
+source = "tests/compat/a32_libm_shim.cpp and .github/workflows/compat-libm-shim.yml"
+result = "Feature 047 real integration is integrated; exact-head execution has not yet been observed."
+limitations = "The fixture covers the shared target subset, not the broader VLC-only libm surface."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "Feature 047 passes required checks only after feature 046 is accepted and feature 047 is integrated on bleeding."
+source = "GitHub commit checks on the feature-047 integration revision"
+result = ""
+limitations = "Feature 047 remains implemented rather than done until terminal exact-head checks are observed."

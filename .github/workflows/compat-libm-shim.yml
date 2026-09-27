@@ -1,0 +1,95 @@
+name: ARM32 libm shim
+
+on:
+  push:
+    branches: [bleeding]
+  pull_request:
+    branches: [bleeding]
+
+permissions:
+  contents: read
+
+jobs:
+  arm32-libm-shim:
+    name: ARM32 libm shim integration
+    runs-on: ubuntu-24.04
+    env:
+      NDK_VERSION: 27.3.13750724
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libboost-dev binutils
+
+      - name: Ensure pinned NDK
+        run: |
+          set -euxo pipefail
+          if [ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION"
+          fi
+          test -x "$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi26-clang"
+
+      - name: Build reproducible ARM32 libm fixture
+        run: |
+          set -euxo pipefail
+          bash -n tools/fixtures/build_arm32_libm_shim_fixture.sh
+          rm -rf build-fixtures/libm build-fixtures/libm-second
+          bash tools/fixtures/build_arm32_libm_shim_fixture.sh             "$ANDROID_HOME/ndk/$NDK_VERSION"             build-fixtures/libm
+          bash tools/fixtures/build_arm32_libm_shim_fixture.sh             "$ANDROID_HOME/ndk/$NDK_VERSION"             build-fixtures/libm-second
+
+          cmp build-fixtures/libm/libm.so build-fixtures/libm-second/libm.so
+          cmp             build-fixtures/libm/liba32android_libm_consumer.so             build-fixtures/libm-second/liba32android_libm_consumer.so
+
+          readelf -dW build-fixtures/libm/libm.so |
+            tee build-fixtures/libm-shim-dynamic.txt
+          readelf -sW build-fixtures/libm/libm.so |
+            tee build-fixtures/libm-shim-symbols.txt
+          readelf -dW build-fixtures/libm/liba32android_libm_consumer.so |
+            tee build-fixtures/libm-consumer-dynamic.txt
+          readelf -rW build-fixtures/libm/liba32android_libm_consumer.so |
+            tee build-fixtures/libm-consumer-relocations.txt
+
+          grep -F 'Library soname: [libm.so]' build-fixtures/libm-shim-dynamic.txt
+          grep -F 'Shared library: [libm.so]' build-fixtures/libm-consumer-dynamic.txt
+          for symbol in acos asin atan2 cos cosf exp floor frexp ldexp log log10 log10f pow powf sin sinf tan; do
+            grep -F "$symbol" build-fixtures/libm-shim-symbols.txt
+            grep -F 'R_ARM_JUMP_SLOT' build-fixtures/libm-consumer-relocations.txt |
+              grep -F "$symbol"
+          done
+          sha256sum             build-fixtures/libm/libm.so             build-fixtures/libm/liba32android_libm_consumer.so
+
+      - name: Configure integration
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DLIBA32ANDROID_BUILD_TESTS=ON             -DLIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/libm/liba32android_libm_consumer.so"             -DLIBA32ANDROID_ARM32_LIBM_SHIM_PATH="$GITHUB_WORKSPACE/build-fixtures/libm/libm.so"
+
+      - name: Build integration
+        run: cmake --build build --target compat_libm_shim_integration_test --parallel 2
+
+      - name: Test integration
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build --output-on-failure -R '^a32_libm_shim_integration$'
+          build/compat_libm_shim_integration_test             build-fixtures/libm/liba32android_libm_consumer.so             build-fixtures/libm/libm.so |
+            tee build-fixtures/libm-integration-evidence.txt
+          grep -F 'fixture.libm.object_count=2' build-fixtures/libm-integration-evidence.txt
+          grep -F 'fixture.libm.needed=libm.so' build-fixtures/libm-integration-evidence.txt
+          grep -F 'fixture.libm.namespace_access=linked' build-fixtures/libm-integration-evidence.txt
+          grep -F 'fixture.libm.required_jump_slots=17' build-fixtures/libm-integration-evidence.txt
+          grep -F 'fixture.libm.completed_service_calls=17' build-fixtures/libm-integration-evidence.txt
+          grep -F 'fixture.libm.status=PASS' build-fixtures/libm-integration-evidence.txt
+
+      - name: Upload libm integration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm32-libm-shim
+          path: |
+            build-fixtures/libm/libm.so
+            build-fixtures/libm/liba32android_libm_consumer.so
+            build-fixtures/libm-shim-dynamic.txt
+            build-fixtures/libm-shim-symbols.txt
+            build-fixtures/libm-consumer-dynamic.txt
+            build-fixtures/libm-consumer-relocations.txt
+            build-fixtures/libm-integration-evidence.txt
+          if-no-files-found: error
+          retention-days: 14

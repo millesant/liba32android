@@ -15,7 +15,7 @@ acceptance = [
   "dlclose is refcount-only and never unmaps objects or runs destructors",
   "dlerror publishes one bounded guest string and clears it after one read",
   "dladdr publishes logical guest Dl_info module/base data and nearest bounded dynamic-symbol metadata without host pointers",
-  "a reproducible ARM32 libdl.so shim exports all five target-backed functions and real namespace-gated integration executes resident dlopen/dlsym/dladdr/dlclose/dlerror against a separate application DSO",
+  "a reproducible ARM32 libdl.so shim exports the five target-backed functions and real namespace-gated integration executes resident dlopen/dlsym/dladdr/dlclose/dlerror against a separate application DSO",
   "missing-object dynamic acquisition, Android filesystem/search, RTLD_GLOBAL/NOLOAD/NODELETE, RTLD_NEXT, unload/destructor lifecycle, and persistent constructor/destructor called-state remain deferred"
 ]
 
