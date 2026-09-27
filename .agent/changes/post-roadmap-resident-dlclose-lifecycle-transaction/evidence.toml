@@ -38,6 +38,24 @@ result = "Eight required checks passed. ARM32 libdl shim integration 10871531699
 limitations = "The synchronous dlclose transaction reused the outer configured lifecycle stack top while the guest dlclose caller frame remained active, risking frame clobber during nested FINI execution."
 
 [[evidence]]
+id = "failed-corrected-head-unrelocated-provider"
+kind = "validation"
+status = "failed"
+claim = "The live-stack correction alone was not sufficient for the ARM32 integration harness."
+source = "GitHub Actions failure at 124deba7bfff005696058d9f67d41e779e32427e"
+result = "The linked dlclose transaction reported fini_array_execution_failed with r0 == -1, marker == 0, and provider lifecycle Failed. Inspection confirmed the harness applied combined relocations only to object 0 even though the API is explicitly per-object; provider FINI_ARRAY/global-marker execution therefore ran from an unrelocated provider."
+limitations = "This failure identifies integration-harness relocation setup, not a new dlclose transaction semantic defect. The corrected harness still requires exact-head validation."
+
+[[evidence]]
+id = "provider-graph-relocation-fix"
+kind = "repository"
+status = "observed"
+claim = "The ARM32 libdl integration applies each loaded object's supported main and PLT relocations before guest execution."
+source = "tests/compat/a32_libdl_shim.cpp"
+result = "The harness now loops over the complete loaded dependency graph and calls apply_elf32_combined_relocations for each object index."
+limitations = "Terminal exact-head CI success has not yet been observed."
+
+[[evidence]]
 id = "nested-live-stack-regression"
 kind = "test"
 status = "not_run"
@@ -52,5 +70,5 @@ kind = "validation"
 status = "not_run"
 claim = "The corrected resident dlclose lifecycle transaction passes required exact-head checks before closure."
 source = "GitHub commit checks on the corrected integration revision"
-result = ""
+result = "A prior corrected-head run at 124deba7bfff005696058d9f67d41e779e32427e failed because the integration harness had not relocated the provider object. The graph-wide relocation correction is integrated; terminal success is still pending."
 limitations = "The follow-up remains implemented rather than done until terminal exact-head success is observed."
