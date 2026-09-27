@@ -1,0 +1,31 @@
+schema = 1
+id = "post-roadmap-dynamic-dlopen-acquisition"
+kind = "feature"
+size = "S2"
+status = "active"
+workflow = "feature"
+control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
+base_revision = "1acff26e88a7d00b3f1271ce8d8230819c819aa0"
+acceptance = [
+  "an optional bounded A32 libdl open transaction owns named dlopen initialization while A32LibDlService remains the guest ABI surface",
+  "resident named lookup ignores Retired link-map slots and dynamic open rejects ambiguous, failed-constructor, or already-destructed active objects",
+  "a missing requested name resolves one root through the caller-owned dependency provider and appends or reuses it as a persistent Local root",
+  "a genuinely new load preflights synthetic-handle capacity before provider-backed graph mutation",
+  "every object newly appended by the root load receives the accepted combined eager relocation transaction using the current persistent global scope, followed by GNU RELRO sealing",
+  "persistent constructors run dependency-first without replaying already-Complete shared dependencies and use trapped live guest r13 when invoked synchronously from dlopen",
+  "failures before constructor execution release any root added by this attempt and physically reclaim newly unreachable Pending/Pending objects while preserving live-handle anchors",
+  "constructor-stage failure latches lifecycle failure and keeps the root resident because guest side effects cannot be rolled back safely",
+  "a synthetic handle is published only after successful initialization; repeated resident opens refcount the same object handle",
+  "recursive final-close teardown/reclamation, RTLD_NODELETE, RTLD_GLOBAL/LOCAL expansion, lazy binding, and pathname policy remain separate"
+]
+
+[convergence]
+requirements = "aligned"
+specs = "pending"
+implementation = "pending"
+tests = "pending"
+documentation = "pending"
+decisions = "not_applicable"
+tasks = "pending"
+evidence = "pending"
+repository = "aligned"
