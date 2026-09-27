@@ -27,7 +27,6 @@ namespace {
 bool A32LibDlCloseTransaction::options_valid() const noexcept {
     const auto& execution = options_.execution;
     return !handles_.empty() &&
-           !bindings_.empty() &&
            options_.max_fini_array_entries != 0U &&
            execution.stack_top != 0U &&
            (execution.stack_top & 7U) == 0U &&
@@ -52,21 +51,40 @@ std::optional<std::uint32_t> A32LibDlCloseTransaction::dso_for_object(
     std::size_t object_index,
     bool& ambiguous) const noexcept {
     ambiguous = false;
-    std::optional<std::uint32_t> result;
+    std::optional<std::uint32_t> explicit_result;
     for (const auto& binding : bindings_) {
         if (binding.object_index != object_index) {
             continue;
         }
         if (binding.dso_handle == 0U) {
-            return std::nullopt;
-        }
-        if (result.has_value()) {
             ambiguous = true;
             return std::nullopt;
         }
-        result = binding.dso_handle;
+        if (explicit_result.has_value() &&
+            *explicit_result != binding.dso_handle) {
+            ambiguous = true;
+            return std::nullopt;
+        }
+        explicit_result = binding.dso_handle;
     }
-    return result;
+
+    bool learned_ambiguous = false;
+    const auto learned_result =
+        registrations_.dso_for_object(object_index, learned_ambiguous);
+    if (learned_ambiguous) {
+        ambiguous = true;
+        return std::nullopt;
+    }
+    if (explicit_result.has_value() &&
+        learned_result.has_value() &&
+        *explicit_result != *learned_result) {
+        ambiguous = true;
+        return std::nullopt;
+    }
+    if (explicit_result.has_value()) {
+        return explicit_result;
+    }
+    return learned_result;
 }
 
 bool A32LibDlCloseTransaction::registrations_complete(
