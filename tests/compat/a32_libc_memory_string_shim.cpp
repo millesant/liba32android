@@ -15,6 +15,7 @@
 #include "compat/a32_android_namespace_policy.h"
 #include "compat/a32_android_platform_provider.h"
 #include "compat/a32_libc_memory_string.h"
+#include "compat/a32_libc_heap.h"
 #include "compat/a32_libc_integer.h"
 #include "compat/a32_libc_memory_string_shim.h"
 #include "cpu/a32_cpu.h"
@@ -33,6 +34,9 @@ using liba32android::compat::A32AndroidNamespaceBinding;
 using liba32android::compat::A32AndroidNamespaceLink;
 using liba32android::compat::A32AndroidPlatformCatalogProvider;
 using liba32android::compat::A32LibcGuestErrnoState;
+using liba32android::compat::A32LibcGuestHeap;
+using liba32android::compat::A32LibcHeapBlock;
+using liba32android::compat::A32LibcHeapOptions;
 using liba32android::compat::A32LibcIntegerOptions;
 using liba32android::compat::A32LibcIntegerService;
 using liba32android::compat::A32LibcMemoryStringOptions;
@@ -42,6 +46,10 @@ using liba32android::compat::kA32LibcMemcmpSvcImmediate;
 using liba32android::compat::kA32LibcMemcpySvcImmediate;
 using liba32android::compat::kA32AndroidErange;
 using liba32android::compat::kA32LibcAtoiSvcImmediate;
+using liba32android::compat::kA32LibcCallocSvcImmediate;
+using liba32android::compat::kA32LibcFreeSvcImmediate;
+using liba32android::compat::kA32LibcMallocSvcImmediate;
+using liba32android::compat::kA32LibcReallocSvcImmediate;
 using liba32android::compat::kA32LibcErrnoSvcImmediate;
 using liba32android::compat::kA32LibcStrtolSvcImmediate;
 using liba32android::compat::kA32LibcMemoryStringShimIdentity;
@@ -294,11 +302,12 @@ int main(int argc, char** argv) {
         return fail("libc shim dependency/provider metadata was incorrect");
     }
 
-    constexpr std::array<std::string_view, 13> shim_names{{
+    constexpr std::array<std::string_view, 17> shim_names{{
         "memcpy", "memset", "memcmp", "memchr",
         "strlen", "strcmp", "strncmp",
         "memmem", "strcpy", "strncpy",
         "atoi", "strtol", "__errno",
+        "malloc", "calloc", "realloc", "free",
     }};
     std::array<std::uint32_t, shim_names.size()> shim_targets{};
     for (std::size_t i = 0; i < shim_names.size(); ++i) {
@@ -338,14 +347,17 @@ int main(int argc, char** argv) {
     const auto data = find_unmapped_region(memory, 0x70000000U, 1);
     const auto stack = find_unmapped_region(memory, 0x71000000U, kStackPages);
     const auto stop = find_unmapped_region(memory, 0x72000000U, 1);
-    if (!data.has_value() || !stack.has_value() || !stop.has_value()) {
+    const auto heap_region = find_unmapped_region(memory, 0x73000000U, 1);
+    if (!data.has_value() || !stack.has_value() || !stop.has_value() ||
+        !heap_region.has_value()) {
         return fail("could not reserve libc shim execution harness regions");
     }
 
     const auto rw = MemoryPermission::Read | MemoryPermission::Write;
     if (!memory.map(*data, memory.page_size(), rw) ||
-        !memory.map(*stack, memory.page_size() * kStackPages, rw)) {
-        return fail("could not map libc shim data/stack");
+        !memory.map(*stack, memory.page_size() * kStackPages, rw) ||
+        !memory.map(*heap_region, memory.page_size(), rw)) {
+        return fail("could not map libc shim data/stack/heap");
     }
 
     const std::uint64_t stack_top64 =
@@ -396,7 +408,15 @@ int main(int argc, char** argv) {
     A32LibcGuestErrnoState errno_state{errno_address};
     A32LibcIntegerService integer_service{
         errno_state, A32LibcIntegerOptions{64}};
-    const std::array<A32HostServiceRegistryEntry, 13> services{{
+    std::array<A32LibcHeapBlock, 8> heap_metadata{};
+    A32LibcGuestHeap heap{
+        errno_state,
+        A32LibcHeapOptions{
+            *heap_region,
+            static_cast<std::uint64_t>(*heap_region) + memory.page_size()},
+        std::span{heap_metadata},
+    };
+    const std::array<A32HostServiceRegistryEntry, 17> services{{
         {kA32LibcMemcpySvcImmediate, &service},
         {kA32LibcMemsetSvcImmediate, &service},
         {kA32LibcMemcmpSvcImmediate, &service},
@@ -410,6 +430,10 @@ int main(int argc, char** argv) {
         {kA32LibcAtoiSvcImmediate, &integer_service},
         {kA32LibcStrtolSvcImmediate, &integer_service},
         {kA32LibcErrnoSvcImmediate, &errno_state},
+        {kA32LibcMallocSvcImmediate, &heap},
+        {kA32LibcCallocSvcImmediate, &heap},
+        {kA32LibcReallocSvcImmediate, &heap},
+        {kA32LibcFreeSvcImmediate, &heap},
     }};
     A32HostServiceRegistry registry{std::span{services}};
 
@@ -544,6 +568,59 @@ int main(int argc, char** argv) {
     if (!result || !*result ||
         signed_r0(result->regs[0]) != kA32AndroidErange) {
         return fail("real libc __errno wrapper did not expose guest errno slot");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_malloc", registry,
+        stack_top, *stop, 8U, 0U, 0U);
+    if (!result || !*result || result->regs[0] == 0U ||
+        result->regs[0] < *heap_region ||
+        static_cast<std::uint64_t>(result->regs[0]) >=
+            static_cast<std::uint64_t>(*heap_region) + memory.page_size() ||
+        (result->regs[0] % liba32android::compat::kA32AndroidMallocAlignment) != 0U) {
+        return fail("real libc malloc wrapper returned invalid guest pointer");
+    }
+    const std::uint32_t malloc_address = result->regs[0];
+    constexpr std::array<std::uint8_t, 8> heap_payload{{9,8,7,6,5,4,3,2}};
+    if (!memory.write(malloc_address, heap_payload)) {
+        return fail("could not stage real libc realloc payload");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_realloc", registry,
+        stack_top, *stop, malloc_address, 32U, 0U);
+    if (!result || !*result || result->regs[0] == 0U) {
+        return fail("real libc realloc wrapper failed");
+    }
+    const std::uint32_t realloc_address = result->regs[0];
+    std::array<std::uint8_t, heap_payload.size()> realloc_payload{};
+    if (!memory.read(realloc_address, realloc_payload) ||
+        realloc_payload != heap_payload) {
+        return fail("real libc realloc wrapper did not preserve payload");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_calloc", registry,
+        stack_top, *stop, 3U, 5U, 0U);
+    if (!result || !*result || result->regs[0] == 0U) {
+        return fail("real libc calloc wrapper failed");
+    }
+    std::array<std::uint8_t, 15> calloc_bytes{};
+    std::array<std::uint8_t, 15> calloc_observed{};
+    if (!memory.read(result->regs[0], calloc_observed) ||
+        calloc_observed != calloc_bytes) {
+        return fail("real libc calloc wrapper did not zero requested bytes");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_free", registry,
+        stack_top, *stop, realloc_address, 0U, 0U);
+    if (!result || !*result) {
+        return fail("real libc free wrapper failed");
     }
     ++completed_calls;
 

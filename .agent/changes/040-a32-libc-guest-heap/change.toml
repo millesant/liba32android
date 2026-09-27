@@ -2,10 +2,11 @@ schema = 1
 id = "040-a32-libc-guest-heap"
 kind = "feature"
 size = "S2"
-status = "implemented"
+status = "done"
 workflow = "feature"
 control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
 base_revision = "9160aa24c9f1cebdfe65a79ecc1543a662bec5c4"
+result_revision = "84d49653e6d72dca0e116ab2e12342efd4057531"
 acceptance = [
   "Android 17 release evidence defines the bounded observable malloc/calloc/realloc/free behavior without copying Scudo internals",
   "private shared SVC IDs 0xAE through 0xB1 represent malloc, calloc, realloc, and free",
@@ -28,5 +29,5 @@ tests = "aligned"
 documentation = "aligned"
 decisions = "not_applicable"
 tasks = "aligned"
-evidence = "pending"
+evidence = "aligned"
 repository = "aligned"

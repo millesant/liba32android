@@ -1,5 +1,6 @@
 #include "compat/a32_libc_memory_string.h"
 #include "compat/a32_libc_integer.h"
+#include "compat/a32_libc_heap.h"
 
 .syntax unified
 .arm
@@ -28,5 +29,9 @@ LIBA32_STUB strncpy, LIBA32ANDROID_A32_LIBC_STRNCPY_SVC
 LIBA32_STUB atoi,    LIBA32ANDROID_A32_LIBC_ATOI_SVC
 LIBA32_STUB strtol,  LIBA32ANDROID_A32_LIBC_STRTOL_SVC
 LIBA32_STUB __errno, LIBA32ANDROID_A32_LIBC_ERRNO_SVC
+LIBA32_STUB malloc,  LIBA32ANDROID_A32_LIBC_MALLOC_SVC
+LIBA32_STUB calloc,  LIBA32ANDROID_A32_LIBC_CALLOC_SVC
+LIBA32_STUB realloc, LIBA32ANDROID_A32_LIBC_REALLOC_SVC
+LIBA32_STUB free,    LIBA32ANDROID_A32_LIBC_FREE_SVC
 
 .section .note.GNU-stack,"",%progbits

@@ -50,7 +50,7 @@ jobs:
 
           grep -F 'Library soname: [libc.so]' build-fixtures/libc-ms-shim-dynamic.txt
           grep -F 'Shared library: [libc.so]' build-fixtures/libc-ms-consumer-dynamic.txt
-          for symbol in memcpy memset memcmp memchr strlen strcmp strncmp memmem strcpy strncpy atoi strtol __errno; do
+          for symbol in memcpy memset memcmp memchr strlen strcmp strncmp memmem strcpy strncpy atoi strtol __errno malloc calloc realloc free; do
             grep -F "$symbol" build-fixtures/libc-ms-shim-symbols.txt
             grep -F 'R_ARM_JUMP_SLOT' build-fixtures/libc-ms-consumer-relocations.txt |
               grep -F "$symbol"
@@ -75,8 +75,8 @@ jobs:
           grep -F 'fixture.libc.object_count=2' build-fixtures/libc-ms-integration-evidence.txt
           grep -F 'fixture.libc.needed=libc.so' build-fixtures/libc-ms-integration-evidence.txt
           grep -F 'fixture.libc.namespace_access=linked' build-fixtures/libc-ms-integration-evidence.txt
-          grep -F 'fixture.libc.required_jump_slots=13' build-fixtures/libc-ms-integration-evidence.txt
-          grep -F 'fixture.libc.completed_service_calls=13' build-fixtures/libc-ms-integration-evidence.txt
+          grep -F 'fixture.libc.required_jump_slots=17' build-fixtures/libc-ms-integration-evidence.txt
+          grep -F 'fixture.libc.completed_service_calls=17' build-fixtures/libc-ms-integration-evidence.txt
           grep -F 'fixture.libc.status=PASS' build-fixtures/libc-ms-integration-evidence.txt
 
       - name: Upload partial libc integration evidence

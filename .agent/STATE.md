@@ -3,11 +3,11 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `040-a32-libc-guest-heap` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: `041-a32-libc-allocator-shim` — IMPLEMENTED, exact-head validation NOT RUN.
 
 ## Phase
 
-Features 011-039 are accepted.
+Features 011-040 are accepted.
 
 Feature 039 passed all five exact-head checks at
 `9160aa24c9f1cebdfe65a79ecc1543a662bec5c4`.
@@ -35,16 +35,25 @@ Latest accepted behavior-changing result: feature 039 at
 - ARM32 liblog shim integration `108524978481` — PASS.
 - ARM32 libc memory string shim integration `108524978431` — PASS.
 
-Feature 040 exact-head validation: NOT RUN.
+Feature 040 passed all five required exact-head checks at
+`84d49653e6d72dca0e116ab2e12342efd4057531`.
+
+Feature 041 is now integrated. It extends the real partial ARM32 `libc.so`
+fixture and freestanding consumer with `malloc/calloc/realloc/free` at shared
+SVC IDs `0xAE-0xB1`, requires seventeen eager JUMP_SLOT targets, and routes the
+four real guest wrappers into one bounded `A32LibcGuestHeap` over a mapped
+logical guest arena.
+
+Feature 041 exact-head validation: NOT RUN.
 
 ## Prepared lineage
 
 Off-ref work remains prepared through feature 049:
-`041 -> 042 -> 043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
+`042 -> 043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
 
 ## Deferred / partial
 
-The matching allocator guest-shim exports, constructor/destructor lifecycle,
+Constructor/destructor lifecycle,
 ARM EABI memory helpers, pthread/semaphore scheduling boundaries, libdl, libm,
 Android filesystem/search, stable embedding API, and device execution remain
 later work.

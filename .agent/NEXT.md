@@ -1,17 +1,15 @@
 # Next Work
 
-Features 011 through 039 are DONE.
+Features 011 through 040 are DONE.
 
-`040-a32-libc-guest-heap` is IMPLEMENTED on `bleeding`; its exact-head
+`041-a32-libc-allocator-shim` is IMPLEMENTED on `bleeding`; its exact-head
 required checks are the immediate acceptance gate.
 
-Once terminal success is observed, close 040 and integrate prepared feature 041,
-which carries `malloc/calloc/realloc/free` through the real partial-libc
-JUMP_SLOT -> SVC -> logical guest heap path.
+Once terminal success is observed, close 041 and integrate prepared feature 042.
 
-Prepared order after 040:
+Prepared order after 041:
 
-`041 -> 042 -> 043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
+`042 -> 043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
 
 ## Local-machine validation note
 

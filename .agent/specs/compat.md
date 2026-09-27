@@ -355,3 +355,25 @@ no-op. Unknown non-null free/realloc pointers return `Failed`.
 
 Scudo internals, page ownership, locking, aligned allocation, usable-size,
 mallinfo/mallopt, and C++ allocation operators remain outside this contract.
+
+## L32-C018 — Partial libc allocator shim extension
+
+The prepared partial ARM32 `libc.so` may additionally export `malloc`,
+`calloc`, `realloc`, and `free` as the shared private SVC stubs
+`0xAE` through `0xB1`. The freestanding consumer may import all four
+functions alongside the thirteen already prepared partial-libc symbols.
+
+Real integration must resolve all seventeen symbols, require an eager
+`R_ARM_JUMP_SLOT` target for each, and route the allocator quartet to one
+`A32LibcGuestHeap` that shares the same guest errno state used by integer
+conversion. The heap arena must be already mapped, writable guest memory and
+all returned pointers remain logical 32-bit guest addresses.
+
+The integration must execute real guest `malloc`, `realloc`, `calloc`,
+and `free` wrappers, prove realloc payload preservation and calloc zeroing,
+and retain the existing namespace-gated finite platform-catalog path.
+
+This remains a bounded partial libc compatibility shim. It does not add
+Android TLS/thread scheduling, constructor/destructor lifecycle, aligned
+allocation, stdio/file/socket I/O, libdl, libm, startup, signals, locale, or a
+full Android libc claim.

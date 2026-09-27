@@ -1,0 +1,29 @@
+schema = 1
+change = "041-a32-libc-allocator-shim"
+
+[[evidence]]
+id = "seventeen-symbol-partial-libc-fixture"
+kind = "test"
+status = "not_run"
+claim = "The real partial-libc fixture exports/imports the allocator quartet in addition to the thirteen accepted symbols and requires seventeen eager JUMP_SLOT targets."
+source = "tests/compat/a32_libc_memory_string_shim.cpp and .github/workflows/compat-libc-shim.yml"
+result = "Feature 041 integration is implemented; exact-head execution has not yet been observed."
+limitations = "Source integration is not passing evidence until the dedicated workflow actually runs."
+
+[[evidence]]
+id = "allocator-real-wrapper-path"
+kind = "test"
+status = "not_run"
+claim = "Real guest malloc/realloc/calloc/free wrappers cross shim SVC dispatch into A32LibcGuestHeap with logical pointers, realloc payload preservation, and calloc zeroing."
+source = "tests/compat/a32_libc_memory_string_shim.cpp"
+result = "Feature 041 integration is implemented; exact-head execution has not yet been observed."
+limitations = "The bounded arena is a compatibility heap, not Android Scudo or a full process allocator."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "Feature 041 passes required exact-head checks after feature 040 is accepted."
+source = "GitHub commit checks on the feature-041 integration revision"
+result = ""
+limitations = "Feature 041 remains implemented rather than done until terminal exact-head checks are observed."

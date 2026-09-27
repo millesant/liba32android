@@ -54,3 +54,23 @@ This DSO is not a replacement for Android's real libc. It does not provide
 allocation, pthreads, file/socket/stdio, errno, process startup, dynamic loader,
 math, locale, signals, or any other libc surface. The supplied FMOD/VLC
 binaries still cannot be claimed loadable from this thirteen-symbol shim alone.
+
+## Allocator extension (feature 041)
+
+Feature 041 extends the same reproducible partial `libc.so` and freestanding
+consumer with `malloc`, `calloc`, `realloc`, and `free`. The four guest
+functions are minimal A32 SVC stubs using the shared feature-040 IDs
+`0xAE`- `0xB1`; the host integration binds those IDs to one
+`A32LibcGuestHeap` over an already mapped writable guest arena.
+
+The real integration now requires seventeen eager `R_ARM_JUMP_SLOT` targets
+and executes all seventeen wrappers. Allocator execution proves that returned
+values are logical guest addresses, realloc preserves the staged payload,
+calloc clears exactly the requested bytes, and free completes through the same
+SVC path. The existing `libc.so` SONAME, catalog identity, namespace gate, and
+finite provider model are unchanged.
+
+This does not make the shim a complete Android libc. Thread/TLS selection,
+constructor/destructor lifecycle, aligned-allocation extensions, I/O/stdio,
+libdl, libm, startup, signals, locale, and device execution remain separate
+work.

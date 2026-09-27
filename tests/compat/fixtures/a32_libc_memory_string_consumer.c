@@ -30,6 +30,14 @@ __attribute__((visibility("default")))
 long strtol(const char* text, char** endptr, int base);
 __attribute__((visibility("default")))
 int* __errno(void);
+__attribute__((visibility("default")))
+void* malloc(fixture_size_t size);
+__attribute__((visibility("default")))
+void* calloc(fixture_size_t count, fixture_size_t size);
+__attribute__((visibility("default")))
+void* realloc(void* pointer, fixture_size_t size);
+__attribute__((visibility("default")))
+void free(void* pointer);
 
 __attribute__((visibility("default"), noinline))
 void* fixture_memcpy(void* destination, const void* source, fixture_size_t count) {
@@ -95,4 +103,24 @@ long fixture_strtol(const char* text, char** endptr, int base) {
 __attribute__((visibility("default"), noinline))
 int fixture_errno_read(void) {
     return *__errno();
+}
+
+__attribute__((visibility("default"), noinline))
+void* fixture_malloc(fixture_size_t size) {
+    return malloc(size);
+}
+
+__attribute__((visibility("default"), noinline))
+void* fixture_calloc(fixture_size_t count, fixture_size_t size) {
+    return calloc(count, size);
+}
+
+__attribute__((visibility("default"), noinline))
+void* fixture_realloc(void* pointer, fixture_size_t size) {
+    return realloc(pointer, size);
+}
+
+__attribute__((visibility("default"), noinline))
+void fixture_free(void* pointer) {
+    free(pointer);
 }
