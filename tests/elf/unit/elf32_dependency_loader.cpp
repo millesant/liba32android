@@ -1,6 +1,8 @@
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
