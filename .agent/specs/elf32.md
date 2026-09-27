@@ -197,3 +197,26 @@ plus remaining Active Global roots.
 This contract does not execute destructors, apply RTLD_NODELETE, recycle or
 compact Retired slots, coordinate concurrent link-map mutation, or dynamically
 acquire a missing dlopen object.
+
+
+## L32-E021 — Read-only root-release ownership planning
+
+The persistent link-map ownership planner additionally supports one read-only
+root-release query. The caller supplies one exact Active persistent-root object
+index plus the same bounded additional live-anchor span used by ordinary
+reclamation planning.
+
+The call validates the current link map identically to ordinary planning,
+requires the selected object to be represented by exactly one current root
+record, and then computes reachability as if only that root record were absent.
+The real link-map root/global/object-state vectors, mappings, lifecycle state,
+and handle state are never mutated.
+
+The result preserves the accepted deterministic ordering: reachable Active
+objects are reported in stable ascending index order and unreachable Active
+objects exactly once in requester-before-dependency reverse-postorder.
+
+This operation is planning only. It does not distinguish newly unreachable
+objects from pre-existing unowned Active objects by itself; higher ownership
+transactions may compare ordinary and root-release plans or require a clean
+ordinary baseline before acting.
