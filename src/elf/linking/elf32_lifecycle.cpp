@@ -460,4 +460,397 @@ Elf32FiniExecutionResult execute_elf32_fini_calls(
     return execute_elf32_init_calls(memory, calls, options);
 }
 
+namespace {
+
+enum class PersistentVisitState : std::uint8_t {
+    Unseen = 0,
+    Visiting,
+    Complete,
+};
+
+[[nodiscard]] bool valid_persistent_execution_options(
+    const Elf32InitExecutionOptions& options) noexcept {
+    return options.stack_top != 0U &&
+           (options.stack_top & 7U) == 0U &&
+           (options.return_pc & 3U) == 0U &&
+           options.max_instructions_per_call != 0U;
+}
+
+[[nodiscard]] bool valid_persistent_options(
+    const Elf32PersistentLifecycleOptions& options) noexcept {
+    return options.max_objects != 0U &&
+           valid_persistent_execution_options(options.execution);
+}
+
+[[nodiscard]] bool prepare_persistent_state(
+    const Elf32DependencyGraph& graph,
+    Elf32LifecycleState& state) {
+    if (state.objects.size() > graph.objects.size()) {
+        return false;
+    }
+    state.objects.resize(graph.objects.size());
+    for (const auto& object : state.objects) {
+        if (object.destructors != Elf32LifecycleObjectStatus::Pending &&
+            object.constructors != Elf32LifecycleObjectStatus::Complete) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool lifecycle_function_present(std::uint32_t function) noexcept {
+    return function != 0U &&
+           function != std::numeric_limits<std::uint32_t>::max();
+}
+
+[[nodiscard]] Elf32PersistentLifecycleResult persistent_failure(
+    Elf32PersistentLifecycleError error,
+    std::optional<std::size_t> failing_object = std::nullopt) {
+    Elf32PersistentLifecycleResult result;
+    result.error = error;
+    result.failing_object = failing_object;
+    return result;
+}
+
+struct PersistentInitContext {
+    memory::GuestMemory& memory;
+    const Elf32DependencyGraph& graph;
+    Elf32LifecycleState& state;
+    const Elf32PersistentLifecycleOptions& options;
+    std::vector<PersistentVisitState> visits;
+    std::uint32_t visited_objects{};
+    std::uint32_t decoded_entries{};
+    Elf32PersistentLifecycleResult result;
+
+    [[nodiscard]] bool fail(
+        Elf32PersistentLifecycleError error,
+        std::size_t object_index) {
+        result.error = error;
+        result.failing_object = object_index;
+        return false;
+    }
+
+    [[nodiscard]] bool visit(std::size_t object_index) {
+        if (visits[object_index] == PersistentVisitState::Complete) {
+            return true;
+        }
+        if (visits[object_index] == PersistentVisitState::Visiting) {
+            return true;
+        }
+        if (visited_objects >= options.max_objects) {
+            return fail(
+                Elf32PersistentLifecycleError::ObjectLimitExceeded,
+                object_index);
+        }
+        ++visited_objects;
+        visits[object_index] = PersistentVisitState::Visiting;
+
+        auto& lifecycle = state.objects[object_index];
+        if (lifecycle.constructors == Elf32LifecycleObjectStatus::Failed) {
+            return fail(
+                Elf32PersistentLifecycleError::InvalidState,
+                object_index);
+        }
+        if (lifecycle.constructors == Elf32LifecycleObjectStatus::Complete) {
+            visits[object_index] = PersistentVisitState::Complete;
+            return true;
+        }
+
+        const auto& object = graph.objects[object_index];
+        for (const auto& edge : object.dependencies) {
+            if (edge.target_object >= graph.objects.size()) {
+                return fail(
+                    Elf32PersistentLifecycleError::InvalidGraphEdge,
+                    object_index);
+            }
+            if (!visit(edge.target_object)) {
+                return false;
+            }
+        }
+
+        std::vector<Elf32InitCall> calls;
+        if (object.linker_metadata.init_function.has_value() &&
+            lifecycle_function_present(
+                *object.linker_metadata.init_function)) {
+            calls.push_back(Elf32InitCall{
+                .object_index = object_index,
+                .array_index = std::numeric_limits<std::uint32_t>::max(),
+                .function = *object.linker_metadata.init_function,
+            });
+        }
+
+        if (object.linker_metadata.init_array.has_value()) {
+            const std::uint32_t remaining =
+                options.max_array_entries - decoded_entries;
+            const auto decoded = decode_elf32_function_array(
+                memory,
+                *object.linker_metadata.init_array,
+                Elf32FunctionArrayDecodeOptions{
+                    .max_entries = remaining,
+                });
+            if (!decoded) {
+                result.error =
+                    decoded.error ==
+                            Elf32FunctionArrayDecodeError::TooManyEntries
+                        ? Elf32PersistentLifecycleError::EntryLimitExceeded
+                        : Elf32PersistentLifecycleError::DecodeFailed;
+                result.decode_error = decoded.error;
+                result.failing_object = object_index;
+                return false;
+            }
+            decoded_entries +=
+                static_cast<std::uint32_t>(decoded.entries.size());
+            for (std::size_t index = 0; index < decoded.entries.size();
+                 ++index) {
+                const std::uint32_t function = decoded.entries[index];
+                if (!lifecycle_function_present(function)) {
+                    continue;
+                }
+                calls.push_back(Elf32InitCall{
+                    .object_index = object_index,
+                    .array_index = static_cast<std::uint32_t>(index),
+                    .function = function,
+                });
+            }
+        }
+
+        if (!calls.empty()) {
+            auto executed = execute_elf32_init_calls(
+                memory, calls, options.execution);
+            result.calls_completed += executed.calls_completed;
+            if (!executed) {
+                lifecycle.constructors = Elf32LifecycleObjectStatus::Failed;
+                result.error =
+                    Elf32PersistentLifecycleError::ExecutionFailed;
+                result.execution_error = executed.error;
+                result.failing_object = object_index;
+                result.cpu_result = std::move(executed.cpu_result);
+                return false;
+            }
+        }
+
+        lifecycle.constructors = Elf32LifecycleObjectStatus::Complete;
+        ++result.objects_completed;
+        visits[object_index] = PersistentVisitState::Complete;
+        return true;
+    }
+};
+
+struct PersistentFiniContext {
+    memory::GuestMemory& memory;
+    const Elf32DependencyGraph& graph;
+    Elf32LifecycleState& state;
+    const Elf32PersistentLifecycleOptions& options;
+    std::vector<PersistentVisitState> visits;
+    std::uint32_t visited_objects{};
+    std::uint32_t decoded_entries{};
+    Elf32PersistentLifecycleResult result;
+
+    [[nodiscard]] bool fail(
+        Elf32PersistentLifecycleError error,
+        std::size_t object_index) {
+        result.error = error;
+        result.failing_object = object_index;
+        return false;
+    }
+
+    [[nodiscard]] bool visit(std::size_t object_index) {
+        if (visits[object_index] == PersistentVisitState::Complete) {
+            return true;
+        }
+        if (visits[object_index] == PersistentVisitState::Visiting) {
+            return true;
+        }
+        if (visited_objects >= options.max_objects) {
+            return fail(
+                Elf32PersistentLifecycleError::ObjectLimitExceeded,
+                object_index);
+        }
+        ++visited_objects;
+        visits[object_index] = PersistentVisitState::Visiting;
+
+        auto& lifecycle = state.objects[object_index];
+        if (lifecycle.constructors != Elf32LifecycleObjectStatus::Complete ||
+            lifecycle.destructors == Elf32LifecycleObjectStatus::Failed) {
+            return fail(
+                Elf32PersistentLifecycleError::InvalidState,
+                object_index);
+        }
+
+        const auto& object = graph.objects[object_index];
+        if (lifecycle.destructors == Elf32LifecycleObjectStatus::Pending) {
+            std::vector<Elf32FiniCall> calls;
+
+            if (object.linker_metadata.fini_array.has_value()) {
+                const std::uint32_t remaining =
+                    options.max_array_entries - decoded_entries;
+                const auto decoded = decode_elf32_function_array(
+                    memory,
+                    *object.linker_metadata.fini_array,
+                    Elf32FunctionArrayDecodeOptions{
+                        .max_entries = remaining,
+                    });
+                if (!decoded) {
+                    result.error =
+                        decoded.error ==
+                                Elf32FunctionArrayDecodeError::TooManyEntries
+                            ? Elf32PersistentLifecycleError::EntryLimitExceeded
+                            : Elf32PersistentLifecycleError::DecodeFailed;
+                    result.decode_error = decoded.error;
+                    result.failing_object = object_index;
+                    return false;
+                }
+                decoded_entries +=
+                    static_cast<std::uint32_t>(decoded.entries.size());
+                for (std::size_t reverse_index = decoded.entries.size();
+                     reverse_index > 0; --reverse_index) {
+                    const std::size_t index = reverse_index - 1U;
+                    const std::uint32_t function = decoded.entries[index];
+                    if (!lifecycle_function_present(function)) {
+                        continue;
+                    }
+                    calls.push_back(Elf32FiniCall{
+                        .object_index = object_index,
+                        .array_index = static_cast<std::uint32_t>(index),
+                        .function = function,
+                    });
+                }
+            }
+
+            if (object.linker_metadata.fini_function.has_value() &&
+                lifecycle_function_present(
+                    *object.linker_metadata.fini_function)) {
+                calls.push_back(Elf32FiniCall{
+                    .object_index = object_index,
+                    .array_index =
+                        std::numeric_limits<std::uint32_t>::max(),
+                    .function = *object.linker_metadata.fini_function,
+                });
+            }
+
+            if (!calls.empty()) {
+                auto executed = execute_elf32_fini_calls(
+                    memory, calls, options.execution);
+                result.calls_completed += executed.calls_completed;
+                if (!executed) {
+                    lifecycle.destructors =
+                        Elf32LifecycleObjectStatus::Failed;
+                    result.error =
+                        Elf32PersistentLifecycleError::ExecutionFailed;
+                    result.execution_error = executed.error;
+                    result.failing_object = object_index;
+                    result.cpu_result = std::move(executed.cpu_result);
+                    return false;
+                }
+            }
+
+            lifecycle.destructors = Elf32LifecycleObjectStatus::Complete;
+            ++result.objects_completed;
+        }
+
+        for (const auto& edge : object.dependencies) {
+            if (edge.target_object >= graph.objects.size()) {
+                return fail(
+                    Elf32PersistentLifecycleError::InvalidGraphEdge,
+                    object_index);
+            }
+            if (!visit(edge.target_object)) {
+                return false;
+            }
+        }
+
+        visits[object_index] = PersistentVisitState::Complete;
+        return true;
+    }
+};
+
+}  // namespace
+
+Elf32PersistentLifecycleResult run_elf32_persistent_constructors(
+    memory::GuestMemory& memory,
+    const Elf32DependencyGraph& graph,
+    Elf32LifecycleState& state,
+    std::size_t root_object,
+    const Elf32PersistentLifecycleOptions& options) {
+    if (!valid_persistent_options(options)) {
+        return persistent_failure(
+            Elf32PersistentLifecycleError::InvalidOptions);
+    }
+    if (root_object >= graph.objects.size()) {
+        return persistent_failure(
+            Elf32PersistentLifecycleError::InvalidRootObject,
+            root_object);
+    }
+    if (!prepare_persistent_state(graph, state)) {
+        return persistent_failure(
+            Elf32PersistentLifecycleError::InvalidState);
+    }
+
+    PersistentInitContext context{
+        .memory = memory,
+        .graph = graph,
+        .state = state,
+        .options = options,
+        .visits = std::vector<PersistentVisitState>(
+            graph.objects.size(), PersistentVisitState::Unseen),
+    };
+    static_cast<void>(context.visit(root_object));
+    return std::move(context.result);
+}
+
+Elf32PersistentLifecycleResult run_elf32_persistent_destructors(
+    memory::GuestMemory& memory,
+    const Elf32DependencyGraph& graph,
+    Elf32LifecycleState& state,
+    std::size_t root_object,
+    const Elf32PersistentLifecycleOptions& options) {
+    if (!valid_persistent_options(options)) {
+        return persistent_failure(
+            Elf32PersistentLifecycleError::InvalidOptions);
+    }
+    if (root_object >= graph.objects.size()) {
+        return persistent_failure(
+            Elf32PersistentLifecycleError::InvalidRootObject,
+            root_object);
+    }
+    if (!prepare_persistent_state(graph, state)) {
+        return persistent_failure(
+            Elf32PersistentLifecycleError::InvalidState);
+    }
+
+    PersistentFiniContext context{
+        .memory = memory,
+        .graph = graph,
+        .state = state,
+        .options = options,
+        .visits = std::vector<PersistentVisitState>(
+            graph.objects.size(), PersistentVisitState::Unseen),
+    };
+    static_cast<void>(context.visit(root_object));
+    return std::move(context.result);
+}
+
+const char* to_string(Elf32PersistentLifecycleError error) noexcept {
+    switch (error) {
+    case Elf32PersistentLifecycleError::None: return "none";
+    case Elf32PersistentLifecycleError::InvalidOptions:
+        return "invalid_options";
+    case Elf32PersistentLifecycleError::InvalidRootObject:
+        return "invalid_root_object";
+    case Elf32PersistentLifecycleError::InvalidState:
+        return "invalid_state";
+    case Elf32PersistentLifecycleError::InvalidGraphEdge:
+        return "invalid_graph_edge";
+    case Elf32PersistentLifecycleError::ObjectLimitExceeded:
+        return "object_limit_exceeded";
+    case Elf32PersistentLifecycleError::EntryLimitExceeded:
+        return "entry_limit_exceeded";
+    case Elf32PersistentLifecycleError::DecodeFailed:
+        return "decode_failed";
+    case Elf32PersistentLifecycleError::ExecutionFailed:
+        return "execution_failed";
+    }
+    return "unknown";
+}
+
 }  // namespace liba32android::elf

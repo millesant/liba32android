@@ -75,6 +75,9 @@ struct Elf32CollectedLinkerMetadata {
     // AArch32 PLT relocations are accepted only in Elf32_Rel form. This is a
     // validated descriptor only; JUMP_SLOT/lazy-binding semantics are downstream.
     std::optional<Elf32CollectedRelTableMetadata> plt_rel_table;
+    // Raw DT_INIT/DT_FINI function values are rebased once during validation.
+    std::optional<std::uint32_t> init_function_address_value;
+    std::optional<std::uint32_t> fini_function_address_value;
     std::optional<Elf32CollectedFunctionArrayMetadata> init_array;
     std::optional<Elf32CollectedFunctionArrayMetadata> fini_array;
     std::optional<std::uint32_t> version_symbol_address_value;
@@ -145,6 +148,10 @@ struct Elf32LinkerMetadata {
     // Guest-only DT_JMPREL/DT_PLTRELSZ descriptor after DT_PLTREL == DT_REL
     // validation. No relocation-entry or JUMP_SLOT semantics are implied.
     std::optional<Elf32RelTableMetadata> plt_rel_table;
+    // Guest logical legacy lifecycle entry points. Zero/all-ones are retained
+    // as raw sentinel-like values and filtered by lifecycle execution policy.
+    std::optional<std::uint32_t> init_function;
+    std::optional<std::uint32_t> fini_function;
     // Guest-only INIT_ARRAY/FINI_ARRAY descriptors. Entries are raw 32-bit
     // function values and are decoded by the lifecycle layer, not here.
     std::optional<Elf32FunctionArrayMetadata> init_array;

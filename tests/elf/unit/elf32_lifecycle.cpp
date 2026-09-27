@@ -20,11 +20,17 @@ using liba32android::elf::Elf32InitExecutionError;
 using liba32android::elf::Elf32InitExecutionOptions;
 using liba32android::elf::Elf32InitPlanError;
 using liba32android::elf::Elf32InitPlanOptions;
+using liba32android::elf::Elf32LifecycleObjectStatus;
+using liba32android::elf::Elf32LifecycleState;
+using liba32android::elf::Elf32PersistentLifecycleError;
+using liba32android::elf::Elf32PersistentLifecycleOptions;
 using liba32android::elf::decode_elf32_function_array;
 using liba32android::elf::execute_elf32_fini_calls;
 using liba32android::elf::execute_elf32_init_calls;
 using liba32android::elf::plan_elf32_fini_array_calls;
 using liba32android::elf::plan_elf32_init_array_calls;
+using liba32android::elf::run_elf32_persistent_constructors;
+using liba32android::elf::run_elf32_persistent_destructors;
 using liba32android::memory::LinearGuestMemory;
 
 int fail(const char* message) {
@@ -777,6 +783,181 @@ int test_fini_plan_executes_requester_first_end_to_end() {
     return 0;
 }
 
+
+int test_persistent_legacy_lifecycle_and_once_state() {
+    LinearGuestMemory memory(0x1000, 0x1000);
+    Elf32DependencyGraph graph;
+    graph.objects.resize(2);
+    graph.objects[0].dependencies = {
+        Elf32DependencyEdge{.requested_name = "dep", .target_object = 1},
+    };
+
+    constexpr std::array<std::uint8_t, 20> set_one{
+        0x08, 0x00, 0x9F, 0xE5,
+        0x01, 0x10, 0xA0, 0xE3,
+        0x00, 0x10, 0x80, 0xE5,
+        0x1E, 0xFF, 0x2F, 0xE1,
+        0x80, 0x13, 0x00, 0x00,
+    };
+    constexpr std::array<std::uint8_t, 24> increment{
+        0x0C, 0x00, 0x9F, 0xE5,
+        0x00, 0x10, 0x90, 0xE5,
+        0x01, 0x10, 0x81, 0xE2,
+        0x00, 0x10, 0x80, 0xE5,
+        0x1E, 0xFF, 0x2F, 0xE1,
+        0x80, 0x13, 0x00, 0x00,
+    };
+    constexpr std::array<std::uint8_t, 20> set_five{
+        0x08, 0x00, 0x9F, 0xE5,
+        0x05, 0x10, 0xA0, 0xE3,
+        0x00, 0x10, 0x80, 0xE5,
+        0x1E, 0xFF, 0x2F, 0xE1,
+        0x80, 0x13, 0x00, 0x00,
+    };
+    constexpr std::array<std::uint8_t, 20> set_seven{
+        0x08, 0x00, 0x9F, 0xE5,
+        0x07, 0x10, 0xA0, 0xE3,
+        0x00, 0x10, 0x80, 0xE5,
+        0x1E, 0xFF, 0x2F, 0xE1,
+        0x80, 0x13, 0x00, 0x00,
+    };
+    constexpr std::array<std::uint8_t, 20> set_nine{
+        0x08, 0x00, 0x9F, 0xE5,
+        0x09, 0x10, 0xA0, 0xE3,
+        0x00, 0x10, 0x80, 0xE5,
+        0x1E, 0xFF, 0x2F, 0xE1,
+        0x80, 0x13, 0x00, 0x00,
+    };
+
+    if (!memory.write(0x1100, set_one) ||
+        !memory.write(0x1140, increment) ||
+        !memory.write(0x1180, set_five) ||
+        !memory.write(0x11c0, set_seven) ||
+        !memory.write(0x1200, increment) ||
+        !memory.write(0x1240, set_nine) ||
+        !memory.write(0x1280, increment) ||
+        !stage_init_array(memory, graph, 0, 0x1300, {0x1180U}) ||
+        !stage_fini_array(memory, graph, 0, 0x1310, {0x11c0U}) ||
+        !stage_fini_array(memory, graph, 1, 0x1320, {0x1240U})) {
+        return fail("could not stage persistent legacy lifecycle fixture");
+    }
+
+    graph.objects[1].linker_metadata.init_function = 0x1100U;
+    graph.objects[0].linker_metadata.init_function = 0x1140U;
+    graph.objects[0].linker_metadata.fini_function = 0x1200U;
+    graph.objects[1].linker_metadata.fini_function = 0x1280U;
+
+    Elf32LifecycleState state;
+    const Elf32PersistentLifecycleOptions options{
+        .max_objects = 2U,
+        .max_array_entries = 3U,
+        .execution = Elf32InitExecutionOptions{
+            .stack_top = 0x17f8U,
+            .return_pc = 0x2000U,
+            .max_instructions_per_call = 16U,
+        },
+    };
+
+    const auto initialized = run_elf32_persistent_constructors(
+        memory, graph, state, 0U, options);
+    std::array<std::uint8_t, 4> bytes{};
+    if (!memory.read(0x1380U, bytes)) {
+        return fail("could not read persistent constructor state");
+    }
+    const auto value_after_init =
+        static_cast<std::uint32_t>(bytes[0]) |
+        (static_cast<std::uint32_t>(bytes[1]) << 8U) |
+        (static_cast<std::uint32_t>(bytes[2]) << 16U) |
+        (static_cast<std::uint32_t>(bytes[3]) << 24U);
+    if (!initialized ||
+        initialized.objects_completed != 2U ||
+        initialized.calls_completed != 3U ||
+        value_after_init != 5U ||
+        state.objects.size() != 2U ||
+        state.objects[0].constructors != Elf32LifecycleObjectStatus::Complete ||
+        state.objects[1].constructors != Elf32LifecycleObjectStatus::Complete) {
+        return fail("persistent constructors did not run dependency/DT_INIT/array order");
+    }
+
+    const auto repeated_init = run_elf32_persistent_constructors(
+        memory, graph, state, 0U, options);
+    if (!repeated_init ||
+        repeated_init.objects_completed != 0U ||
+        repeated_init.calls_completed != 0U) {
+        return fail("persistent constructor state did not suppress replay");
+    }
+
+    const auto finalized = run_elf32_persistent_destructors(
+        memory, graph, state, 0U, options);
+    if (!memory.read(0x1380U, bytes)) {
+        return fail("could not read persistent destructor state");
+    }
+    const auto value_after_fini =
+        static_cast<std::uint32_t>(bytes[0]) |
+        (static_cast<std::uint32_t>(bytes[1]) << 8U) |
+        (static_cast<std::uint32_t>(bytes[2]) << 16U) |
+        (static_cast<std::uint32_t>(bytes[3]) << 24U);
+    if (!finalized ||
+        finalized.objects_completed != 2U ||
+        finalized.calls_completed != 4U ||
+        value_after_fini != 10U ||
+        state.objects[0].destructors != Elf32LifecycleObjectStatus::Complete ||
+        state.objects[1].destructors != Elf32LifecycleObjectStatus::Complete) {
+        return fail("persistent destructors did not run array/DT_FINI/requester order");
+    }
+
+    const auto repeated_fini = run_elf32_persistent_destructors(
+        memory, graph, state, 0U, options);
+    if (!repeated_fini ||
+        repeated_fini.objects_completed != 0U ||
+        repeated_fini.calls_completed != 0U) {
+        return fail("persistent destructor state did not suppress replay");
+    }
+    return 0;
+}
+
+int test_persistent_lifecycle_failure_latches_state() {
+    LinearGuestMemory memory(0x400, 0x1000);
+    constexpr std::array<std::uint8_t, 4> loop_code{
+        0xFE, 0xFF, 0xFF, 0xEA,
+    };
+    if (!memory.write(0x1100U, loop_code)) {
+        return fail("could not stage persistent lifecycle failure fixture");
+    }
+
+    Elf32DependencyGraph graph;
+    graph.objects.resize(1);
+    graph.objects[0].linker_metadata.init_function = 0x1100U;
+    Elf32LifecycleState state;
+    const Elf32PersistentLifecycleOptions options{
+        .max_objects = 1U,
+        .max_array_entries = 0U,
+        .execution = Elf32InitExecutionOptions{
+            .stack_top = 0x13f8U,
+            .return_pc = 0x2000U,
+            .max_instructions_per_call = 2U,
+        },
+    };
+
+    const auto first = run_elf32_persistent_constructors(
+        memory, graph, state, 0U, options);
+    if (first.error != Elf32PersistentLifecycleError::ExecutionFailed ||
+        first.execution_error !=
+            Elf32InitExecutionError::InstructionLimitExceeded ||
+        state.objects.size() != 1U ||
+        state.objects[0].constructors != Elf32LifecycleObjectStatus::Failed) {
+        return fail("persistent lifecycle execution failure was not latched");
+    }
+
+    const auto repeated = run_elf32_persistent_constructors(
+        memory, graph, state, 0U, options);
+    if (repeated.error != Elf32PersistentLifecycleError::InvalidState ||
+        repeated.calls_completed != 0U) {
+        return fail("failed persistent lifecycle object was replayed");
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -822,6 +1003,14 @@ int main() {
         return status;
     }
     if (const int status = test_fini_plan_executes_requester_first_end_to_end();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_persistent_legacy_lifecycle_and_once_state();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_persistent_lifecycle_failure_latches_state();
         status != 0) {
         return status;
     }

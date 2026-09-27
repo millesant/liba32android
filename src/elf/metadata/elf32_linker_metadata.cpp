@@ -18,6 +18,8 @@ constexpr std::int32_t kDtStrtab = 5;
 constexpr std::int32_t kDtSymtab = 6;
 constexpr std::int32_t kDtStrsz = 10;
 constexpr std::int32_t kDtSyment = 11;
+constexpr std::int32_t kDtInit = 12;
+constexpr std::int32_t kDtFini = 13;
 constexpr std::int32_t kDtSoname = 14;
 constexpr std::int32_t kDtSymbolic = 16;
 constexpr std::int32_t kDtRel = 17;
@@ -123,6 +125,8 @@ Elf32CollectedLinkerMetadataResult collect_elf32_linker_metadata(
     std::optional<std::uint32_t> jmprel;
     std::optional<std::uint32_t> pltrelsz;
     std::optional<std::uint32_t> pltrel;
+    std::optional<std::uint32_t> init;
+    std::optional<std::uint32_t> fini;
     std::optional<std::uint32_t> init_array;
     std::optional<std::uint32_t> init_array_size;
     std::optional<std::uint32_t> fini_array;
@@ -164,6 +168,12 @@ Elf32CollectedLinkerMetadataResult collect_elf32_linker_metadata(
             break;
         case kDtSyment:
             accepted = assign_singleton(syment, entry.value);
+            break;
+        case kDtInit:
+            accepted = assign_singleton(init, entry.value);
+            break;
+        case kDtFini:
+            accepted = assign_singleton(fini, entry.value);
             break;
         case kDtSoname:
             accepted = assign_singleton(soname, entry.value);
@@ -325,6 +335,8 @@ Elf32CollectedLinkerMetadataResult collect_elf32_linker_metadata(
             .entry_size = kElf32RelEntrySize,
         };
     }
+    result.metadata.init_function_address_value = init;
+    result.metadata.fini_function_address_value = fini;
     if (init_array.has_value()) {
         result.metadata.init_array = Elf32CollectedFunctionArrayMetadata{
             .address_value = *init_array,
@@ -380,6 +392,30 @@ Elf32LinkerMetadataResult build_elf32_linker_metadata(
     result.metadata.symbolic = collected.metadata.symbolic;
     result.metadata.has_symbol_versioning =
         collected.metadata.has_symbol_versioning;
+
+    const auto build_legacy_function =
+        [&](const std::optional<std::uint32_t>& input,
+            std::optional<std::uint32_t>& output)
+            -> std::optional<Elf32LinkerMetadataError> {
+        if (!input.has_value()) return std::nullopt;
+        std::uint32_t guest_address = 0;
+        if (!rebase_address(*input, load_bias, guest_address)) {
+            return Elf32LinkerMetadataError::AddressOverflow;
+        }
+        output = guest_address;
+        return std::nullopt;
+    };
+
+    if (const auto error = build_legacy_function(
+            collected.metadata.init_function_address_value,
+            result.metadata.init_function)) {
+        return validation_failure(*error);
+    }
+    if (const auto error = build_legacy_function(
+            collected.metadata.fini_function_address_value,
+            result.metadata.fini_function)) {
+        return validation_failure(*error);
+    }
 
     if (const auto& string_table = collected.metadata.string_table) {
         if (result.metadata.soname_offset.has_value() &&

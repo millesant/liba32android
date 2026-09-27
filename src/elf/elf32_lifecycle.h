@@ -191,4 +191,85 @@ using Elf32FiniExecutionResult = Elf32InitExecutionResult;
     std::span<const Elf32FiniCall> calls,
     const Elf32FiniExecutionOptions& options);
 
+enum class Elf32LifecycleObjectStatus : std::uint8_t {
+    Pending = 0,
+    Complete,
+    Failed,
+};
+
+struct Elf32LifecycleObjectState {
+    Elf32LifecycleObjectStatus constructors{Elf32LifecycleObjectStatus::Pending};
+    Elf32LifecycleObjectStatus destructors{Elf32LifecycleObjectStatus::Pending};
+};
+
+// Caller-owned persistent state keyed by stable dependency-graph object index.
+// The vector may grow when a persistent link map appends new objects, but it
+// may never be larger than the graph presented to a lifecycle operation.
+struct Elf32LifecycleState {
+    std::vector<Elf32LifecycleObjectState> objects;
+};
+
+struct Elf32PersistentLifecycleOptions {
+    std::uint32_t max_objects{};
+    // Total raw array entries decoded by this invocation. Legacy DT_INIT/DT_FINI
+    // calls do not consume this array-entry ceiling.
+    std::uint32_t max_array_entries{};
+    Elf32InitExecutionOptions execution;
+};
+
+enum class Elf32PersistentLifecycleError : std::uint8_t {
+    None = 0,
+    InvalidOptions,
+    InvalidRootObject,
+    InvalidState,
+    InvalidGraphEdge,
+    ObjectLimitExceeded,
+    EntryLimitExceeded,
+    DecodeFailed,
+    ExecutionFailed,
+};
+
+struct Elf32PersistentLifecycleResult {
+    Elf32PersistentLifecycleError error{
+        Elf32PersistentLifecycleError::None};
+    Elf32FunctionArrayDecodeError decode_error{
+        Elf32FunctionArrayDecodeError::None};
+    Elf32InitExecutionError execution_error{
+        Elf32InitExecutionError::None};
+    std::size_t objects_completed{};
+    std::size_t calls_completed{};
+    std::optional<std::size_t> failing_object;
+    std::optional<cpu::ExecutionResult> cpu_result;
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return error == Elf32PersistentLifecycleError::None;
+    }
+};
+
+// Execute constructors at most once per persistent object state. Dependencies
+// are initialized before requesters; for each object DT_INIT precedes
+// INIT_ARRAY. A failed guest call latches that object's constructor state as
+// Failed so later invocations cannot replay partial side effects.
+[[nodiscard]] Elf32PersistentLifecycleResult
+run_elf32_persistent_constructors(
+    memory::GuestMemory& memory,
+    const Elf32DependencyGraph& graph,
+    Elf32LifecycleState& state,
+    std::size_t root_object,
+    const Elf32PersistentLifecycleOptions& options);
+
+// Execute destructors at most once per initialized object. Requesters are
+// finalized before dependencies; each object runs FINI_ARRAY in reverse order
+// before DT_FINI. A failed guest call latches the object's destructor state.
+[[nodiscard]] Elf32PersistentLifecycleResult
+run_elf32_persistent_destructors(
+    memory::GuestMemory& memory,
+    const Elf32DependencyGraph& graph,
+    Elf32LifecycleState& state,
+    std::size_t root_object,
+    const Elf32PersistentLifecycleOptions& options);
+
+[[nodiscard]] const char* to_string(
+    Elf32PersistentLifecycleError error) noexcept;
+
 }  // namespace liba32android::elf
