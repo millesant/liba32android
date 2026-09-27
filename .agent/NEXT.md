@@ -1,20 +1,17 @@
 # Next Work
 
-Features 011 through 036 are DONE.
+Features 011 through 037 are DONE.
 
-`037-a32-libc-errno-state` is IMPLEMENTED on `bleeding`; its exact-head
-required checks are the immediate acceptance gate.
+`038-a32-libc-errno-shim` is IMPLEMENTED on `bleeding`; its exact-head
+required checks plus dedicated ARM32 partial-libc integration are the immediate
+acceptance gate.
 
-Once terminal success is observed, close 037 and integrate prepared feature 038,
-which exports `__errno` through the real partial-libc shim and proves the same
-guest slot receives strtol ERANGE.
+Once terminal success is observed, close 038 and integrate prepared feature 039,
+the Android-17 compatibility-alignment batch.
 
-Prepared order after 037:
+Prepared order after 038:
 
-`038 -> 039 -> 040 -> 041 -> 042 -> 043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
-
-Preserve the accepted feature-033 memmem correction when integrating older
-prepared trees until feature 039's Android-17 alignment batch lands.
+`039 -> 040 -> 041 -> 042 -> 043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
 
 ## Local-machine validation note
 

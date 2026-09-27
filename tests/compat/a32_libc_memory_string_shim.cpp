@@ -32,7 +32,7 @@ using liba32android::compat::A32AndroidNamespaceAccessPolicy;
 using liba32android::compat::A32AndroidNamespaceBinding;
 using liba32android::compat::A32AndroidNamespaceLink;
 using liba32android::compat::A32AndroidPlatformCatalogProvider;
-using liba32android::compat::A32LibcErrnoSink;
+using liba32android::compat::A32LibcGuestErrnoState;
 using liba32android::compat::A32LibcIntegerOptions;
 using liba32android::compat::A32LibcIntegerService;
 using liba32android::compat::A32LibcMemoryStringOptions;
@@ -40,7 +40,9 @@ using liba32android::compat::A32LibcMemoryStringService;
 using liba32android::compat::kA32LibcMemchrSvcImmediate;
 using liba32android::compat::kA32LibcMemcmpSvcImmediate;
 using liba32android::compat::kA32LibcMemcpySvcImmediate;
+using liba32android::compat::kA32AndroidErange;
 using liba32android::compat::kA32LibcAtoiSvcImmediate;
+using liba32android::compat::kA32LibcErrnoSvcImmediate;
 using liba32android::compat::kA32LibcStrtolSvcImmediate;
 using liba32android::compat::kA32LibcMemoryStringShimIdentity;
 using liba32android::compat::kA32LibcMemoryStringShimSoname;
@@ -102,20 +104,6 @@ std::uint32_t read_u32_le(
            (static_cast<std::uint32_t>(bytes[2]) << 16U) |
            (static_cast<std::uint32_t>(bytes[3]) << 24U);
 }
-
-class RecordingErrnoSink final : public A32LibcErrnoSink {
-public:
-    std::size_t calls{};
-    std::int32_t value{};
-
-    bool set_errno(
-        liba32android::memory::GuestMemory&,
-        std::int32_t next) noexcept override {
-        ++calls;
-        value = next;
-        return true;
-    }
-};
 
 Elf32SymbolLookupOptions symbol_options() {
     return Elf32SymbolLookupOptions{
@@ -306,11 +294,11 @@ int main(int argc, char** argv) {
         return fail("libc shim dependency/provider metadata was incorrect");
     }
 
-    constexpr std::array<std::string_view, 12> shim_names{{
+    constexpr std::array<std::string_view, 13> shim_names{{
         "memcpy", "memset", "memcmp", "memchr",
         "strlen", "strcmp", "strncmp",
         "memmem", "strcpy", "strncpy",
-        "atoi", "strtol",
+        "atoi", "strtol", "__errno",
     }};
     std::array<std::uint32_t, shim_names.size()> shim_targets{};
     for (std::size_t i = 0; i < shim_names.size(); ++i) {
@@ -380,8 +368,8 @@ int main(int argc, char** argv) {
     constexpr std::array<std::uint8_t, 4> atoi_input{
         '1','2','3',0,
     };
-    constexpr std::array<std::uint8_t, 8> strtol_input{
-        ' ','-','0','x','1','0','z',0,
+    constexpr std::array<std::uint8_t, 12> strtol_input{
+        '2','1','4','7','4','8','3','6','4','8','x',0,
     };
     const std::uint32_t source_address = *data;
     const std::uint32_t destination_address = *data + 0x40U;
@@ -391,21 +379,24 @@ int main(int argc, char** argv) {
     const std::uint32_t atoi_address = *data + 0x220U;
     const std::uint32_t strtol_address = *data + 0x240U;
     const std::uint32_t endptr_address = *data + 0x260U;
+    const std::uint32_t errno_address = *data + 0x280U;
+    constexpr std::array<std::uint8_t, 4> zero_errno{{0,0,0,0}};
     if (!memory.write(source_address, source) ||
         !memory.write(rhs_address, rhs) ||
         !memory.write(alpha_address, alpha) ||
         !memory.write(alphb_address, alphb) ||
         !memory.write(atoi_address, atoi_input) ||
-        !memory.write(strtol_address, strtol_input)) {
+        !memory.write(strtol_address, strtol_input) ||
+        !memory.write(errno_address, zero_errno)) {
         return fail("could not stage libc shim guest inputs");
     }
 
     A32LibcMemoryStringService service{
         A32LibcMemoryStringOptions{64, 64}};
-    RecordingErrnoSink errno_sink;
+    A32LibcGuestErrnoState errno_state{errno_address};
     A32LibcIntegerService integer_service{
-        errno_sink, A32LibcIntegerOptions{64}};
-    const std::array<A32HostServiceRegistryEntry, 12> services{{
+        errno_state, A32LibcIntegerOptions{64}};
+    const std::array<A32HostServiceRegistryEntry, 13> services{{
         {kA32LibcMemcpySvcImmediate, &service},
         {kA32LibcMemsetSvcImmediate, &service},
         {kA32LibcMemcmpSvcImmediate, &service},
@@ -418,6 +409,7 @@ int main(int argc, char** argv) {
         {kA32LibcStrncpySvcImmediate, &service},
         {kA32LibcAtoiSvcImmediate, &integer_service},
         {kA32LibcStrtolSvcImmediate, &integer_service},
+        {kA32LibcErrnoSvcImmediate, &errno_state},
     }};
     A32HostServiceRegistry registry{std::span{services}};
 
@@ -536,12 +528,22 @@ int main(int argc, char** argv) {
 
     result = run_wrapper(
         memory, graph_result.graph, "fixture_strtol", registry,
-        stack_top, *stop, strtol_address, endptr_address, 0U);
+        stack_top, *stop, strtol_address, endptr_address, 10U);
     if (!result || !*result ||
-        signed_r0(result->regs[0]) != -16 ||
-        read_u32_le(memory, endptr_address) != strtol_address + 6U ||
-        errno_sink.calls != 0) {
-        return fail("real libc strtol wrapper result/endptr failed");
+        signed_r0(result->regs[0]) != std::numeric_limits<std::int32_t>::max() ||
+        read_u32_le(memory, endptr_address) != strtol_address + 10U ||
+        read_u32_le(memory, errno_address) !=
+            static_cast<std::uint32_t>(kA32AndroidErange)) {
+        return fail("real libc strtol overflow/endptr/errno publication failed");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_errno_read", registry,
+        stack_top, *stop, 0U, 0U, 0U);
+    if (!result || !*result ||
+        signed_r0(result->regs[0]) != kA32AndroidErange) {
+        return fail("real libc __errno wrapper did not expose guest errno slot");
     }
     ++completed_calls;
 

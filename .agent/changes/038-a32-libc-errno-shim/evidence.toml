@@ -1,0 +1,29 @@
+schema = 1
+change = "038-a32-libc-errno-shim"
+
+[[evidence]]
+id = "thirteen-symbol-partial-libc-fixture"
+kind = "test"
+status = "not_run"
+claim = "The pinned-NDK partial libc fixture exports/imports all thirteen symbols including __errno with eager JUMP_SLOT relocations."
+source = "tests/compat/fixtures/ and .github/workflows/compat-libc-shim.yml"
+result = "Feature 038 is integrated; exact-head dedicated fixture execution has not yet been observed."
+limitations = "Integrated fixture logic is not passing evidence until the dedicated check actually runs."
+
+[[evidence]]
+id = "guest-errno-end-to-end"
+kind = "test"
+status = "not_run"
+claim = "Real guest strtol overflow publishes ERANGE into guest errno storage and a guest __errno wrapper dereferences the same slot."
+source = "tests/compat/a32_libc_memory_string_shim.cpp"
+result = "Feature 038 is integrated; exact-head end-to-end execution has not yet been observed."
+limitations = "One configured guest errno slot is tested; Android TLS/thread selection is not implemented."
+
+[[evidence]]
+id = "exact-head-ci"
+kind = "validation"
+status = "not_run"
+claim = "Feature 038 passes dedicated partial-libc integration and required exact-head checks after ordered integration."
+source = "GitHub commit checks on the feature-038 integration revision"
+result = ""
+limitations = "Feature 038 remains implemented rather than done until terminal exact-head checks are observed."

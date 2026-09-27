@@ -290,3 +290,21 @@ must return `Failed` if required errno publication fails.
 The embedding must use a distinct state/slot per guest thread when threading is
 implemented. Feature 037 does not model Android TLS layout, `__get_tls`,
 pthread TLS keys, or other thread-local libc storage.
+
+
+## L32-C015 — Partial libc __errno shim extension
+
+The prepared partial ARM32 `libc.so` may additionally export `__errno` as a
+guest SVC `0xAD` stub. The freestanding consumer may import `__errno` and
+provide a wrapper that dereferences the returned guest `int*`.
+
+Real integration must resolve thirteen partial-libc symbols and require a
+JUMP_SLOT target for each. The exact-SVC registry must map `0xAD` to the same
+`A32LibcGuestErrnoState` used as feature-035 integer-service errno sink.
+
+An overflowing real guest `strtol` call must write Android ERANGE into the
+configured guest errno slot, and a subsequent real guest `__errno` wrapper
+must read that same value through the returned logical guest pointer.
+
+No Android TLS layout, guest thread selection, or additional libc symbols are
+introduced by feature 038.
