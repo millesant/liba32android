@@ -3,11 +3,11 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `044-a32-service-suspension-boundary` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: `045-a32-pthread-sync-service` — IMPLEMENTED, exact-head validation NOT RUN.
 
 ## Phase
 
-Features 011-043 are accepted.
+Features 011-044 are accepted.
 
 Feature 039 passed all five exact-head checks at
 `9160aa24c9f1cebdfe65a79ecc1543a662bec5c4`.
@@ -87,14 +87,28 @@ result and exact bounded resume-request reconstruction so future blocking
 pthread/semaphore compatibility can hand control to an external scheduler
 without spinning, blocking the host executor, or replaying the trapped SVC.
 
-Feature 044 exact-head validation: NOT RUN.
+Feature 044 passed all five required exact-head checks at
+`d9e6dcfd7cf49bfc08f40a1f4db4862c7e570fdd`:
+- Android x86_64 address-space probe `108567983759` — PASS.
+- Linux A32 smoke `108567983727` — PASS.
+- Android arm64-v8a cross-build `108567983624` — PASS.
+- ARM32 liblog shim integration `108567983255` — PASS.
+- ARM32 libc memory string shim integration `108567983214` — PASS.
+
+Feature 045 is now integrated. It adds finite caller-owned pthread mutex and
+process-local semaphore state keyed only by logical guest addresses, uses the
+feature-044 Suspended seam for contended lock/zero-count wait, transfers grants
+before wake publication, and extends the real partial `libc.so` from thirty
+to thirty-nine exports with five mutex and four semaphore functions.
+
+Feature 045 exact-head validation: NOT RUN.
 
 Prepared order remains:
-`045 -> 046 -> 047 -> 048 -> 049`.
+`046 -> 047 -> 048 -> 049`.
 
 ## Deferred / partial
 
 Legacy DT_INIT/DT_FINI, __aeabi_atexit/static-destructor registration, and
-persistent lifecycle state, pthread/semaphore ABI/services, libdl, libm,
+persistent lifecycle state, broader pthread/thread creation/TLS services, libdl, libm,
 Android filesystem/search, stable embedding API, and device execution remain
 later work.

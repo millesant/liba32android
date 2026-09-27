@@ -8,7 +8,7 @@ Connect feature 030's bounded libc memory/string host services to the real ELF
 dependency/symbol/relocation path using one reproducible partial ARM32
 `libc.so` compatibility DSO.
 
-The feature is deliberately partial. Feature 032 introduced seven symbols, feature 034 extended the same DSO to ten with copy/search services, feature 036 extended it to twelve with atoi/strtol, feature 038 added __errno for thirteen, feature 041 added four allocator functions for seventeen, and feature 043 adds memmove plus twelve ARM EABI memory helpers for thirty total exports.
+The feature is deliberately partial. Feature 032 introduced seven symbols, feature 034 extended the same DSO to ten with copy/search services, feature 036 extended it to twelve with atoi/strtol, feature 038 added __errno for thirteen, feature 041 added four allocator functions for seventeen, and feature 043 added memmove plus twelve ARM EABI memory helpers for thirty exports, and feature 045 adds nine bounded pthread mutex/semaphore functions for thirty-nine total exports.
 
 ## Guest stubs
 
@@ -46,7 +46,7 @@ After graph load and relocation, the integration executes every exported
 fixture wrapper against logical guest buffers/strings. Each call crosses:
 
 consumer PLT -> partial libc shim -> SVC -> feature-025 registry ->
-feature-030/033/035/037/040/043 service -> shim return -> consumer return -> requested stop PC.
+feature-030/033/035/037/040/043/045 service -> shim return -> consumer return -> requested stop PC.
 
 ## Limits
 
@@ -96,3 +96,25 @@ variants, EABI memset argument order, and EABI memclr zeroing.
 
 `__aeabi_atexit` is not part of feature 043 because it participates in C++
 static-destructor registration and requires a persistent lifecycle contract.
+
+## Pthread mutex/semaphore extension (feature 045)
+
+Feature 045 extends the same partial `libc.so` with nine process-local
+synchronization functions: the five default mutex operations
+`pthread_mutex_{init,destroy,lock,trylock,unlock}` and
+`sem_{init,destroy,wait,post}`.
+
+The guest functions remain minimal SVC stubs. Host-side state is finite and
+caller-owned; guest mutex/semaphore addresses are opaque logical identities and
+no host pthread object is exposed. Uncontended operations return synchronously.
+Contended mutex lock and zero-count sem_wait use feature 044's `Suspended`
+runtime disposition. A later unlock/post grants the oldest waiter before the
+embedding resumes its saved post-SVC A32 state.
+
+The real pinned-NDK fixture now exposes, relocates, and executes thirty-nine
+partial-libc symbols. Its synchronization path covers default mutex init/lock,
+EBUSY trylock, unlock/destroy, and process-local semaphore init/wait/post/destroy.
+
+Thread creation/join, mutex attrs/types, pthread_once, condition variables,
+rwlocks, TLS, pthread_self ABI, process-shared semaphores, and scheduler policy
+remain outside this partial libc.

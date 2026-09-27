@@ -1,0 +1,29 @@
+schema = 1
+id = "045-a32-pthread-sync-service"
+kind = "feature"
+size = "S2"
+status = "implemented"
+workflow = "feature"
+control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
+base_revision = "d9e6dcfd7cf49bfc08f40a1f4db4862c7e570fdd"
+acceptance = [
+  "supplied FMOD/VLC evidence identifies default mutex and semaphore APIs in the shared pthread/semaphore import surface while broader thread/TLS APIs remain explicitly deferred",
+  "A32PthreadSyncService uses finite caller-owned mutex, semaphore, and waiter metadata keyed only by logical guest object addresses and a caller-selected non-zero logical thread ID",
+  "default/static mutex lock is synchronous when free, trylock returns Android EBUSY=16 when owned, and owner unlock grants the oldest waiter before publishing it ready",
+  "process-local sem_init/sem_destroy/sem_wait/sem_post are bounded; zero-count wait suspends and post grants the oldest waiter without incrementing the count",
+  "contended lock/wait return feature-044 Suspended only after setting their eventual guest return value, so wake resumes after the SVC without replay",
+  "focused ARM execution regressions prove mutex and semaphore suspend -> grant -> ready publication -> bounded resume ordering",
+  "the partial ARM32 libc.so and consumer add five mutex plus four semaphore exports for thirty-nine eager JUMP_SLOT targets and thirty-nine executed wrappers",
+  "pthread_create/join/detach, attrs/types, pthread_once, condition variables, rwlocks, TLS, pthread_self ABI, process-shared semaphores, futex internals, and scheduler policy remain out of scope"
+]
+
+[convergence]
+requirements = "aligned"
+specs = "aligned"
+implementation = "aligned"
+tests = "aligned"
+documentation = "aligned"
+decisions = "not_applicable"
+tasks = "aligned"
+evidence = "pending"
+repository = "aligned"

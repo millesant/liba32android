@@ -1,0 +1,38 @@
+schema = 1
+change = "045-a32-pthread-sync-service"
+
+[[evidence]]
+id = "target-sync-imports"
+kind = "artifact"
+status = "observed"
+claim = "The supplied FMOD and VLC ARMv7 sets share default pthread mutex and process-local semaphore APIs within their broader synchronization import surfaces."
+source = "docs/research/evidence/pthread-semaphore-scheduling-boundary-2026-09-27.md"
+result = "Bounded readelf evidence records the shared pthread_mutex_init/destroy/lock/trylock/unlock and sem_init/destroy/wait/post imports together with the wider deferred pthread surface."
+limitations = "Static imports do not prove contention frequency or required mutex attribute types."
+
+[[evidence]]
+id = "pthread-sync-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused service tests cover default/static mutex semantics, EBUSY trylock, metadata ceilings, process-local semaphores, mutex/sem suspension, oldest-waiter grants, ready publication, and bounded resume after the original SVC."
+source = "tests/compat/a32_pthread_sync.cpp"
+result = "Feature 045 source/tests are integrated; exact-head execution has not yet been observed."
+limitations = "Synthetic logical threads validate synchronization/scheduling boundaries, not full bionic pthread ABI or host concurrency."
+
+[[evidence]]
+id = "partial-libc-sync-integration"
+kind = "test"
+status = "not_run"
+claim = "The real partial-libc fixture resolves, eagerly relocates, and executes thirty-nine wrappers including five mutex and four semaphore functions."
+source = "tests/compat/a32_libc_memory_string_shim.cpp and .github/workflows/compat-libc-shim.yml"
+result = "Feature 045 integration is prepared; exact-head execution has not yet been observed."
+limitations = "The partial libc remains intentionally incomplete and does not provide pthread_create/TLS/condition/rwlock surfaces."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "Feature 045 passes the required exact-head check matrix after feature 044 is accepted."
+source = "GitHub commit checks on the feature-045 integration revision"
+result = ""
+limitations = "Feature 045 remains implemented rather than done until terminal exact-head checks are observed."

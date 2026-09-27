@@ -414,3 +414,43 @@ argument order, and EABI memclr zeroing.
 `__aeabi_atexit` is explicitly outside this feature because Android routes it
 into C++ destructor registration and persistent lifecycle state rather than a
 stateless memory primitive.
+
+## L32-C020 — Bounded pthread mutex/semaphore synchronization
+
+The compatibility layer may expose private SVC IDs `0xB3` through `0xBB`
+for `pthread_mutex_init`, `pthread_mutex_destroy`,
+`pthread_mutex_lock`, `pthread_mutex_trylock`,
+`pthread_mutex_unlock`, `sem_init`, `sem_destroy`, `sem_wait`, and
+`sem_post`.
+
+`A32PthreadSyncService` borrows finite caller-owned mutex, semaphore, and
+waiter metadata. Guest synchronization object pointers remain opaque logical
+32-bit addresses and are used only as identity keys; the compatibility layer
+does not expose host pthread objects or mirror bionic private object layouts.
+The embedding selects one non-zero logical thread ID before executing each
+guest thread.
+
+Unknown mutex addresses used by lock/trylock are treated as default static
+mutex initializers. Explicit mutex init accepts only a null attr in this slice.
+An uncontended lock acquires ownership synchronously. Trylock on an owned mutex
+returns Android `EBUSY=16`. A contended blocking lock records one finite
+waiter, sets the eventual guest return value to zero, and returns the runtime
+`Suspended` disposition. Unlock transfers ownership to the oldest waiter
+before publishing that logical thread as ready, so resumption continues after
+the original lock SVC without replay.
+
+`sem_init` supports process-local semaphores only (`pshared == 0`) with a
+bounded non-negative 32-bit count. `sem_wait` consumes an available count
+synchronously or suspends one finite waiter at zero. `sem_post` grants the
+oldest waiter without incrementing the count, otherwise increments up to
+`0x7fffffff`. The embedding drains ready-thread records and owns scheduling.
+
+The prepared partial ARM32 `libc.so` may export the nine functions above as
+minimal SVC stubs. The real fixture resolves thirty-nine partial-libc symbols,
+requires one eager `R_ARM_JUMP_SLOT` target for each, and executes all
+thirty-nine wrappers.
+
+This feature does not implement pthread creation/join/detach, attrs beyond
+null mutex attrs, recursive/errorcheck mutex types, condition variables,
+rwlocks, pthread_once, TLS keys, pthread_self ABI, process-shared semaphores,
+signals, host futexes, or a complete scheduler.

@@ -1,0 +1,26 @@
+schema = 1
+change = "045-a32-pthread-sync-service"
+
+[[tasks]]
+id = "T001"
+status = "implemented"
+depends_on = []
+acceptance = "Define finite opaque logical-address mutex/semaphore/waiter state and shared SVC IDs for the nine bounded synchronization functions."
+
+[[tasks]]
+id = "T002"
+status = "implemented"
+depends_on = ["T001"]
+acceptance = "Implement uncontended mutex/semaphore semantics plus FIFO-by-sequence waiter suspension/grant/ready publication through feature 044."
+
+[[tasks]]
+id = "T003"
+status = "implemented"
+depends_on = ["T002"]
+acceptance = "Add focused ARM suspend/wake/resume regressions and extend the real partial-libc fixture/integration to thirty-nine symbols/calls."
+
+[[tasks]]
+id = "T004"
+status = "active"
+depends_on = ["T003"]
+acceptance = "Run exact-head required checks and reconcile closure evidence/state."

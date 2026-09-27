@@ -1,6 +1,6 @@
 # A32 host-service dispatch
 
-Status: feature 024 complete; feature 044 service-suspension extension implemented, exact-head validation pending
+Status: features 024/044 complete; exact-head validation PASSed
 
 ## Boundary
 

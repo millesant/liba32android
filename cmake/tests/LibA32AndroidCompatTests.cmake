@@ -79,6 +79,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_pthread_sync_test
+    tests/compat/a32_pthread_sync.cpp
+)
+
+add_test(
+    NAME a32_pthread_sync_service
+    COMMAND compat_pthread_sync_test
+)
+
+liba32android_add_test_executable(
     compat_android_log_shim_integration_test
     tests/compat/a32_android_log_shim.cpp
 )

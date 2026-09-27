@@ -40,6 +40,24 @@ __attribute__((visibility("default")))
 void* realloc(void* pointer, fixture_size_t size);
 __attribute__((visibility("default")))
 void free(void* pointer);
+__attribute__((visibility("default")))
+int pthread_mutex_init(void* mutex, const void* attr);
+__attribute__((visibility("default")))
+int pthread_mutex_destroy(void* mutex);
+__attribute__((visibility("default")))
+int pthread_mutex_lock(void* mutex);
+__attribute__((visibility("default")))
+int pthread_mutex_trylock(void* mutex);
+__attribute__((visibility("default")))
+int pthread_mutex_unlock(void* mutex);
+__attribute__((visibility("default")))
+int sem_init(void* semaphore, int pshared, unsigned int value);
+__attribute__((visibility("default")))
+int sem_destroy(void* semaphore);
+__attribute__((visibility("default")))
+int sem_wait(void* semaphore);
+__attribute__((visibility("default")))
+int sem_post(void* semaphore);
 
 __attribute__((visibility("default")))
 void __aeabi_memcpy(void* destination, const void* source, fixture_size_t count);
@@ -204,4 +222,41 @@ void fixture_aeabi_memclr4(void* destination, fixture_size_t count) {
 __attribute__((visibility("default"), noinline))
 void fixture_aeabi_memclr8(void* destination, fixture_size_t count) {
     __aeabi_memclr8(destination, count);
+}
+
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_mutex_init(void* mutex, const void* attr) {
+    return pthread_mutex_init(mutex, attr);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_mutex_destroy(void* mutex) {
+    return pthread_mutex_destroy(mutex);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_mutex_lock(void* mutex) {
+    return pthread_mutex_lock(mutex);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_mutex_trylock(void* mutex) {
+    return pthread_mutex_trylock(mutex);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_mutex_unlock(void* mutex) {
+    return pthread_mutex_unlock(mutex);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_sem_init(void* semaphore, int pshared, unsigned int value) {
+    return sem_init(semaphore, pshared, value);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_sem_destroy(void* semaphore) {
+    return sem_destroy(semaphore);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_sem_wait(void* semaphore) {
+    return sem_wait(semaphore);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_sem_post(void* semaphore) {
+    return sem_post(semaphore);
 }

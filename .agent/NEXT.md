@@ -1,15 +1,15 @@
 # Next Work
 
-Features 011 through 043 are DONE.
+Features 011 through 044 are DONE.
 
-`044-a32-service-suspension-boundary` is IMPLEMENTED on `bleeding`; its
-exact-head required checks are the immediate acceptance gate.
+`045-a32-pthread-sync-service` is IMPLEMENTED on `bleeding`; its exact-head
+required checks are the immediate acceptance gate.
 
-Once terminal success is observed, close 044 and integrate prepared feature 045.
+Once terminal success is observed, close 045 and integrate prepared feature 046.
 
-Prepared order after 044:
+Prepared order after 045:
 
-`045 -> 046 -> 047 -> 048 -> 049`.
+`046 -> 047 -> 048 -> 049`.
 
 ## Local-machine validation note
 
