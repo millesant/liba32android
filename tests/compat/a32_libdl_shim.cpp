@@ -369,12 +369,17 @@ int main(int argc, char** argv) {
         return fail("resident provider teardown symbols were not retained");
     }
 
-    const auto relocated = apply_elf32_combined_relocations(
-        memory, link_map.graph, 0U, relocation_options());
-    if (!relocated) {
-        return fail(
-            std::string("libdl consumer relocation failed: ") +
-            liba32android::elf::to_string(relocated.error));
+    for (std::size_t object_index = 0U;
+         object_index < link_map.graph.objects.size();
+         ++object_index) {
+        const auto relocated = apply_elf32_combined_relocations(
+            memory, link_map.graph, object_index, relocation_options());
+        if (!relocated) {
+            return fail(
+                std::string("libdl graph relocation failed for object ") +
+                std::to_string(object_index) + ": " +
+                liba32android::elf::to_string(relocated.error));
+        }
     }
 
     const auto data = find_unmapped_region(memory, 0x70000000U, 1U);
