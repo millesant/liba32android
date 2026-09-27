@@ -3,48 +3,46 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: none — `post-roadmap-resident-dlclose-lifecycle-transaction` is DONE.
+Active acceptance gate: `post-roadmap-link-map-reclamation-planning` — IMPLEMENTED, exact-head validation NOT RUN.
 
 ## Phase
 
 Features 011-049 remain accepted and the numbered roadmap remains COMPLETE.
 
-Accepted post-roadmap work now includes service-aware ELF FINI, linked
+Accepted post-roadmap work includes service-aware ELF FINI, linked
 `__cxa_finalize`, and bounded resident last-reference `dlclose` lifecycle
 execution.
 
-## Completed post-roadmap follow-up
+The resident dlclose lifecycle follow-up is DONE. Its validated result revision
+is `efa2ce78e7d77ddf9c92ee29cdbe5a1f03fc6dd2`.
 
-Resident libdl can optionally delegate `dlclose` to a bounded exact-object
-lifecycle transaction.
+## Active post-roadmap follow-up
 
-Non-final references decrement only. The final reference runs reverse
-FINI_ARRAY through service-aware execution, requires all registrations for the
-bound opaque DSO word to be Complete, runs DT_FINI, marks persistent destructor
-state Complete, and only then releases the synthetic handle.
+Persistent link-map reclamation planning is implemented as a read-only ownership
+and reachability seam.
 
-Guest teardown failure or incomplete registered finalization latches Failed and
-preserves the final handle. Dependency mappings remain resident.
+Every persistent link-map root is an ownership anchor. Callers may additionally
+supply borrowed live object anchors representing external owners such as active
+libdl handles. Reachability follows dependency edges transitively with shared
+dependencies, repeated edges, and cycles visited once.
 
-The first real ARM32 integration exposed nested FINI execution reusing the outer
-configured stack top while the guest `fixture_dlclose` caller frame was still
-active. The transaction now accepts the trapped live guest r13 and executes
-FINI_ARRAY/DT_FINI below that active caller frame.
+Global-scope membership is explicitly visibility only and does not retain an
+otherwise unreachable object.
 
-A later diagnostic run reached provider FINI but failed before writing its
-marker. The integration harness had relocated only dependency-graph object 0
-even though `apply_elf32_combined_relocations` is explicitly per-object. The
-harness now relocates every loaded object before guest execution.
+The planner validates its accumulated-object ceiling, object identities,
+dependency edges, persistent root records, and live anchors before success.
+Reachable objects are reported in stable index order. Unreachable objects are
+reported in deterministic reverse-postorder: acyclic requesters precede their
+unreachable dependencies, while cycle members are deterministic and once-only.
 
-Exact-head validation at
-`efa2ce78e7d77ddf9c92ee29cdbe5a1f03fc6dd2`: PASSED. The project operator
-confirmed all required CI checks were green after both corrections.
+The planner never mutates roots, global scope, graph objects, lifecycle state,
+handles, mappings, or protections. Actual destructor execution, root/global
+removal, stable-slot tombstoning/reuse, and guest unmapping remain separate.
 
-## Next post-roadmap direction
+Focused regressions are integrated in
+`tests/elf/unit/elf32_dependency_loader.cpp`.
 
-Model recursive dependency ownership/reachability and safe object reclamation.
-Only after those invariants are explicit should persistent link-map entries be
-removed or guest mappings be unmapped.
+Exact-head validation: NOT RUN.
 
 ## Deferred / partial
 
