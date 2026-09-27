@@ -118,3 +118,38 @@ invalid persistent state, and guest execution failure are explicit. This
 contract does not add DT_PREINIT_ARRAY, argv/envp constructor ABI,
 `__aeabi_atexit` registration, shared-object reference-count ownership,
 automatic dlopen constructor transactions, or unload mapping reclamation.
+
+
+## L32-E019 — Persistent link-map reclamation planning
+
+A caller may compute persistent loaded-object liveness without mutating the link
+map. Every persistent `Elf32LinkMap::roots` record is an ownership anchor. The
+caller may additionally supply borrowed live object indexes representing
+external owners such as active libdl handles. Duplicate additional anchors are
+deduplicated by traversal.
+
+Planning first validates a non-zero caller object ceiling, accumulated graph
+size, non-empty object identities, dependency-edge names/targets, persistent
+root indexes/policies/uniqueness, and additional live-anchor indexes. Failure
+returns no successful plan and does not mutate graph/root/global vectors,
+lifecycle state, handles, mappings, or protections.
+
+Reachability follows dependency edges transitively from persistent roots plus
+additional live anchors and visits each object at most once, so shared
+dependencies, repeated edges, and cycles are bounded by accumulated object
+count. Reachable indexes are reported in stable ascending object-index order.
+
+Objects outside that closure are reclamation candidates. Their order is a
+deterministic reverse postorder of the unreachable subgraph: acyclic requester
+edges precede their unreachable dependencies, while cycles are visited exactly
+once in deterministic traversal order because no strict requester-first order
+can satisfy every edge in a cycle.
+
+Persistent `global_scope_objects` membership is visibility metadata, not an
+ownership anchor. A global-only object may therefore be reclaimable when no
+persistent root or additional live anchor reaches it.
+
+This contract is planning only. It does not remove roots, execute destructors,
+prune global scope, erase or recycle stable object indexes, reload tombstoned
+objects, or unmap guest memory. Those mutations require a later transaction
+that consumes this ownership/reachability result.
