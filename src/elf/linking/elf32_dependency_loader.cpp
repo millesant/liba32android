@@ -581,6 +581,175 @@ Elf32DependencyLoadResult append_elf32_link_map_root(
     return result;
 }
 
+Elf32LinkMapReclamationResult plan_elf32_link_map_reclamation(
+    const Elf32LinkMap& link_map,
+    std::span<const std::size_t> additional_live_anchors,
+    const Elf32LinkMapReclamationOptions& options) {
+    Elf32LinkMapReclamationResult result;
+    if (options.max_objects == 0U) {
+        result.error = Elf32LinkMapReclamationError::InvalidOptions;
+        return result;
+    }
+
+    const std::size_t object_count = link_map.graph.objects.size();
+    if (object_count > static_cast<std::size_t>(options.max_objects)) {
+        result.error = Elf32LinkMapReclamationError::ObjectLimitExceeded;
+        return result;
+    }
+
+    for (std::size_t object_index = 0;
+         object_index < object_count;
+         ++object_index) {
+        const auto& object = link_map.graph.objects[object_index];
+        if (object.identity.empty()) {
+            result.error = Elf32LinkMapReclamationError::InvalidLinkMap;
+            result.failing_object = object_index;
+            return result;
+        }
+        for (const auto& edge : object.dependencies) {
+            if (edge.requested_name.empty() ||
+                edge.target_object >= object_count) {
+                result.error = Elf32LinkMapReclamationError::InvalidLinkMap;
+                result.failing_object = object_index;
+                return result;
+            }
+        }
+    }
+
+    std::vector<std::uint8_t> root_seen(object_count, 0U);
+    for (const auto& root : link_map.roots) {
+        if (root.object_index >= object_count ||
+            root_seen[root.object_index] != 0U ||
+            (root.policy != Elf32LinkMapRootPolicy::Local &&
+             root.policy != Elf32LinkMapRootPolicy::Global)) {
+            result.error = Elf32LinkMapReclamationError::InvalidLinkMap;
+            if (root.object_index < object_count) {
+                result.failing_object = root.object_index;
+            }
+            return result;
+        }
+        root_seen[root.object_index] = 1U;
+    }
+
+    for (const std::size_t object_index : additional_live_anchors) {
+        if (object_index >= object_count) {
+            result.error = Elf32LinkMapReclamationError::InvalidLiveAnchor;
+            result.failing_object = object_index;
+            return result;
+        }
+    }
+
+    std::vector<std::uint8_t> reachable(object_count, 0U);
+    std::vector<std::size_t> work;
+    work.reserve(object_count);
+
+    const auto add_anchor =
+        [&](std::size_t object_index) {
+            if (reachable[object_index] == 0U) {
+                reachable[object_index] = 1U;
+                work.push_back(object_index);
+            }
+        };
+
+    for (const auto& root : link_map.roots) {
+        add_anchor(root.object_index);
+    }
+    for (const std::size_t object_index : additional_live_anchors) {
+        add_anchor(object_index);
+    }
+
+    while (!work.empty()) {
+        const std::size_t object_index = work.back();
+        work.pop_back();
+        for (const auto& edge :
+             link_map.graph.objects[object_index].dependencies) {
+            if (reachable[edge.target_object] == 0U) {
+                reachable[edge.target_object] = 1U;
+                work.push_back(edge.target_object);
+            }
+        }
+    }
+
+    result.plan.reachable_objects.reserve(object_count);
+    for (std::size_t object_index = 0;
+         object_index < object_count;
+         ++object_index) {
+        if (reachable[object_index] != 0U) {
+            result.plan.reachable_objects.push_back(object_index);
+        }
+    }
+
+    struct VisitFrame {
+        std::size_t object_index{};
+        std::size_t next_dependency{};
+    };
+
+    std::vector<std::uint8_t> visit_state(object_count, 0U);
+    std::vector<VisitFrame> stack;
+    std::vector<std::size_t> postorder;
+    stack.reserve(object_count);
+    postorder.reserve(
+        object_count - result.plan.reachable_objects.size());
+
+    // Descending seeds make independent reclaimable objects appear in stable
+    // ascending object-index order after the final postorder reversal.
+    for (std::size_t seed = object_count; seed > 0U; --seed) {
+        const std::size_t object_index = seed - 1U;
+        if (reachable[object_index] != 0U ||
+            visit_state[object_index] != 0U) {
+            continue;
+        }
+
+        visit_state[object_index] = 1U;
+        stack.push_back(VisitFrame{.object_index = object_index});
+        while (!stack.empty()) {
+            VisitFrame& frame = stack.back();
+            const auto& dependencies =
+                link_map.graph.objects[frame.object_index].dependencies;
+            bool descended = false;
+            while (frame.next_dependency < dependencies.size()) {
+                const std::size_t target =
+                    dependencies[frame.next_dependency++].target_object;
+                if (reachable[target] != 0U ||
+                    visit_state[target] != 0U) {
+                    continue;
+                }
+                visit_state[target] = 1U;
+                stack.push_back(VisitFrame{.object_index = target});
+                descended = true;
+                break;
+            }
+            if (descended) {
+                continue;
+            }
+
+            visit_state[frame.object_index] = 2U;
+            postorder.push_back(frame.object_index);
+            stack.pop_back();
+        }
+    }
+
+    result.plan.reclaimable_objects.assign(
+        postorder.rbegin(), postorder.rend());
+    return result;
+}
+
+const char* to_string(Elf32LinkMapReclamationError error) noexcept {
+    switch (error) {
+    case Elf32LinkMapReclamationError::None:
+        return "none";
+    case Elf32LinkMapReclamationError::InvalidOptions:
+        return "invalid_options";
+    case Elf32LinkMapReclamationError::InvalidLinkMap:
+        return "invalid_link_map";
+    case Elf32LinkMapReclamationError::InvalidLiveAnchor:
+        return "invalid_live_anchor";
+    case Elf32LinkMapReclamationError::ObjectLimitExceeded:
+        return "object_limit_exceeded";
+    }
+    return "unknown";
+}
+
 const char* to_string(Elf32DependencyLoadError error) noexcept {
     switch (error) {
     case Elf32DependencyLoadError::None:
