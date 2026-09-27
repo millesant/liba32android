@@ -14,6 +14,10 @@
 #include "cpu/a32_cpu.h"
 #include "runtime/a32_service_dispatch.h"
 
+namespace liba32android::elf {
+struct Elf32LifecycleExecutionContext;
+}
+
 namespace liba32android::compat {
 
 inline constexpr std::uint32_t kA32AeabiAtexitSvcImmediate =
@@ -33,6 +37,11 @@ struct A32AeabiAtexitRecord {
     std::uint32_t dso_handle{};
     A32AeabiAtexitRecordStatus status{
         A32AeabiAtexitRecordStatus::Pending};
+};
+
+struct A32AeabiObjectDsoBinding {
+    std::size_t object_index{};
+    std::uint32_t dso_handle{};
 };
 
 struct A32AeabiFinalizeOptions {
@@ -72,8 +81,12 @@ class A32AeabiAtexitService final
     : public runtime::A32HostServiceHandler {
 public:
     explicit A32AeabiAtexitService(
-        std::span<A32AeabiAtexitRecord> records) noexcept
-        : records_(records) {}
+        std::span<A32AeabiAtexitRecord> records,
+        std::span<A32AeabiObjectDsoBinding> learned_bindings = {},
+        const elf::Elf32LifecycleExecutionContext* execution_context = nullptr) noexcept
+        : records_(records),
+          learned_bindings_(learned_bindings),
+          execution_context_(execution_context) {}
 
     [[nodiscard]] runtime::A32HostServiceDisposition handle(
         memory::GuestMemory& memory,
@@ -90,6 +103,20 @@ public:
             records_.data(), record_count_};
     }
 
+    [[nodiscard]] std::size_t binding_count() const noexcept {
+        return binding_count_;
+    }
+
+    [[nodiscard]] std::span<const A32AeabiObjectDsoBinding>
+    learned_bindings() const noexcept {
+        return std::span<const A32AeabiObjectDsoBinding>{
+            learned_bindings_.data(), binding_count_};
+    }
+
+    [[nodiscard]] std::optional<std::uint32_t> dso_for_object(
+        std::size_t object_index,
+        bool& ambiguous) const noexcept;
+
     // Finalize pending records in reverse registration order. A null DSO
     // selector finalizes every pending record; otherwise only exact DSO-handle
     // matches are selected. Guest execution failure latches the affected
@@ -100,8 +127,15 @@ public:
         const A32AeabiFinalizeOptions& options);
 
 private:
+    [[nodiscard]] bool learn_binding(
+        std::size_t object_index,
+        std::uint32_t dso_handle) noexcept;
+
     std::span<A32AeabiAtexitRecord> records_;
     std::size_t record_count_{};
+    std::span<A32AeabiObjectDsoBinding> learned_bindings_;
+    std::size_t binding_count_{};
+    const elf::Elf32LifecycleExecutionContext* execution_context_{};
 };
 
 // Guest-callable __cxa_finalize boundary. The DSO selector remains an opaque
