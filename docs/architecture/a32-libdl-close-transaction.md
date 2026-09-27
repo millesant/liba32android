@@ -16,6 +16,12 @@ seam. This allows normal linked Android CRT teardown to reach
 `__cxa_finalize` before DT_FINI. No alternative callback order is invented
 when registrations remain pending.
 
+When the transaction is entered synchronously from the guest `dlclose` SVC,
+the libdl service supplies the trapped caller's live r13 as the nested teardown
+stack top. FINI callbacks therefore grow below the active dlclose caller frame
+instead of restarting at the outer harness stack top and overwriting saved
+guest return state.
+
 Any guest teardown failure or post-FINI incomplete registration state latches
 the object destructor state Failed and leaves the final synthetic handle live.
 This avoids replaying potentially partial guest side effects.

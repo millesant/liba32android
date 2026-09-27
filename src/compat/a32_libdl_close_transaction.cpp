@@ -82,9 +82,19 @@ bool A32LibDlCloseTransaction::registrations_complete(
 
 A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
     memory::GuestMemory& memory,
-    std::uint32_t guest_handle) {
+    std::uint32_t guest_handle,
+    std::optional<std::uint32_t> nested_stack_top) {
     if (!options_valid()) {
         return failure(A32LibDlCloseTransactionError::InvalidOptions);
+    }
+
+    auto execution = options_.execution;
+    if (nested_stack_top.has_value()) {
+        if (*nested_stack_top == 0U ||
+            (*nested_stack_top & 7U) != 0U) {
+            return failure(A32LibDlCloseTransactionError::InvalidOptions);
+        }
+        execution.stack_top = *nested_stack_top;
     }
 
     const auto slot = find_handle(guest_handle);
@@ -164,7 +174,7 @@ A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
 
         if (!calls.empty()) {
             const auto executed = elf::execute_elf32_fini_calls(
-                memory, calls, options_.execution);
+                memory, calls, execution);
             result.fini_calls_completed += executed.calls_completed;
             if (!executed) {
                 state.destructors = elf::Elf32LifecycleObjectStatus::Failed;
@@ -195,7 +205,7 @@ A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
         const auto executed = elf::execute_elf32_fini_calls(
             memory,
             std::span<const elf::Elf32FiniCall>{&call, 1U},
-            options_.execution);
+            execution);
         result.fini_calls_completed += executed.calls_completed;
         if (!executed) {
             state.destructors = elf::Elf32LifecycleObjectStatus::Failed;

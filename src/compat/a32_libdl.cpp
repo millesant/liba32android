@@ -510,7 +510,10 @@ runtime::A32HostServiceDisposition A32LibDlService::handle(
 
     if (svc_immediate == kA32LibDlDlcloseSvcImmediate) {
         if (close_transaction_ != nullptr) {
-            const auto closed = close_transaction_->close(memory, regs[0]);
+            const auto closed = close_transaction_->close(
+                memory,
+                regs[0],
+                regs[13]);
             if (!closed) {
                 set_error(
                     closed.error == A32LibDlCloseTransactionError::InvalidHandle

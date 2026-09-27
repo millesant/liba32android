@@ -27,7 +27,19 @@ preserves the final handle. Dependency mappings remain resident.
 
 Focused and real ARM32 regressions are integrated.
 
-Exact-head validation: NOT RUN.
+Exact-head validation at `b6168ee8d98c8583b6cd325efd51f42da382e921`: FAILED only in ARM32 libdl integration; the other eight required checks passed.
+
+The real linked `dlclose` reached the lifecycle transaction but the transaction
+started nested FINI execution at the outer configured stack top while the
+guest `fixture_dlclose` caller frame was still active. This is the same nested
+guest-frame hazard previously fixed for synchronous `__cxa_finalize`.
+
+The corrected transaction accepts an optional trapped live guest r13. The
+libdl SVC path passes `regs[13]`, and both FINI_ARRAY and DT_FINI execute below
+that active caller frame. A focused regression writes the effective SP from
+guest FINI code and verifies the live-stack override.
+
+Corrected exact-head validation: NOT RUN.
 
 ## Deferred / partial
 

@@ -60,6 +60,10 @@ struct A32LibDlCloseTransactionResult {
     }
 };
 
+// When invoked synchronously from a trapped guest dlclose SVC, callers should
+// pass the trapped guest r13 as nested_stack_top. This keeps FINI callbacks
+// below the active dlclose caller frame instead of restarting at the outer
+// harness stack top.
 class A32LibDlCloseTransaction final {
 public:
     A32LibDlCloseTransaction(
@@ -78,7 +82,8 @@ public:
 
     [[nodiscard]] A32LibDlCloseTransactionResult close(
         memory::GuestMemory& memory,
-        std::uint32_t guest_handle);
+        std::uint32_t guest_handle,
+        std::optional<std::uint32_t> nested_stack_top = std::nullopt);
 
 private:
     [[nodiscard]] bool options_valid() const noexcept;

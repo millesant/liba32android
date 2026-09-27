@@ -232,10 +232,85 @@ int test_incomplete_registration_preserves_final_handle() {
     return 0;
 }
 
+
+int test_nested_stack_override_uses_live_guest_sp() {
+    LinearGuestMemory memory{0x2000};
+
+    constexpr std::array<std::uint8_t, 16> fini_code{
+        0x04,0x00,0x9F,0xE5,  // ldr r0, [pc, #4]
+        0x00,0xD0,0x80,0xE5,  // str sp, [r0]
+        0x1E,0xFF,0x2F,0xE1,  // bx lr
+        0x00,0x03,0x00,0x00,  // marker address
+    };
+    constexpr std::array<std::uint8_t, 4> fini_entry{
+        0x00,0x01,0x00,0x00,
+    };
+    if (!memory.write(0x100U, fini_code) ||
+        !memory.write(0x200U, fini_entry)) {
+        return fail("could not stage dlclose nested-stack fixture");
+    }
+
+    Elf32LinkMap link_map;
+    Elf32LoadedDependencyObject object;
+    object.identity = "resident";
+    object.linker_metadata.fini_array =
+        Elf32FunctionArrayMetadata{.guest_address = 0x200U, .size = 4U};
+    link_map.graph.objects.push_back(std::move(object));
+
+    Elf32LifecycleState lifecycle;
+    lifecycle.objects.resize(1);
+    lifecycle.objects[0].constructors = Elf32LifecycleObjectStatus::Complete;
+
+    std::array<A32AeabiAtexitRecord, 1> records{};
+    A32AeabiAtexitService registrations{std::span{records}};
+    const std::array<A32HostServiceRegistryEntry, 0> entries{};
+    A32HostServiceRegistry registry{std::span{entries}};
+    std::array<A32LibDlHandle, 1> handles{{
+        {.guest_handle = 0x70000000U, .object_index = 0U, .refcount = 1U},
+    }};
+    const std::array<A32LibDlObjectLifecycleBinding, 1> bindings{{
+        {.object_index = 0U, .dso_handle = 0x66660000U},
+    }};
+
+    A32LibDlCloseTransaction transaction{
+        link_map,
+        std::span{handles},
+        lifecycle,
+        registrations,
+        std::span{bindings},
+        A32LibDlCloseTransactionOptions{
+            .max_fini_array_entries = 1U,
+            .execution = {
+                .stack_top = 0x0ff8U,
+                .return_pc = 0x1000U,
+                .max_instructions_per_call = 16U,
+                .service_handler = &registry,
+                .max_service_calls_per_call = 1U,
+            },
+        },
+    };
+
+    constexpr std::uint32_t live_guest_sp = 0x0df8U;
+    const auto result = transaction.close(
+        memory,
+        0x70000000U,
+        live_guest_sp);
+    if (!result ||
+        result.outcome != A32LibDlCloseTransactionOutcome::ObjectFinalized ||
+        read_u32(memory, 0x300U) != live_guest_sp) {
+        return fail("dlclose transaction did not use trapped live guest stack");
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main() {
     if (const int status = test_last_reference_runs_exact_object_teardown();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_nested_stack_override_uses_live_guest_sp();
         status != 0) {
         return status;
     }
