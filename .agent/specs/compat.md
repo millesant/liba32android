@@ -770,3 +770,43 @@ resident and the open reports failure rather than discarding initialized state.
 This contract does not implement recursive final-close teardown of only newly
 unreachable objects, RTLD_NODELETE, RTLD_GLOBAL/LOCAL flag expansion, lazy
 binding, RTLD_NEXT, or concrete pathname/APK search policy.
+
+
+## L32-C030 — Targeted final-close dlclose unload
+
+The libdl service may optionally borrow an `A32LibDlUnloadTransaction` for
+physical final-close ownership. When absent, the accepted exact-object close
+transaction and legacy refcount-only behavior remain available. When present,
+the targeted unload path has precedence for `dlclose`.
+
+A non-final synthetic reference decrements only.
+
+For the final reference, every other live synthetic-handle object is treated as
+an additional ownership anchor. Ordinary ownership planning must report no
+pre-existing reclaimable Active objects before the transaction continues. The
+transaction then performs read-only root-release planning for the exact object
+owned by the closing handle. That post-release reclaimable vector is the exact
+teardown set for this operation.
+
+Selected objects finalize in deterministic requester-before-dependency order.
+Each selected object reuses the accepted Android exact-object sequence:
+FINI_ARRAY in reverse, completion of every registered record for the bound DSO
+handle, then DT_FINI. Complete destructor state is an idempotent success so a
+retry after a later selected object or physical reclamation failure never
+replays completed guest teardown. Failed lifecycle state remains non-replayable.
+
+The final synthetic handle and persistent root remain owned while lifecycle
+teardown runs. Only after every selected object's destructor state is Complete
+does the transaction invoke accepted physical root release/reclamation with the
+same other-live-handle anchors. Reclamation failure preserves the handle/root.
+Full success retires/unmaps the now-unreachable slots and clears the final
+handle last.
+
+Service delegation requires a `MappedGuestMemory` backend because physical
+release owns map/protect/unmap behavior. Other `GuestMemory` implementations
+fail the unload request without an unsafe backend assumption.
+
+Object-to-DSO bindings remain caller supplied. Automatic dynamic
+`__dso_handle` discovery, RTLD_NODELETE/global-group policy,
+RTLD_GLOBAL/LOCAL expansion, RTLD_NEXT, lazy binding, and concurrent ownership
+mutation remain separate.
