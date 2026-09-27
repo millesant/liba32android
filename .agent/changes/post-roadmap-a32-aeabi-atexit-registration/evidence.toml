@@ -1,0 +1,38 @@
+schema = 1
+change = "post-roadmap-a32-aeabi-atexit-registration"
+
+[[evidence]]
+id = "target-and-android-contract"
+kind = "research"
+status = "observed"
+claim = "Supplied FMOD imports __aeabi_atexit and Android ARM bionic delegates it to __cxa_atexit(destructor, object, dso_handle)."
+source = "docs/research/evidence/android17-aeabi-atexit-2026-09-27.md"
+result = "Target import evidence and primary bionic source establish the three-word registration contract plus 0/-1 result behavior."
+limitations = "Static target imports do not establish runtime registration count or unload timing."
+
+[[evidence]]
+id = "registration-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused tests cover exact record preservation, finite capacity failure, unknown SVC handling, and ARM service-registry dispatch."
+source = "tests/compat/a32_aeabi_atexit.cpp"
+result = "Integrated on bleeding; exact-head execution has not yet been observed."
+limitations = "Registration tests do not execute registered destructors."
+
+[[evidence]]
+id = "real-partial-libc-integration"
+kind = "test"
+status = "not_run"
+claim = "The partial libc fixture exposes/imports forty symbols including __aeabi_atexit and the real wrapper records exact object/destructor/DSO values."
+source = "tests/compat/a32_libc_memory_string_shim.cpp and .github/workflows/compat-libc-shim.yml"
+result = "Integrated on bleeding; exact-head execution has not yet been observed."
+limitations = "The integration proves registration only, not finalization."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "The bounded __aeabi_atexit registration follow-up passes required exact-head checks before closure."
+source = "GitHub commit checks on the integration revision"
+result = ""
+limitations = "The follow-up remains implemented rather than done until terminal exact-head success is observed."

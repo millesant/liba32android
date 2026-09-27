@@ -2,6 +2,7 @@
 #include "compat/a32_libc_integer.h"
 #include "compat/a32_libc_heap.h"
 #include "compat/a32_pthread_sync.h"
+#include "compat/a32_aeabi_atexit.h"
 
 .syntax unified
 .arm
@@ -35,6 +36,7 @@ LIBA32_STUB malloc,  LIBA32ANDROID_A32_LIBC_MALLOC_SVC
 LIBA32_STUB calloc,  LIBA32ANDROID_A32_LIBC_CALLOC_SVC
 LIBA32_STUB realloc, LIBA32ANDROID_A32_LIBC_REALLOC_SVC
 LIBA32_STUB free,    LIBA32ANDROID_A32_LIBC_FREE_SVC
+LIBA32_STUB __aeabi_atexit, LIBA32ANDROID_A32_AEABI_ATEXIT_SVC
 LIBA32_STUB pthread_mutex_init,    LIBA32ANDROID_A32_PTHREAD_MUTEX_INIT_SVC
 LIBA32_STUB pthread_mutex_destroy, LIBA32ANDROID_A32_PTHREAD_MUTEX_DESTROY_SVC
 LIBA32_STUB pthread_mutex_lock,    LIBA32ANDROID_A32_PTHREAD_MUTEX_LOCK_SVC

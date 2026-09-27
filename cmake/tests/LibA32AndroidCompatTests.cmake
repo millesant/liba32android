@@ -89,6 +89,17 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_aeabi_atexit_test
+    tests/compat/a32_aeabi_atexit.cpp
+)
+
+add_test(
+    NAME a32_aeabi_atexit_service
+    COMMAND compat_aeabi_atexit_test
+)
+
+
+liba32android_add_test_executable(
     compat_android_log_shim_integration_test
     tests/compat/a32_android_log_shim.cpp
 )

@@ -41,6 +41,11 @@ void* realloc(void* pointer, fixture_size_t size);
 __attribute__((visibility("default")))
 void free(void* pointer);
 __attribute__((visibility("default")))
+int __aeabi_atexit(
+    void* object,
+    void (*destructor)(void*),
+    void* dso_handle);
+__attribute__((visibility("default")))
 int pthread_mutex_init(void* mutex, const void* attr);
 __attribute__((visibility("default")))
 int pthread_mutex_destroy(void* mutex);
@@ -173,6 +178,14 @@ void* fixture_realloc(void* pointer, fixture_size_t size) {
 __attribute__((visibility("default"), noinline))
 void fixture_free(void* pointer) {
     free(pointer);
+}
+
+__attribute__((visibility("default"), noinline))
+int fixture_aeabi_atexit(
+    void* object,
+    void (*destructor)(void*),
+    void* dso_handle) {
+    return __aeabi_atexit(object, destructor, dso_handle);
 }
 
 __attribute__((visibility("default"), noinline))

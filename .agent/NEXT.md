@@ -2,19 +2,14 @@
 
 The numbered 011-049 roadmap is COMPLETE.
 
-The post-roadmap Android filesystem-library-source follow-up is DONE.
+The Android filesystem source and persistent legacy lifecycle follow-ups are DONE.
 
-The post-roadmap persistent ELF lifecycle/legacy DT_INIT/DT_FINI follow-up is DONE.
+`post-roadmap-a32-aeabi-atexit-registration` is IMPLEMENTED on `bleeding`;
+exact-head required checks are its current acceptance gate.
 
-No acceptance gate is currently active.
-
-## Ready next follow-up
-
-Integrate the prepared bounded `__aeabi_atexit` registration slice, then
-validate its focused service path and forty-symbol real partial-libc integration.
-
-After that, add registered-destructor finalization / per-DSO reverse execution
-before attempting real dynamic dlopen/unload ownership.
+After terminal success, close registration and implement bounded registered
+destructor finalization / per-DSO reverse execution. That will be the lifecycle
+substrate needed before real dlclose/unload ownership.
 
 ## Other ready follow-up candidates
 

@@ -569,3 +569,30 @@ the search provider acquires that child through requester-scoped virtual-path
 lookup, the loader forms a two-object graph, eager `R_ARM_JUMP_SLOT`
 relocation targets the searched child, and real A32 execution reaches the child
 implementation successfully.
+
+
+## L32-C024 — Bounded ARM EABI atexit registration
+
+The compatibility layer may expose private SVC `0xD2` for ARM
+`__aeabi_atexit(object, destructor, dso_handle)`.
+
+The service borrows a finite caller-owned span of registration records and
+preserves the three AAPCS32 word arguments exactly as logical guest values:
+r0 object, r1 destructor function value, and r2 DSO handle. It does not
+dereference, canonicalize, or convert any of them to host pointers.
+
+Successful registration appends one record in call order, writes zero to r0,
+and returns Handled. If the caller-provided record span is full, no record is
+mutated, r0 receives ARM32 -1 bits, and the service still returns Handled
+because registration exhaustion is an ordinary guest-visible __cxa_atexit
+failure. Unknown SVC IDs remain Unhandled.
+
+The partial ARM32 libc shim may export `__aeabi_atexit` as a direct SVC stub.
+Real integration expands the current partial-libc surface to forty symbols,
+requires an eager JUMP_SLOT target for the new import, executes the wrapper,
+and verifies exact object/destructor/DSO registration.
+
+This contract provides registration state only. It does not execute registered
+destructors, implement `__cxa_finalize`, choose process-exit versus DSO-unload
+timing, validate destructor code, tie DSO handles to link-map objects, or reclaim
+loaded mappings.

@@ -97,6 +97,13 @@ variants, EABI memset argument order, and EABI memclr zeroing.
 `__aeabi_atexit` is not part of feature 043 because it participates in C++
 static-destructor registration and requires a persistent lifecycle contract.
 
+A post-roadmap follow-up now supplies that bounded registration substrate:
+`__aeabi_atexit` is exported by the same partial `libc.so` and dispatches
+private SVC `0xD2` into caller-owned finite registration storage. The three
+guest words are preserved exactly as object, destructor, and DSO-handle values;
+success returns 0 and capacity exhaustion returns -1 without pretending the
+destructor has executed. Registered-destructor finalization remains separate.
+
 ## Pthread mutex/semaphore extension (feature 045)
 
 Feature 045 extends the same partial `libc.so` with nine process-local

@@ -3,7 +3,7 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: none.
+Active acceptance gate: `post-roadmap-a32-aeabi-atexit-registration` — IMPLEMENTED, exact-head validation NOT RUN.
 
 ## Phase
 
@@ -13,21 +13,26 @@ The post-roadmap Android filesystem-library-source follow-up is accepted.
 
 The post-roadmap persistent ELF lifecycle/legacy DT_INIT/DT_FINI follow-up is accepted.
 
-## Post-roadmap lifecycle validation
+## Active post-roadmap follow-up
 
-Persistent lifecycle execution passed all nine exact-head checks at
-`dbbb484fe98713eb67afd0026fe8a12a87afaaca`.
+Bounded ARM EABI `__aeabi_atexit` registration is integrated.
 
-Caller-owned stable-index state now suppresses completed constructors/destructors
-and latches failed guest lifecycle execution. Constructors run dependency-first
-as `DT_INIT -> INIT_ARRAY`; destructors run requester-first as
-`reverse FINI_ARRAY -> DT_FINI`.
+Private SVC `0xD2` records exact logical guest object, destructor, and DSO
+handle values in finite caller-owned storage. Success returns zero; bounded
+capacity exhaustion returns ARM32 -1 without mutating prior registrations.
+
+The partial ARM32 libc shim/consumer now exposes/imports forty symbols, with
+`__aeabi_atexit` as the new eager JUMP_SLOT path. Focused direct/ARM registry
+tests and the real partial-libc integration are present.
+
+Exact-head validation: NOT RUN.
 
 ## Deferred / partial
 
-`DT_PREINIT_ARRAY`, `__aeabi_atexit`/registered static destructors,
-process argv/envp constructor ABI, broader pthread/thread creation/TLS services,
-dynamic missing-object libdl acquisition/unload ownership, broader/exceptional
-libm semantics, concrete APK/ZIP byte acquisition and richer Android search
-policy, higher-level public ELF/platform orchestration, JNI/graphics/audio
-surfaces, and real Android device execution remain separate follow-up work.
+Registered-destructor finalization/`__cxa_finalize`, DSO-handle/link-map
+ownership, process-exit and dlclose timing, mapping reclamation,
+`DT_PREINIT_ARRAY`, process argv/envp constructor ABI, broader pthread/thread
+creation/TLS services, dynamic missing-object libdl acquisition/unload,
+concrete APK/ZIP byte acquisition, higher-level public ELF/platform
+orchestration, JNI/graphics/audio surfaces, and real Android device execution
+remain separate follow-up work.

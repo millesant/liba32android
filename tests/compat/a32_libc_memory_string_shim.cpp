@@ -14,6 +14,7 @@
 
 #include "compat/a32_android_namespace_policy.h"
 #include "compat/a32_android_platform_provider.h"
+#include "compat/a32_aeabi_atexit.h"
 #include "compat/a32_libc_memory_string.h"
 #include "compat/a32_libc_heap.h"
 #include "compat/a32_pthread_sync.h"
@@ -34,6 +35,8 @@ using liba32android::compat::A32AndroidNamespaceAccessPolicy;
 using liba32android::compat::A32AndroidNamespaceBinding;
 using liba32android::compat::A32AndroidNamespaceLink;
 using liba32android::compat::A32AndroidPlatformCatalogProvider;
+using liba32android::compat::A32AeabiAtexitRecord;
+using liba32android::compat::A32AeabiAtexitService;
 using liba32android::compat::A32LibcGuestErrnoState;
 using liba32android::compat::A32LibcGuestHeap;
 using liba32android::compat::A32LibcHeapBlock;
@@ -46,6 +49,7 @@ using liba32android::compat::A32LibcIntegerOptions;
 using liba32android::compat::A32LibcIntegerService;
 using liba32android::compat::A32LibcMemoryStringOptions;
 using liba32android::compat::A32LibcMemoryStringService;
+using liba32android::compat::kA32AeabiAtexitSvcImmediate;
 using liba32android::compat::kA32LibcMemchrSvcImmediate;
 using liba32android::compat::kA32LibcMemcmpSvcImmediate;
 using liba32android::compat::kA32LibcMemcpySvcImmediate;
@@ -318,12 +322,13 @@ int main(int argc, char** argv) {
         return fail("libc shim dependency/provider metadata was incorrect");
     }
 
-    constexpr std::array<std::string_view, 39> shim_names{{
+    constexpr std::array<std::string_view, 40> shim_names{{
         "memcpy", "memmove", "memset", "memcmp", "memchr",
         "strlen", "strcmp", "strncmp",
         "memmem", "strcpy", "strncpy",
         "atoi", "strtol", "__errno",
         "malloc", "calloc", "realloc", "free",
+        "__aeabi_atexit",
         "__aeabi_memcpy", "__aeabi_memcpy4", "__aeabi_memcpy8",
         "__aeabi_memmove", "__aeabi_memmove4", "__aeabi_memmove8",
         "__aeabi_memset", "__aeabi_memset4", "__aeabi_memset8",
@@ -449,8 +454,10 @@ int main(int argc, char** argv) {
         std::span{sync_waiters},
     };
     sync_service.set_current_thread_id(1U);
+    std::array<A32AeabiAtexitRecord, 8> atexit_records{};
+    A32AeabiAtexitService atexit_service{std::span{atexit_records}};
 
-    const std::array<A32HostServiceRegistryEntry, 27> services{{
+    const std::array<A32HostServiceRegistryEntry, 28> services{{
         {kA32LibcMemcpySvcImmediate, &service},
         {kA32LibcMemmoveSvcImmediate, &service},
         {kA32LibcMemsetSvcImmediate, &service},
@@ -478,6 +485,7 @@ int main(int argc, char** argv) {
         {kA32SemDestroySvcImmediate, &sync_service},
         {kA32SemWaitSvcImmediate, &sync_service},
         {kA32SemPostSvcImmediate, &sync_service},
+        {kA32AeabiAtexitSvcImmediate, &atexit_service},
     }};
     A32HostServiceRegistry registry{std::span{services}};
 
@@ -784,6 +792,24 @@ int main(int argc, char** argv) {
     }
     ++completed_calls;
 
+
+    const std::uint32_t atexit_object = *data + 0x580U;
+    const std::uint32_t atexit_destructor = 0x12345001U;
+    const std::uint32_t atexit_dso_handle = *data + 0x5c0U;
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_aeabi_atexit", registry,
+        stack_top, *stop,
+        atexit_object, atexit_destructor, atexit_dso_handle);
+    if (!result || !*result ||
+        result->services_handled != 1U ||
+        result->regs[0] != 0U ||
+        atexit_service.record_count() != 1U ||
+        atexit_service.records()[0].object != atexit_object ||
+        atexit_service.records()[0].destructor != atexit_destructor ||
+        atexit_service.records()[0].dso_handle != atexit_dso_handle) {
+        return fail("real __aeabi_atexit wrapper registration failed");
+    }
+    ++completed_calls;
 
     const std::uint32_t mutex_address = *data + 0x500U;
     result = run_wrapper(
