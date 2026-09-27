@@ -6,7 +6,9 @@ Persistent link-map roots are ownership anchors. A caller may supply additional
 live object anchors representing external owners such as active libdl handles.
 The planner follows dependency edges transitively, suppresses cycles/repeated
 edges/shared dependencies, and reports stable-index reachable objects plus
-deterministic requester-before-dependency unreachable candidates.
+deterministic reverse-postorder unreachable candidates. Acyclic requesters
+precede unreachable dependencies; cycle members remain deterministic and are
+reported exactly once.
 
 Global-scope membership is visibility rather than ownership and therefore does
 not retain an otherwise unreachable object.
