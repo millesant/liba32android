@@ -60,8 +60,7 @@ std::optional<std::uint32_t> A32LibDlCloseTransaction::dso_for_object(
             ambiguous = true;
             return std::nullopt;
         }
-        if (explicit_result.has_value() &&
-            *explicit_result != binding.dso_handle) {
+        if (explicit_result.has_value()) {
             ambiguous = true;
             return std::nullopt;
         }
