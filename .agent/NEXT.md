@@ -3,20 +3,22 @@
 The numbered 011-049 roadmap is COMPLETE.
 
 The Android filesystem source, persistent legacy lifecycle,
-`__aeabi_atexit` registration, and registered-destructor finalization
-follow-ups are DONE.
+`__aeabi_atexit` registration, registered-destructor finalization, and guest
+`__cxa_finalize` service follow-ups are DONE.
 
-`post-roadmap-a32-cxa-finalize-service` is IMPLEMENTED on `bleeding`;
-exact-head required checks are its current acceptance gate.
+No acceptance gate is currently active.
 
-After terminal success, extend the generated partial libc with
-`__cxa_finalize` and make ELF destructor execution service-aware. That allows
-normal Android CRT FINI_ARRAY code to trigger the accepted registered
-destructor state before a bounded dlclose ownership transaction is added.
+## Ready next follow-up
+
+Extend the generated partial libc with `__cxa_finalize` and make ELF
+destructor execution service-aware so normal Android CRT FINI_ARRAY code can
+invoke the accepted SVC finalizer.
+
+After that, bind DSO handles to stable link-map objects and build the bounded
+last-reference dlclose transaction before any unmapping work.
 
 ## Other ready follow-up candidates
 
-- DSO-handle/link-map binding and dlclose ownership after service-aware FINI.
 - Broader pthread/thread creation/TLS services.
 - Dynamic missing-object libdl acquisition semantics.
 - Concrete APK/ZIP byte acquisition and richer Android search policy.

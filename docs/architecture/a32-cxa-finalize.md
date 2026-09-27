@@ -1,42 +1,40 @@
 # Guest __cxa_finalize service boundary
 
-Status: implemented; exact-head validation pending
+Status: accepted; exact-head validation PASSed
 
 ## Why this boundary exists
 
 Android shared-object CRT code installs a FINI_ARRAY destructor that calls
 `__cxa_finalize(&__dso_handle)`. The Android linker processes FINI_ARRAY in
-reverse order before DT_FINI. A future realistic dlclose transaction therefore
-needs a guest-callable finalization boundary rather than only a host helper.
+reverse order before DT_FINI. A realistic dlclose path therefore needs a
+guest-callable finalization boundary rather than only a host helper.
 
 ## Guest ABI
 
-Private SVC `0xD3` represents:
+Private SVC `0xD3` represents `void __cxa_finalize(void* dso_handle)`.
 
-`void __cxa_finalize(void* dso_handle)`
-
-Guest r0 is treated as an opaque logical word. Zero selects process-wide
-finalization; non-zero selects an exact registered DSO handle. No host pointer
-conversion or automatic link-map lookup occurs.
+Guest r0 is an opaque logical word. Zero selects process-wide finalization;
+non-zero selects an exact registered DSO handle. No host pointer conversion or
+automatic link-map lookup occurs.
 
 ## Service composition
 
 `A32CxaFinalizeService` borrows the accepted
-`A32AeabiAtexitService` registration/finalization state and fixed bounded
-finalization options.
+`A32AeabiAtexitService` registration/finalization state and bounded options.
 
-The service delegates to the accepted reverse-order finalizer. On success the
-SVC is Handled and guest execution may resume after the void call. On bounded
-finalization failure the service returns Failed and retains the detailed
-`A32AeabiFinalizeResult` for host diagnostics.
+The service delegates to reverse-order registered finalization. Success is
+Handled so guest execution resumes after the void call. Failure is Failed and
+retains the detailed `A32AeabiFinalizeResult` for host diagnostics.
 
-A focused real ARM service-registry regression executes SVC 0xD3, finalizes an
-exact DSO registration, enters its guest destructor, verifies the original
-registered object in r0, and observes once-only completion.
+## Validation
+
+All nine exact-head checks passed at
+`fbd2e70c6b92bfe7b4242a7b69c083fdbf2de131`, including a real ARM
+service-registry regression that selects one DSO, executes its registered guest
+destructor with the exact object argument, and observes Complete state.
 
 ## Deferred
 
-This slice does not yet add the `__cxa_finalize` symbol to the generated
-partial libc shim. It also does not make FINI_ARRAY execution service-aware,
-bind `__dso_handle` values to link-map objects, own dlclose reference counts,
-or unmap objects. Those are the next transaction-building steps.
+The `__cxa_finalize` partial-libc export, service-aware FINI execution,
+DSO/link-map ownership, dlclose ownership, reference-counted unload, and
+mapping reclamation remain follow-up work.
