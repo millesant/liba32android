@@ -228,10 +228,40 @@ runtime::A32HostServiceDisposition A32LibcIntegerService::handle(
         return A32HostServiceDisposition::Failed;
     }
 
-    if (parsed.errno_value != 0) {
-        errno_sink_.set_errno(parsed.errno_value);
+    if (parsed.errno_value != 0 &&
+        !errno_sink_.set_errno(memory, parsed.errno_value)) {
+        return A32HostServiceDisposition::Failed;
     }
     regs[0] = std::bit_cast<std::uint32_t>(parsed.value);
+    return A32HostServiceDisposition::Handled;
+}
+
+bool A32LibcGuestErrnoState::set_errno(
+    memory::GuestMemory& memory,
+    std::int32_t value) noexcept {
+    if (errno_address_ == 0U) {
+        return false;
+    }
+    return write_u32_le(
+        memory,
+        errno_address_,
+        std::bit_cast<std::uint32_t>(value));
+}
+
+runtime::A32HostServiceDisposition A32LibcGuestErrnoState::handle(
+    memory::GuestMemory&,
+    std::uint32_t svc_immediate,
+    std::array<std::uint32_t, 16>& regs,
+    std::uint32_t&) {
+    if (svc_immediate != kA32LibcErrnoSvcImmediate) {
+        return A32HostServiceDisposition::Unhandled;
+    }
+    if (errno_address_ == 0U ||
+        errno_address_ >
+            std::numeric_limits<std::uint32_t>::max() - 3U) {
+        return A32HostServiceDisposition::Failed;
+    }
+    regs[0] = errno_address_;
     return A32HostServiceDisposition::Handled;
 }
 

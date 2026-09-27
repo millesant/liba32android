@@ -271,3 +271,22 @@ remains the error publication seam.
 
 No additional libc symbol or full-libc/application compatibility claim is
 introduced by feature 036.
+
+
+## L32-C014 — Guest errno slot and __errno service
+
+The compatibility layer may expose private SVC `0xAD` for bionic
+`int* __errno(void)` through caller-owned `A32LibcGuestErrnoState`.
+
+One state is configured with one non-zero logical guest address for a four-byte
+errno slot. The `__errno` service returns that logical address in r0 and never
+exposes a host pointer.
+
+`A32LibcErrnoSink` receives `GuestMemory` and returns publication success.
+`A32LibcGuestErrnoState` implements the sink by writing signed errno bits
+little-endian into its configured guest slot. Feature-035 integer conversion
+must return `Failed` if required errno publication fails.
+
+The embedding must use a distinct state/slot per guest thread when threading is
+implemented. Feature 037 does not model Android TLS layout, `__get_tls`,
+pthread TLS keys, or other thread-local libc storage.

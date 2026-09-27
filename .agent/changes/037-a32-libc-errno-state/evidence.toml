@@ -1,0 +1,29 @@
+schema = 1
+change = "037-a32-libc-errno-state"
+
+[[evidence]]
+id = "bionic-errno-contract"
+kind = "research"
+status = "passed"
+claim = "Bionic exposes errno as *(__errno()) and __errno returns calling-thread errno storage; both supplied targets import __errno."
+source = "docs/research/evidence/android-libc-errno-2026-09-26.md"
+result = "AOSP errno header/implementation and supplied-artifact symbol evidence define the ABI-visible pointer seam."
+limitations = "Feature 037 models one caller-selected guest slot, not Android TLS internals or guest thread creation."
+
+[[evidence]]
+id = "errno-state-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused tests cover guest errno publication and __errno pointer service while preserving feature-035 integer behavior."
+source = "tests/compat/a32_libc_integer.cpp"
+result = "Feature 037 is integrated; exact-head execution has not yet been observed."
+limitations = "Integrated tests are not passing evidence until they actually run."
+
+[[evidence]]
+id = "exact-head-ci"
+kind = "validation"
+status = "not_run"
+claim = "Feature 037 passes required exact-head checks after ordered integration."
+source = "GitHub commit checks on the feature-037 integration revision"
+result = ""
+limitations = "Feature 037 remains implemented rather than done until terminal exact-head checks are observed."

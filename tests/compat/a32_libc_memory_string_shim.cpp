@@ -108,9 +108,12 @@ public:
     std::size_t calls{};
     std::int32_t value{};
 
-    void set_errno(std::int32_t next) noexcept override {
+    bool set_errno(
+        liba32android::memory::GuestMemory&,
+        std::int32_t next) noexcept override {
         ++calls;
         value = next;
+        return true;
     }
 };
 

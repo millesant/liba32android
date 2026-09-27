@@ -14,11 +14,13 @@
 namespace {
 
 using liba32android::compat::A32LibcErrnoSink;
+using liba32android::compat::A32LibcGuestErrnoState;
 using liba32android::compat::A32LibcIntegerOptions;
 using liba32android::compat::A32LibcIntegerService;
 using liba32android::compat::kA32AndroidEinval;
 using liba32android::compat::kA32AndroidErange;
 using liba32android::compat::kA32LibcAtoiSvcImmediate;
+using liba32android::compat::kA32LibcErrnoSvcImmediate;
 using liba32android::compat::kA32LibcStrtolSvcImmediate;
 using liba32android::cpu::ExecutionRequest;
 using liba32android::memory::LinearGuestMemory;
@@ -54,9 +56,12 @@ public:
     std::size_t calls{};
     std::int32_t value{};
 
-    void set_errno(std::int32_t next) noexcept override {
+    bool set_errno(
+        liba32android::memory::GuestMemory&,
+        std::int32_t next) noexcept override {
         ++calls;
         value = next;
+        return true;
     }
 };
 
@@ -245,6 +250,39 @@ int test_invalid_base_overflow_and_failures() {
     return 0;
 }
 
+int test_guest_errno_state() {
+    LinearGuestMemory memory{1024};
+    A32LibcGuestErrnoState state{0x300U};
+
+    if (!state.set_errno(memory, kA32AndroidErange) ||
+        read_u32_le(memory, 0x300U) !=
+            static_cast<std::uint32_t>(kA32AndroidErange)) {
+        return fail("guest errno state did not publish value");
+    }
+
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t cpsr{};
+    if (state.handle(memory, kA32LibcErrnoSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0x300U) {
+        return fail("__errno service did not return configured guest slot");
+    }
+
+    if (state.handle(memory, 0xAEU, regs, cpsr) !=
+        A32HostServiceDisposition::Unhandled) {
+        return fail("guest errno state did not leave unknown SVC unhandled");
+    }
+
+    A32LibcGuestErrnoState invalid{0U};
+    regs = {};
+    if (invalid.set_errno(memory, kA32AndroidErange) ||
+        invalid.handle(memory, kA32LibcErrnoSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Failed) {
+        return fail("null guest errno slot was not rejected");
+    }
+    return 0;
+}
+
 int test_arm_registry_integration() {
     constexpr std::array<std::uint8_t, 8> code{
         0xAB, 0x00, 0x00, 0xEF,
@@ -295,6 +333,9 @@ int main() {
         return status;
     }
     if (const int status = test_invalid_base_overflow_and_failures(); status != 0) {
+        return status;
+    }
+    if (const int status = test_guest_errno_state(); status != 0) {
         return status;
     }
     if (const int status = test_arm_registry_integration(); status != 0) {

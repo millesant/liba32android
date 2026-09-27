@@ -2,6 +2,7 @@
 
 #define LIBA32ANDROID_A32_LIBC_ATOI_SVC 0xAB
 #define LIBA32ANDROID_A32_LIBC_STRTOL_SVC 0xAC
+#define LIBA32ANDROID_A32_LIBC_ERRNO_SVC 0xAD
 
 #ifdef __cplusplus
 
@@ -16,6 +17,8 @@ inline constexpr std::uint32_t kA32LibcAtoiSvcImmediate =
     LIBA32ANDROID_A32_LIBC_ATOI_SVC;
 inline constexpr std::uint32_t kA32LibcStrtolSvcImmediate =
     LIBA32ANDROID_A32_LIBC_STRTOL_SVC;
+inline constexpr std::uint32_t kA32LibcErrnoSvcImmediate =
+    LIBA32ANDROID_A32_LIBC_ERRNO_SVC;
 
 // Android/Linux guest errno numbers used by the integer-conversion contract.
 inline constexpr std::int32_t kA32AndroidEinval = 22;
@@ -24,7 +27,35 @@ inline constexpr std::int32_t kA32AndroidErange = 34;
 class A32LibcErrnoSink {
 public:
     virtual ~A32LibcErrnoSink() = default;
-    virtual void set_errno(std::int32_t value) noexcept = 0;
+    [[nodiscard]] virtual bool set_errno(
+        memory::GuestMemory& memory,
+        std::int32_t value) noexcept = 0;
+};
+
+class A32LibcGuestErrnoState final
+    : public A32LibcErrnoSink,
+      public runtime::A32HostServiceHandler {
+public:
+    explicit A32LibcGuestErrnoState(
+        std::uint32_t errno_address) noexcept
+        : errno_address_(errno_address) {}
+
+    [[nodiscard]] bool set_errno(
+        memory::GuestMemory& memory,
+        std::int32_t value) noexcept override;
+
+    [[nodiscard]] runtime::A32HostServiceDisposition handle(
+        memory::GuestMemory& memory,
+        std::uint32_t svc_immediate,
+        std::array<std::uint32_t, 16>& regs,
+        std::uint32_t& cpsr) override;
+
+    [[nodiscard]] std::uint32_t errno_address() const noexcept {
+        return errno_address_;
+    }
+
+private:
+    std::uint32_t errno_address_;
 };
 
 struct A32LibcIntegerOptions {
