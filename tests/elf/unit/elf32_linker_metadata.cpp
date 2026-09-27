@@ -23,6 +23,8 @@ constexpr std::int32_t kDtStrtab = 5;
 constexpr std::int32_t kDtSymtab = 6;
 constexpr std::int32_t kDtStrsz = 10;
 constexpr std::int32_t kDtSyment = 11;
+constexpr std::int32_t kDtInit = 12;
+constexpr std::int32_t kDtFini = 13;
 constexpr std::int32_t kDtSoname = 14;
 constexpr std::int32_t kDtSymbolic = 16;
 constexpr std::int32_t kDtRel = 17;
@@ -314,6 +316,8 @@ int test_flags1_global_metadata() {
 
 int test_lifecycle_array_metadata() {
     const std::array entries{
+        Elf32DynamicEntry{kDtInit, 0x80},
+        Elf32DynamicEntry{kDtFini, 0x90},
         Elf32DynamicEntry{kDtInitArray, 0x100},
         Elf32DynamicEntry{kDtInitArraySz, 8},
         Elf32DynamicEntry{kDtFiniArray, 0x200},
@@ -323,6 +327,10 @@ int test_lifecycle_array_metadata() {
 
     const auto collected = collect_elf32_linker_metadata(entries);
     if (!collected ||
+        !collected.metadata.init_function_address_value.has_value() ||
+        *collected.metadata.init_function_address_value != 0x80U ||
+        !collected.metadata.fini_function_address_value.has_value() ||
+        *collected.metadata.fini_function_address_value != 0x90U ||
         !collected.metadata.init_array.has_value() ||
         collected.metadata.init_array->address_value != 0x100 ||
         collected.metadata.init_array->size != 8 ||
@@ -335,6 +343,10 @@ int test_lifecycle_array_metadata() {
     LinearGuestMemory memory(0x1000, 0x1000);
     const auto built = build_elf32_linker_metadata(memory, 0x1000, entries);
     if (!built ||
+        !built.metadata.init_function.has_value() ||
+        *built.metadata.init_function != 0x1080U ||
+        !built.metadata.fini_function.has_value() ||
+        *built.metadata.fini_function != 0x1090U ||
         !built.metadata.init_array.has_value() ||
         built.metadata.init_array->guest_address != 0x1100 ||
         built.metadata.init_array->size != 8 ||
@@ -345,7 +357,8 @@ int test_lifecycle_array_metadata() {
     }
 
     for (const std::int32_t tag :
-         {kDtInitArray, kDtInitArraySz, kDtFiniArray, kDtFiniArraySz}) {
+         {kDtInit, kDtFini,
+          kDtInitArray, kDtInitArraySz, kDtFiniArray, kDtFiniArraySz}) {
         std::vector<Elf32DynamicEntry> duplicate(entries.begin(), entries.end());
         duplicate.insert(duplicate.end() - 1,
                          Elf32DynamicEntry{tag, 0xabcdef00U});
@@ -391,6 +404,16 @@ int test_lifecycle_array_metadata() {
     if (build_elf32_linker_metadata(memory, 0x20, address_overflow).error !=
         Elf32LinkerMetadataError::AddressOverflow) {
         return fail("lifecycle array rebasing overflow was not rejected");
+    }
+
+    const std::array legacy_address_overflow{
+        Elf32DynamicEntry{kDtInit, 0xfffffff0U},
+        Elf32DynamicEntry{kDtNull, 0},
+    };
+    if (build_elf32_linker_metadata(
+            memory, 0x20U, legacy_address_overflow).error !=
+        Elf32LinkerMetadataError::AddressOverflow) {
+        return fail("legacy DT_INIT rebasing overflow was not rejected");
     }
 
     const std::array range_overflow{

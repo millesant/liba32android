@@ -4,13 +4,17 @@ The numbered 011-049 roadmap is COMPLETE.
 
 The post-roadmap Android filesystem-library-source follow-up is DONE.
 
-No acceptance gate is currently active.
+`post-roadmap-elf-lifecycle-state-legacy-init-fini` is IMPLEMENTED on
+`bleeding`; exact-head required checks are its current acceptance gate.
 
-## Ready follow-up candidates
+After terminal success, close this lifecycle follow-up. The next coherent
+lifecycle step is bounded `__aeabi_atexit`/registered-destructor state, which
+can then feed real dynamic dlopen/unload ownership.
 
-- Persistent ELF lifecycle state plus legacy DT_INIT/DT_FINI.
+## Other ready follow-up candidates
+
 - Broader pthread/thread creation/TLS services.
-- Dynamic libdl acquisition/unload semantics.
+- Dynamic missing-object libdl acquisition/unload semantics.
 - Concrete APK/ZIP byte acquisition and richer Android search policy.
 - Higher-level public ELF/platform embedding APIs.
 - Broader/exceptional libm behavior.

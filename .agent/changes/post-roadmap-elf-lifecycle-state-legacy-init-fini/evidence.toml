@@ -1,0 +1,29 @@
+schema = 1
+change = "post-roadmap-elf-lifecycle-state-legacy-init-fini"
+
+[[evidence]]
+id = "accepted-array-lifecycle-base"
+kind = "repository"
+status = "observed"
+claim = "The accepted runtime already provides validated INIT_ARRAY/FINI_ARRAY metadata, bounded planning order, and ARM/Thumb call execution but explicitly defers persistent called-state and legacy DT_INIT/DT_FINI."
+source = "docs/architecture/elf32-lifecycle.md and .agent/specs/elf32.md"
+result = "Accepted feature-017/018/019/042 contracts provide the execution substrate and identify the remaining lifecycle gap."
+limitations = "Repository evidence does not validate the new follow-up until exact-head tests execute."
+
+[[evidence]]
+id = "persistent-lifecycle-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused lifecycle tests cover legacy metadata, dependency/per-object init order, requester/per-object fini order, once-only Complete suppression, and Failed-state replay rejection."
+source = "tests/elf/unit/elf32_linker_metadata.cpp and tests/elf/unit/elf32_lifecycle.cpp"
+result = "The follow-up tests are integrated; exact-head execution has not yet been observed."
+limitations = "Synthetic lifecycle functions do not model __aeabi_atexit registration or shared-object reference-count unload policy."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "The persistent lifecycle follow-up passes required exact-head checks before closure."
+source = "future exact-head GitHub commit checks"
+result = ""
+limitations = "The follow-up remains implemented rather than done until terminal exact-head success is observed."

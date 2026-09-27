@@ -77,4 +77,44 @@ FINI_ARRAY execution reuses the bounded ARM/Thumb lifecycle call seam: caller-ow
 
 ## L32-E017 — Deferred linker/runtime scope
 
-Still outside the accepted implementation: Android namespace/search-path/pathname accessibility and platform-provider policy; LD_PRELOAD/RTLD selection semantics; protected-reference self-binding; lazy binding; broader ARM relocation families; RELA/RELR/Android packed relocations; TLS/IFUNC; legacy `DT_INIT/DT_FINI`, `DT_PREINIT_ARRAY`, persisted constructor-called state, recursion state across calls, process argv/envp constructor ABI, `dlopen`/`dlsym`/unload; and guest execution of the real ARM32 fixture on Android. Persistent cross-root object lifetime and generic global-group membership are implemented by feature 016.
+Still outside the accepted implementation at the numbered-roadmap boundary: Android namespace/search-path/pathname accessibility and platform-provider policy; LD_PRELOAD/RTLD selection semantics; protected-reference self-binding; lazy binding; broader ARM relocation families; RELA/RELR/Android packed relocations; TLS/IFUNC; `DT_PREINIT_ARRAY`, process argv/envp constructor ABI, dynamic missing-object `dlopen`/unload ownership, and guest execution of the real ARM32 fixture on Android. Persistent cross-root object lifetime and generic global-group membership are implemented by feature 016; post-roadmap contract L32-E018 adds legacy `DT_INIT/DT_FINI` plus caller-owned persistent once/failure lifecycle state.
+
+
+## L32-E018 — Persistent legacy lifecycle execution
+
+Validated linker metadata additionally recognizes singleton `DT_INIT` and
+`DT_FINI` function values. Each non-empty value is rebased exactly once by
+the object's load bias with 32-bit overflow rejection; metadata collection does
+not fetch code or expose host pointers.
+
+A caller-owned `Elf32LifecycleState` is indexed by stable dependency-graph
+object index and may grow when the graph grows, but may not be larger than the
+graph. Constructor and destructor status are independently Pending, Complete,
+or Failed. Destructor state other than Pending is valid only after constructors
+are Complete.
+
+`run_elf32_persistent_constructors` traverses one root dependency-first under
+a caller unique-object ceiling. Already-Complete objects are not replayed.
+Each new object runs legacy DT_INIT first, then its INIT_ARRAY in declaration
+order. Null/all-ones function values are suppressed. One total caller-selected
+raw INIT_ARRAY-entry ceiling applies across the invocation. Successful objects
+are marked Complete, including objects with no callable lifecycle entries. If a
+guest lifecycle call fails after execution begins, that object's constructor
+state becomes Failed and later attempts fail rather than replaying possible
+partial side effects.
+
+`run_elf32_persistent_destructors` requires reachable objects to have
+Complete constructors, visits requesters before dependencies, runs each
+FINI_ARRAY in reverse declaration order before legacy DT_FINI, and suppresses
+already-Complete destructor state. Guest execution failure latches Failed
+destructor state and prevents replay. A prior partially completed destruction
+may therefore retain completed requester state while a failed dependency is
+terminally marked Failed.
+
+Both operations use the accepted bounded ARM/Thumb lifecycle call seam with a
+caller-owned aligned guest stack, normalized stop PC, and finite instruction
+ceiling. Invalid graph edges, object/array-entry ceilings, array decode failure,
+invalid persistent state, and guest execution failure are explicit. This
+contract does not add DT_PREINIT_ARRAY, argv/envp constructor ABI,
+`__aeabi_atexit` registration, shared-object reference-count ownership,
+automatic dlopen constructor transactions, or unload mapping reclamation.

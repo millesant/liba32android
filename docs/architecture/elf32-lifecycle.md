@@ -1,6 +1,6 @@
 # ELF32 lifecycle arrays
 
-Status: feature 042 FINI_ARRAY destructor planning/execution complete; exact-head validation PASSed
+Status: feature 042 array lifecycle accepted; post-roadmap persistent DT_INIT/DT_FINI execution implemented, exact-head validation pending
 
 ## Boundary
 
@@ -183,3 +183,41 @@ Legacy `DT_INIT/DT_FINI`, `DT_PREINIT_ARRAY`, persisted constructor-called
 or recursion state, process argv/envp constructor ABI, `dlopen`/`dlsym`,
 unload/refcount orchestration, and Android device execution remain separate
 work.
+
+
+## Post-roadmap persistent legacy lifecycle
+
+The post-roadmap lifecycle follow-up recognizes singleton `DT_INIT` and
+`DT_FINI` metadata in addition to the accepted INIT_ARRAY/FINI_ARRAY
+descriptors. Legacy function values are rebased once by object load bias and
+remain logical guest addresses; the metadata layer does not dereference them.
+
+`Elf32LifecycleState` is caller-owned and indexed by the dependency graph's
+stable object indexes. Constructor/destructor status is Pending, Complete, or
+Failed. The state vector can grow as a persistent link map appends objects, but
+cannot outgrow the graph.
+
+Persistent constructor execution is dependency-first. For each new object the
+legacy DT_INIT call precedes INIT_ARRAY. Successful completion latches the
+object Complete, so later root traversals sharing that object do not replay
+constructors. Objects with no lifecycle calls are still marked Complete.
+
+Persistent destructor execution is requester-first. For each initialized
+object FINI_ARRAY runs in reverse declaration order before DT_FINI. Completed
+destructors are not replayed.
+
+A guest execution failure latches the affected constructor/destructor status as
+Failed. This is deliberately conservative: a failed call may already have
+changed guest memory, so a later invocation returns InvalidState rather than
+guessing that replay is safe. Planning/decode/limit failures that happen before
+a guest call do not mark a Pending object Failed.
+
+Both directions retain the existing bounded call ABI: ARM/Thumb from function
+bit 0, caller-owned 8-byte-aligned stack top, normalized stop PC, and one finite
+instruction ceiling per call. One caller ceiling also bounds all raw array
+entries decoded during the invocation.
+
+Still separate: DT_PREINIT_ARRAY, process argv/envp constructor ABI,
+`__aeabi_atexit`/registered C++ destructor stacks, automatic lifecycle
+transactions inside dynamic dlopen, object reference-count ownership and
+unmapping, and Android-device execution.
