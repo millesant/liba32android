@@ -661,11 +661,20 @@ Elf32LinkMapReclamationResult plan_elf32_link_map_reclamation(
         }
     }
 
+    std::unordered_map<std::string, std::size_t> active_identities;
+    active_identities.reserve(object_count);
     for (std::size_t object_index = 0;
          object_index < object_count;
          ++object_index) {
         const auto& object = link_map.graph.objects[object_index];
         if (object.identity.empty()) {
+            result.error = Elf32LinkMapReclamationError::InvalidLinkMap;
+            result.failing_object = object_index;
+            return result;
+        }
+        if (object_active(object_index) &&
+            !active_identities.emplace(
+                object.identity, object_index).second) {
             result.error = Elf32LinkMapReclamationError::InvalidLinkMap;
             result.failing_object = object_index;
             return result;
@@ -699,6 +708,21 @@ Elf32LinkMapReclamationResult plan_elf32_link_map_reclamation(
     }
 
     {
+        std::vector<std::uint8_t> required_global(object_count, 0U);
+        for (std::size_t object_index = 0;
+             object_index < object_count;
+             ++object_index) {
+            if (object_active(object_index) &&
+                link_map.graph.objects[object_index].linker_metadata.global) {
+                required_global[object_index] = 1U;
+            }
+        }
+        for (const auto& root : link_map.roots) {
+            if (root.policy == Elf32LinkMapRootPolicy::Global) {
+                required_global[root.object_index] = 1U;
+            }
+        }
+
         std::vector<std::uint8_t> global_seen(object_count, 0U);
         bool has_previous_global = false;
         std::size_t previous_global = 0U;
@@ -706,6 +730,7 @@ Elf32LinkMapReclamationResult plan_elf32_link_map_reclamation(
             if (object_index >= object_count ||
                 !object_active(object_index) ||
                 global_seen[object_index] != 0U ||
+                required_global[object_index] == 0U ||
                 (has_previous_global && object_index <= previous_global)) {
                 result.error = Elf32LinkMapReclamationError::InvalidLinkMap;
                 if (object_index < object_count) {
@@ -716,6 +741,15 @@ Elf32LinkMapReclamationResult plan_elf32_link_map_reclamation(
             global_seen[object_index] = 1U;
             previous_global = object_index;
             has_previous_global = true;
+        }
+        for (std::size_t object_index = 0;
+             object_index < object_count;
+             ++object_index) {
+            if (required_global[object_index] != global_seen[object_index]) {
+                result.error = Elf32LinkMapReclamationError::InvalidLinkMap;
+                result.failing_object = object_index;
+                return result;
+            }
         }
     }
 
