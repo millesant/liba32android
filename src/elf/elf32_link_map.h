@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -33,5 +34,50 @@ struct Elf32LinkMap {
         return global_scope_objects;
     }
 };
+
+struct Elf32LinkMapReclamationOptions {
+    // Maximum accumulated graph object count accepted by one planning call.
+    std::uint32_t max_objects{};
+};
+
+enum class Elf32LinkMapReclamationError : std::uint8_t {
+    None = 0,
+    InvalidOptions,
+    InvalidLinkMap,
+    InvalidLiveAnchor,
+    ObjectLimitExceeded,
+};
+
+struct Elf32LinkMapReclamationPlan {
+    // Stable ascending object indexes reachable from persistent roots or
+    // caller-supplied live anchors.
+    std::vector<std::size_t> reachable_objects;
+    // Unreachable objects exactly once in deterministic
+    // requester-before-dependency teardown order.
+    std::vector<std::size_t> reclaimable_objects;
+};
+
+struct Elf32LinkMapReclamationResult {
+    Elf32LinkMapReclamationError error{
+        Elf32LinkMapReclamationError::None};
+    std::optional<std::size_t> failing_object;
+    Elf32LinkMapReclamationPlan plan;
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return error == Elf32LinkMapReclamationError::None;
+    }
+};
+
+// Read-only ownership/reachability planning. Persistent roots are always live;
+// additional_live_anchors represent borrowed external owners such as active
+// libdl handles. Global-scope visibility does not retain ownership.
+[[nodiscard]] Elf32LinkMapReclamationResult
+plan_elf32_link_map_reclamation(
+    const Elf32LinkMap& link_map,
+    std::span<const std::size_t> additional_live_anchors,
+    const Elf32LinkMapReclamationOptions& options);
+
+[[nodiscard]] const char* to_string(
+    Elf32LinkMapReclamationError error) noexcept;
 
 }  // namespace liba32android::elf
