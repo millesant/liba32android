@@ -1,10 +1,18 @@
 #include "compat/a32_android_library_search.h"
 
+#include <algorithm>
+#include <cerrno>
+#include <cstddef>
 #include <cstdint>
+#include <fcntl.h>
 #include <limits>
+#include <new>
 #include <string>
 #include <string_view>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <utility>
+#include <vector>
 
 namespace liba32android::compat {
 namespace {
@@ -16,11 +24,103 @@ namespace {
     return result;
 }
 
+[[nodiscard]] A32AndroidLibrarySourceResult source_failure(
+    A32AndroidLibrarySourceError error) {
+    A32AndroidLibrarySourceResult result;
+    result.error = error;
+    return result;
+}
+
 [[nodiscard]] bool contains_nul(std::string_view value) noexcept {
     return value.find('\0') != std::string_view::npos;
 }
 
+class ScopedFileDescriptor {
+public:
+    explicit ScopedFileDescriptor(int fd) noexcept : fd_(fd) {}
+    ~ScopedFileDescriptor() {
+        if (fd_ >= 0) {
+            static_cast<void>(::close(fd_));
+        }
+    }
+
+    ScopedFileDescriptor(const ScopedFileDescriptor&) = delete;
+    ScopedFileDescriptor& operator=(const ScopedFileDescriptor&) = delete;
+
+    [[nodiscard]] int get() const noexcept { return fd_; }
+
+private:
+    int fd_{-1};
+};
+
 }  // namespace
+
+A32AndroidLibrarySourceResult A32FilesystemLibrarySource::load(
+    std::string_view virtual_path,
+    std::uint64_t max_image_bytes) {
+    if (options_.max_path_bytes == 0U ||
+        virtual_path.empty() ||
+        contains_nul(virtual_path) ||
+        virtual_path.size() > options_.max_path_bytes ||
+        max_image_bytes == 0U) {
+        return source_failure(A32AndroidLibrarySourceError::Failed);
+    }
+
+    std::string path{virtual_path};
+    const int raw_fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (raw_fd < 0) {
+        if (errno == ENOENT || errno == ENOTDIR) {
+            return source_failure(A32AndroidLibrarySourceError::NotFound);
+        }
+        return source_failure(A32AndroidLibrarySourceError::Failed);
+    }
+    ScopedFileDescriptor fd{raw_fd};
+
+    struct stat status {};
+    if (::fstat(fd.get(), &status) != 0 ||
+        !S_ISREG(status.st_mode) ||
+        status.st_size <= 0) {
+        return source_failure(A32AndroidLibrarySourceError::Failed);
+    }
+
+    const std::uint64_t image_size =
+        static_cast<std::uint64_t>(status.st_size);
+    if (image_size > max_image_bytes ||
+        image_size > std::numeric_limits<std::size_t>::max()) {
+        return source_failure(A32AndroidLibrarySourceError::Failed);
+    }
+
+    std::vector<std::uint8_t> image;
+    try {
+        image.resize(static_cast<std::size_t>(image_size));
+    } catch (const std::bad_alloc&) {
+        return source_failure(A32AndroidLibrarySourceError::Failed);
+    }
+
+    std::size_t offset = 0U;
+    while (offset < image.size()) {
+        constexpr std::size_t kReadChunk = 1U << 20U;
+        const std::size_t remaining = image.size() - offset;
+        const std::size_t chunk = std::min(remaining, kReadChunk);
+        const ssize_t read_count =
+            ::read(fd.get(), image.data() + offset, chunk);
+        if (read_count < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return source_failure(A32AndroidLibrarySourceError::Failed);
+        }
+        if (read_count == 0) {
+            return source_failure(A32AndroidLibrarySourceError::Failed);
+        }
+        offset += static_cast<std::size_t>(read_count);
+    }
+
+    A32AndroidLibrarySourceResult result;
+    result.identity.assign(virtual_path.data(), virtual_path.size());
+    result.image = std::move(image);
+    return result;
+}
 
 bool A32AndroidLibrarySearchProvider::valid_bare_name(
     std::string_view requested_name) const noexcept {

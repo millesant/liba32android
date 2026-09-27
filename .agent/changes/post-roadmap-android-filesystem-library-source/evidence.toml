@@ -1,0 +1,38 @@
+schema = 1
+change = "post-roadmap-android-filesystem-library-source"
+
+[[evidence]]
+id = "app-local-dependency-need"
+kind = "artifact"
+status = "observed"
+claim = "The supplied VLC ARMv7 package contains application-local native dependency edges that require application-library acquisition in addition to the platform compatibility catalog."
+source = "docs/research/evidence/arm32-android-app-library-search-2026-09-27.md"
+result = "Existing bounded APK/readelf evidence records libvlcjni -> libvlc and libmla -> libvlc/libc++_shared application-local edges."
+limitations = "The package evidence demonstrates the dependency need but not a universal Android extraction/filesystem layout."
+
+[[evidence]]
+id = "filesystem-source-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused tests cover exact regular-file reads, missing paths, image/path ceilings, directory and embedded-NUL rejection, and requester-search composition."
+source = "tests/compat/a32_android_library_search.cpp"
+result = "The follow-up is integrated; exact-head test execution has not yet been observed."
+limitations = "Host temporary-file coverage does not model Android package-manager permissions."
+
+[[evidence]]
+id = "real-filesystem-search-integration"
+kind = "test"
+status = "not_run"
+claim = "Pinned-NDK ARM32 root/child integration acquires the child from its generated filesystem directory through A32FilesystemLibrarySource, relocates the root, and executes through the child."
+source = "tests/compat/a32_android_library_search_integration.cpp and .github/workflows/compat-app-search.yml"
+result = "The concrete filesystem integration is integrated; exact-head execution has not yet been observed."
+limitations = "This proves regular-file acquisition, not APK/ZIP parsing or AssetManager access."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "The post-roadmap filesystem-source follow-up passes required exact-head checks before closure."
+source = "future exact-head GitHub commit checks"
+result = ""
+limitations = "The follow-up remains implemented rather than done until terminal exact-head success is observed."

@@ -68,7 +68,8 @@ jobs:
             tee build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.object_count=2' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.requested=libfixture_app_child.so' build-fixtures/app-search-integration-evidence.txt
-          grep -F 'fixture.android_search.virtual_path=base.apk!/lib/armeabi-v7a/libfixture_app_child.so' build-fixtures/app-search-integration-evidence.txt
+          grep -F 'fixture.android_search.source=filesystem' build-fixtures/app-search-integration-evidence.txt
+          grep -F 'fixture.android_search.child_identity=build-fixtures/app-search/libfixture_app_child.so' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.relocation_count=1' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.result=123' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.status=PASS' build-fixtures/app-search-integration-evidence.txt

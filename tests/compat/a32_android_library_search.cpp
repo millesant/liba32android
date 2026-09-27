@@ -1,9 +1,13 @@
 #include <array>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -18,6 +22,8 @@ using liba32android::compat::A32AndroidLibrarySearchRoot;
 using liba32android::compat::A32AndroidLibrarySource;
 using liba32android::compat::A32AndroidLibrarySourceError;
 using liba32android::compat::A32AndroidLibrarySourceResult;
+using liba32android::compat::A32FilesystemLibrarySource;
+using liba32android::compat::A32FilesystemLibrarySourceOptions;
 using liba32android::elf::Elf32DependencyProviderError;
 
 int fail(const char* message) {
@@ -67,6 +73,124 @@ public:
 private:
     std::span<const SourceEntry> entries_;
 };
+
+class TemporaryDirectory {
+public:
+    TemporaryDirectory() {
+        std::error_code error;
+        const auto base = std::filesystem::temp_directory_path(error);
+        if (error) {
+            return;
+        }
+        path_ = base /
+            ("liba32android-fs-source-" +
+             std::to_string(static_cast<long long>(::getpid())));
+        std::filesystem::remove_all(path_, error);
+        error.clear();
+        std::filesystem::create_directories(path_, error);
+        ready_ = !error;
+    }
+
+    ~TemporaryDirectory() {
+        if (!path_.empty()) {
+            std::error_code error;
+            std::filesystem::remove_all(path_, error);
+        }
+    }
+
+    [[nodiscard]] bool ready() const noexcept { return ready_; }
+    [[nodiscard]] const std::filesystem::path& path() const noexcept {
+        return path_;
+    }
+
+private:
+    std::filesystem::path path_;
+    bool ready_{};
+};
+
+int test_filesystem_source_exact_read_and_provider_composition() {
+    TemporaryDirectory temporary;
+    if (!temporary.ready()) {
+        return fail("could not create temporary filesystem-source directory");
+    }
+
+    constexpr std::array<std::uint8_t, 4> image{0x7f, 'E', 'L', 'F'};
+    const auto file_path = temporary.path() / "libfixture.so";
+    {
+        std::ofstream output{
+            file_path, std::ios::binary | std::ios::trunc};
+        output.write(
+            reinterpret_cast<const char*>(image.data()),
+            static_cast<std::streamsize>(image.size()));
+        if (!output) {
+            return fail("could not write filesystem-source fixture");
+        }
+    }
+
+    const std::string file = file_path.string();
+    const std::string root = temporary.path().string();
+    A32FilesystemLibrarySource source{
+        A32FilesystemLibrarySourceOptions{.max_path_bytes = 4096U}};
+
+    const auto direct = source.load(file, image.size());
+    if (!direct ||
+        direct.identity != file ||
+        direct.image !=
+            std::vector<std::uint8_t>(image.begin(), image.end())) {
+        return fail("filesystem source did not read exact regular-file bytes");
+    }
+
+    const auto missing =
+        source.load((temporary.path() / "missing.so").string(), image.size());
+    if (missing.error != A32AndroidLibrarySourceError::NotFound) {
+        return fail("missing filesystem library was not NotFound");
+    }
+
+    const auto oversize = source.load(file, image.size() - 1U);
+    if (oversize.error != A32AndroidLibrarySourceError::Failed) {
+        return fail("filesystem source ignored image byte ceiling");
+    }
+
+    const auto directory = source.load(root, 4096U);
+    if (directory.error != A32AndroidLibrarySourceError::Failed) {
+        return fail("filesystem source accepted a directory as an ELF image");
+    }
+
+    A32FilesystemLibrarySource short_path_source{
+        A32FilesystemLibrarySourceOptions{.max_path_bytes = 1U}};
+    if (short_path_source.load(file, image.size()).error !=
+        A32AndroidLibrarySourceError::Failed) {
+        return fail("filesystem source ignored path byte ceiling");
+    }
+
+    std::string nul_path = file;
+    nul_path.push_back('\0');
+    nul_path.append("suffix");
+    if (source.load(
+            std::string_view{nul_path.data(), nul_path.size()},
+            image.size()).error != A32AndroidLibrarySourceError::Failed) {
+        return fail("filesystem source accepted embedded NUL path");
+    }
+
+    const std::array<A32AndroidLibrarySearchRoot, 1> roots{{
+        {"root.so", root},
+    }};
+    A32AndroidLibrarySearchProvider provider{
+        std::span{roots},
+        source,
+        A32AndroidLibrarySearchOptions{.max_path_bytes = 4096U},
+    };
+    const auto resolved =
+        provider.resolve_for("root.so", "libfixture.so", image.size());
+    if (!resolved ||
+        resolved.source.identity != file ||
+        resolved.source.image !=
+            std::vector<std::uint8_t>(image.begin(), image.end())) {
+        return fail("filesystem source did not compose with requester search");
+    }
+
+    return 0;
+}
 
 int test_apk_root_exact_success() {
     constexpr std::array<std::uint8_t, 4> image{
@@ -249,6 +373,11 @@ int test_malformed_root_and_context_free_behavior() {
 }  // namespace
 
 int main() {
+    if (const int status =
+            test_filesystem_source_exact_read_and_provider_composition();
+        status != 0) {
+        return status;
+    }
     if (const int status = test_apk_root_exact_success(); status != 0) {
         return status;
     }

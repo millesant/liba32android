@@ -1,0 +1,26 @@
+schema = 1
+change = "post-roadmap-android-filesystem-library-source"
+
+[[tasks]]
+id = "T001"
+status = "implemented"
+depends_on = []
+acceptance = "Define bounded exact-path regular-file source semantics and error mapping."
+
+[[tasks]]
+id = "T002"
+status = "implemented"
+depends_on = ["T001"]
+acceptance = "Implement exact-path open/fstat/read acquisition with path/image ceilings, owned bytes, and exact path identity."
+
+[[tasks]]
+id = "T003"
+status = "implemented"
+depends_on = ["T002"]
+acceptance = "Add focused source/provider regressions and convert the real ARM32 app-search integration to concrete filesystem acquisition."
+
+[[tasks]]
+id = "T004"
+status = "active"
+depends_on = ["T003"]
+acceptance = "Run exact-head required checks and reconcile follow-up closure evidence/state."

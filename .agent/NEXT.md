@@ -2,12 +2,14 @@
 
 The numbered 011-049 roadmap is COMPLETE.
 
-No numbered acceptance gate remains.
+`post-roadmap-android-filesystem-library-source` is IMPLEMENTED on
+`bleeding`; exact-head required checks are its current acceptance gate.
 
-## Follow-up work
+Once terminal success is observed, close this follow-up. The next ready
+production-readiness candidates are persistent ELF lifecycle state and legacy
+DT_INIT/DT_FINI, broader pthread/TLS coverage, or a concrete APK/ZIP source.
 
-Future bounded work should be selected from remaining production-readiness gaps,
-not by extending the completed numbered roadmap implicitly:
+## Independent follow-ups
 
 - Android native tombstone/backtrace coexistence: BLOCKED on accessible device environment.
 - AArch64 runtime execution on a 16 KiB Android host: NOT RUN.
@@ -16,7 +18,7 @@ not by extending the completed numbered roadmap implicitly:
 - Broader pthread/thread creation/TLS services.
 - Dynamic libdl acquisition/unload semantics.
 - Broader/exceptional libm behavior.
-- Concrete APK/filesystem byte acquisition and richer Android search policy.
+- Concrete APK/ZIP byte acquisition and richer Android search policy.
 - Higher-level public ELF/platform embedding APIs.
 
 ## Local-machine validation note

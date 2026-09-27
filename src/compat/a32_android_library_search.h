@@ -40,6 +40,27 @@ public:
         std::uint64_t max_image_bytes) = 0;
 };
 
+struct A32FilesystemLibrarySourceOptions {
+    std::uint32_t max_path_bytes{};
+};
+
+// Concrete regular-file source for caller-supplied filesystem roots. Paths are
+// consumed exactly as provided: no canonicalization, basename rewriting,
+// package-manager lookup, or APK/ZIP interpretation occurs here.
+class A32FilesystemLibrarySource final : public A32AndroidLibrarySource {
+public:
+    explicit A32FilesystemLibrarySource(
+        A32FilesystemLibrarySourceOptions options) noexcept
+        : options_(options) {}
+
+    [[nodiscard]] A32AndroidLibrarySourceResult load(
+        std::string_view virtual_path,
+        std::uint64_t max_image_bytes) override;
+
+private:
+    A32FilesystemLibrarySourceOptions options_;
+};
+
 struct A32AndroidLibrarySearchRoot {
     // Exact opaque requester identity produced by the dependency loader.
     std::string_view requester_identity;
