@@ -3,16 +3,17 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `post-roadmap-resident-dlclose-lifecycle-transaction` — IMPLEMENTED, corrected exact-head validation PENDING.
+Active acceptance gate: none — `post-roadmap-resident-dlclose-lifecycle-transaction` is DONE.
 
 ## Phase
 
 Features 011-049 remain accepted and the numbered roadmap remains COMPLETE.
 
-Accepted post-roadmap prerequisites now include service-aware ELF FINI and
-linked `__cxa_finalize`.
+Accepted post-roadmap work now includes service-aware ELF FINI, linked
+`__cxa_finalize`, and bounded resident last-reference `dlclose` lifecycle
+execution.
 
-## Active post-roadmap follow-up
+## Completed post-roadmap follow-up
 
 Resident libdl can optionally delegate `dlclose` to a bounded exact-object
 lifecycle transaction.
@@ -25,34 +26,25 @@ state Complete, and only then releases the synthetic handle.
 Guest teardown failure or incomplete registered finalization latches Failed and
 preserves the final handle. Dependency mappings remain resident.
 
-Focused and real ARM32 regressions are integrated.
+The first real ARM32 integration exposed nested FINI execution reusing the outer
+configured stack top while the guest `fixture_dlclose` caller frame was still
+active. The transaction now accepts the trapped live guest r13 and executes
+FINI_ARRAY/DT_FINI below that active caller frame.
 
-Exact-head validation at `b6168ee8d98c8583b6cd325efd51f42da382e921`: FAILED only in ARM32 libdl integration; the other eight required checks passed.
+A later diagnostic run reached provider FINI but failed before writing its
+marker. The integration harness had relocated only dependency-graph object 0
+even though `apply_elf32_combined_relocations` is explicitly per-object. The
+harness now relocates every loaded object before guest execution.
 
-The real linked `dlclose` reached the lifecycle transaction but the transaction
-started nested FINI execution at the outer configured stack top while the
-guest `fixture_dlclose` caller frame was still active. This is the same nested
-guest-frame hazard previously fixed for synchronous `__cxa_finalize`.
+Exact-head validation at
+`efa2ce78e7d77ddf9c92ee29cdbe5a1f03fc6dd2`: PASSED. The project operator
+confirmed all required CI checks were green after both corrections.
 
-The corrected transaction accepts an optional trapped live guest r13. The
-libdl SVC path passes `regs[13]`, and both FINI_ARRAY and DT_FINI execute below
-that active caller frame. A focused regression writes the effective SP from
-guest FINI code and verifies the live-stack override.
+## Next post-roadmap direction
 
-Corrected exact-head validation at `124deba7bfff005696058d9f67d41e779e32427e`: FAILED only in ARM32 libdl integration.
-
-The diagnostic run reached the exact provider FINI transaction and reported
-`fini_array_execution_failed`, with r0 == -1, marker still zero, and the
-provider lifecycle state latched Failed.
-
-Root cause was in the integration harness rather than the dlclose transaction:
-`apply_elf32_combined_relocations(..., object_index, ...)` relocates one graph
-object only, but the harness had relocated object 0 (the consumer) and then
-executed the provider's FINI_ARRAY and global-marker code without applying the
-provider's own relocations.
-
-The harness now relocates every loaded graph object before guest execution.
-Next exact-head validation target: the current `bleeding` head containing the graph-wide relocation correction.
+Model recursive dependency ownership/reachability and safe object reclamation.
+Only after those invariants are explicit should persistent link-map entries be
+removed or guest mappings be unmapped.
 
 ## Deferred / partial
 
