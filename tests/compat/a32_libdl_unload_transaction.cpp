@@ -4,6 +4,7 @@
 #include <iostream>
 #include <optional>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "compat/a32_aeabi_atexit.h"
