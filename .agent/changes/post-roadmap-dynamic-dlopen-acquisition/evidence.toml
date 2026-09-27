@@ -1,0 +1,29 @@
+schema = 1
+change = "post-roadmap-dynamic-dlopen-acquisition"
+
+[[evidence]]
+id = "accepted-prerequisites"
+kind = "repository"
+status = "observed"
+claim = "Persistent root append, eager combined relocation, GNU RELRO, persistent constructors, synthetic handles, and physical reclamation are accepted prerequisites."
+source = ".agent/specs/elf32.md and .agent/specs/compat.md"
+result = "Reclamation transaction exact-head CI passed at 33037680cdf3dd25a7b60dc12b051fef5cfebf98."
+limitations = "Recursive unload lifecycle remains separate."
+
+[[evidence]]
+id = "focused-dynamic-open"
+kind = "test"
+status = "not_run"
+claim = "Focused regression proves missing-object provider acquisition through initialization and handle publication plus resident reuse and bounded pre-constructor cleanup."
+source = "tests/compat/a32_libdl_open_transaction.cpp"
+result = ""
+limitations = "Real ARM32 dynamic-dlopen fixture coverage is separate unless added in this slice."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "The dynamic dlopen acquisition follow-up passes required exact-head checks before closure."
+source = "GitHub commit checks on the eventual integration revision"
+result = ""
+limitations = "The change remains active until terminal exact-head success is observed."
