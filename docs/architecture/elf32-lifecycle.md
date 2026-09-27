@@ -1,6 +1,6 @@
 # ELF32 lifecycle arrays
 
-Status: feature 042 FINI_ARRAY destructor planning/execution implemented; exact-head validation pending
+Status: feature 042 FINI_ARRAY destructor planning/execution complete; exact-head validation PASSed
 
 ## Boundary
 

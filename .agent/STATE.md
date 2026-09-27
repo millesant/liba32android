@@ -3,11 +3,11 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `042-elf32-fini-lifecycle` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: `043` — prepared next; implementation not yet integrated.
 
 ## Phase
 
-Features 011-041 are accepted.
+Features 011-042 are accepted.
 
 Feature 039 passed all five exact-head checks at
 `9160aa24c9f1cebdfe65a79ecc1543a662bec5c4`.
@@ -58,11 +58,17 @@ object's FINI_ARRAY entries, preserves sentinel/limit/error semantics, and
 executes planned destructors through the existing bounded ARM/Thumb lifecycle
 call seam.
 
-Feature 042 exact-head validation: NOT RUN.
+Feature 042 passed all five required exact-head checks at
+`082edd47b05229c5c3ca0787103a27b7e5bfebce`:
+- Linux A32 smoke `108563727432` — PASS.
+- Android x86_64 address-space probe `108563727653` — PASS.
+- Android arm64-v8a cross-build `108563727607` — PASS.
+- ARM32 liblog shim integration `108563727358` — PASS.
+- ARM32 libc memory string shim integration `108563727781` — PASS.
 
 ## Prepared lineage
 
-Off-ref work remains prepared through feature 049:
+Prepared order remains:
 `043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
 
 ## Deferred / partial

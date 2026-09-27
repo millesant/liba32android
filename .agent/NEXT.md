@@ -1,11 +1,8 @@
 # Next Work
 
-Features 011 through 041 are DONE.
+Features 011 through 042 are DONE.
 
-`042-elf32-fini-lifecycle` is IMPLEMENTED on `bleeding`; its exact-head
-required checks are the immediate acceptance gate.
-
-Once terminal success is observed, close 042 and integrate prepared feature 043.
+Feature 043 is next in the prepared sequence.
 
 Prepared order after 042:
 

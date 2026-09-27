@@ -3,24 +3,24 @@ change = "042-elf32-fini-lifecycle"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Add bounded root-scoped FINI_ARRAY planning with exact reverse constructor object order, reverse per-array order, sentinel filtering, and failure provenance."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Expose FINI execution through the existing bounded ARM/Thumb lifecycle call seam without new mapping, stack, or rollback ownership."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T001", "T002"]
 acceptance = "Add focused regressions for shared dependencies/cycles, reverse array order, ceilings/decode failures, and requester-before-dependency end-to-end side effects."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Run exact-head required checks and reconcile accepted spec/evidence/state."
