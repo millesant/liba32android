@@ -29,6 +29,12 @@ through the bounded A32 service dispatcher. Service limit, unhandled, failed,
 and suspended outcomes are explicit lifecycle errors; the failing SVC immediate
 is preserved where available.
 
+When guest `__cxa_finalize` synchronously invokes registered guest destructors,
+the finalizer starts those nested callbacks at the trapped caller's live r13.
+It must not restart them at the outer lifecycle's original stack top: the FINI
+function still owns an active frame there, and nested callback prologues could
+overwrite its saved return state.
+
 ## End-to-end FINI path
 
 The ARM32 integration performs:

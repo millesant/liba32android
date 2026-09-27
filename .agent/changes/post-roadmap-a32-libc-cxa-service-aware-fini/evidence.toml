@@ -38,10 +38,19 @@ result = "Seven checks passed. Linux A32 smoke 108704827414 failed in Build beca
 limitations = "Failure logs identified the compile defect exactly. The original libc assertion did not expose which subcondition failed, so the correction also adds bounded failure diagnostics."
 
 [[evidence]]
+id = "failed-second-exact-head"
+kind = "validation"
+status = "failed"
+claim = "The first correction fixed Linux compilation but still exposed one nested guest-stack bug in the real libc FINI path."
+source = "GitHub commit checks at 85b7e9f3211eff47288232eee8b30517fe380a01"
+result = "Eight required checks passed. ARM32 libc memory string shim integration 108708220124 failed after its bounded diagnostic reported lifecycle_error=MemoryFault with marker 0xC0DEC0DE, record status Complete, finalizer error None, and one finalized callback. This proves __cxa_finalize and the registered destructor completed before the outer FINI frame faulted while resuming."
+limitations = "Inspection of A32CxaFinalizeService showed nested callbacks reused the configured outer stack top, allowing an -O0 guest callback frame to overwrite the active FINI caller frame."
+
+[[evidence]]
 id = "exact-head-validation"
 kind = "validation"
 status = "not_run"
-claim = "The corrected linked __cxa_finalize/service-aware FINI follow-up passes required exact-head checks before closure."
-source = "GitHub commit checks on the corrected integration revision"
+claim = "The second corrected linked __cxa_finalize/service-aware FINI follow-up passes required exact-head checks before closure."
+source = "GitHub commit checks on the second corrected integration revision"
 result = ""
 limitations = "The follow-up remains implemented rather than done until terminal exact-head success is observed."

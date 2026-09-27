@@ -39,7 +39,18 @@ destructor/DSO words and later `__cxa_finalize(&fixture_dso_handle)` use the
 same guest relocation path. A bounded diagnostic is emitted only if the FINI
 assertion fails again.
 
-Corrected exact-head validation: NOT RUN.
+Corrected exact-head validation at `85b7e9f3211eff47288232eee8b30517fe380a01`: FAILED only in ARM32 libc integration; the other eight required checks passed.
+
+The bounded diagnostic proved the registered finalizer itself succeeded:
+marker `0xC0DEC0DE` was written, the record became Complete, and
+`callbacks_completed=1`. The outer FINI call then reported MemoryFault before
+returning. Root cause: the guest `__cxa_finalize` service started its nested
+registered destructor at the configured lifecycle stack top, overwriting the
+still-active FINI caller frame at -O0. The service now overrides callback
+`stack_top` with the trapped guest's live r13 so nested destructors grow below
+the active frame.
+
+Second corrected exact-head validation: NOT RUN.
 
 ## Deferred / partial
 

@@ -106,6 +106,12 @@ private:
 
 // Guest-callable __cxa_finalize boundary. The DSO selector remains an opaque
 // guest word; r0 == 0 selects process-wide finalization.
+//
+// Guest callbacks are nested beneath the trapped caller's live r13 rather than
+// starting again at options.stack_top. That preserves the active guest call
+// frame while the host synchronously executes registered destructors. The
+// configured stack_top remains relevant to direct host finalize() calls, but is
+// intentionally overridden by this guest service boundary.
 class A32CxaFinalizeService final
     : public runtime::A32HostServiceHandler {
 public:

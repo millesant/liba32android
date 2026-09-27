@@ -265,7 +265,9 @@ int test_guest_cxa_finalize_service() {
     A32CxaFinalizeService finalizer{
         registrations,
         A32AeabiFinalizeOptions{
-            .stack_top = 0x0ff8U,
+            // Guest service execution must ignore this configured stack top
+            // and use the trapped caller's live r13 instead.
+            .stack_top = 0U,
             .return_pc = 0x1000U,
             .max_instructions_per_call = 16U,
             .max_callbacks = 2U,
@@ -278,6 +280,7 @@ int test_guest_cxa_finalize_service() {
 
     ExecutionRequest request{};
     request.regs[0] = 0x77770000U;
+    request.regs[13] = 0x0ff8U;
     request.regs[14] = 4096U;
     request.instruction_count = 2U;
     request.stop_pc = 4096U;

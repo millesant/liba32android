@@ -176,8 +176,16 @@ runtime::A32HostServiceDisposition A32CxaFinalizeService::handle(
         regs[0] == 0U
             ? std::nullopt
             : std::optional<std::uint32_t>{regs[0]};
+
+    // __cxa_finalize is executing inside an active guest call frame. Starting
+    // nested registered destructors again at the outer lifecycle stack top can
+    // overwrite the caller's saved LR/register frame. Use the live guest SP
+    // from the trapped SVC so callbacks grow beneath the active frame exactly
+    // like ordinary nested AAPCS32 calls.
+    auto callback_options = options_;
+    callback_options.stack_top = regs[13];
     last_result_ = registrations_.finalize(
-        memory, selector, options_);
+        memory, selector, callback_options);
     return *last_result_
         ? runtime::A32HostServiceDisposition::Handled
         : runtime::A32HostServiceDisposition::Failed;
