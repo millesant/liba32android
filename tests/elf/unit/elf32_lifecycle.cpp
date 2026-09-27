@@ -23,6 +23,7 @@ using liba32android::elf::Elf32InitExecutionError;
 using liba32android::elf::Elf32InitExecutionOptions;
 using liba32android::elf::Elf32InitPlanError;
 using liba32android::elf::Elf32InitPlanOptions;
+using liba32android::elf::Elf32LifecycleExecutionContext;
 using liba32android::elf::Elf32LifecycleObjectStatus;
 using liba32android::elf::Elf32LifecycleState;
 using liba32android::elf::Elf32PersistentLifecycleError;
@@ -966,6 +967,116 @@ int test_persistent_lifecycle_failure_latches_state() {
 }
 
 
+class NestedLifecycleContextService final
+    : public A32HostServiceHandler {
+public:
+    explicit NestedLifecycleContextService(
+        Elf32LifecycleExecutionContext& context) noexcept
+        : context_(context) {}
+
+    A32HostServiceDisposition handle(
+        liba32android::memory::GuestMemory& memory,
+        std::uint32_t svc_immediate,
+        std::array<std::uint32_t, 16>&,
+        std::uint32_t&) override {
+        if (svc_immediate == 0xD5U) {
+            inner_seen =
+                context_.object_index ==
+                std::optional<std::size_t>{5U};
+            return inner_seen
+                ? A32HostServiceDisposition::Handled
+                : A32HostServiceDisposition::Failed;
+        }
+        if (svc_immediate != 0xD4U) {
+            return A32HostServiceDisposition::Unhandled;
+        }
+
+        outer_before_nested =
+            context_.object_index ==
+            std::optional<std::size_t>{3U};
+        const std::array<Elf32InitCall, 1> inner_calls{{
+            {
+                .object_index = 5U,
+                .array_index = 0U,
+                .function = 0x1140U,
+            },
+        }};
+        const auto inner = execute_elf32_init_calls(
+            memory,
+            inner_calls,
+            Elf32InitExecutionOptions{
+                .stack_top = 0x16f8U,
+                .return_pc = 0x2000U,
+                .max_instructions_per_call = 8U,
+                .service_handler = this,
+                .max_service_calls_per_call = 1U,
+                .execution_context = &context_,
+            });
+        outer_after_nested =
+            context_.object_index ==
+            std::optional<std::size_t>{3U};
+        return inner && outer_before_nested &&
+                       inner_seen && outer_after_nested
+            ? A32HostServiceDisposition::Handled
+            : A32HostServiceDisposition::Failed;
+    }
+
+    bool outer_before_nested{};
+    bool inner_seen{};
+    bool outer_after_nested{};
+
+private:
+    Elf32LifecycleExecutionContext& context_;
+};
+
+int test_lifecycle_execution_context_nested_restoration() {
+    LinearGuestMemory memory(0x800U, 0x1000U);
+    constexpr std::array<std::uint8_t, 8> outer_code{
+        0xD4, 0x00, 0x00, 0xEF,
+        0x1E, 0xFF, 0x2F, 0xE1,
+    };
+    constexpr std::array<std::uint8_t, 8> inner_code{
+        0xD5, 0x00, 0x00, 0xEF,
+        0x1E, 0xFF, 0x2F, 0xE1,
+    };
+    if (!memory.write(0x1100U, outer_code) ||
+        !memory.write(0x1140U, inner_code)) {
+        return fail("could not stage nested lifecycle context fixture");
+    }
+
+    Elf32LifecycleExecutionContext context{
+        .object_index = 9U,
+    };
+    NestedLifecycleContextService service{context};
+    const std::array<Elf32InitCall, 1> calls{{
+        {
+            .object_index = 3U,
+            .array_index = 0U,
+            .function = 0x1100U,
+        },
+    }};
+    const auto executed = execute_elf32_init_calls(
+        memory,
+        calls,
+        Elf32InitExecutionOptions{
+            .stack_top = 0x17f8U,
+            .return_pc = 0x2000U,
+            .max_instructions_per_call = 16U,
+            .service_handler = &service,
+            .max_service_calls_per_call = 1U,
+            .execution_context = &context,
+        });
+    if (!executed ||
+        executed.calls_completed != 1U ||
+        !service.outer_before_nested ||
+        !service.inner_seen ||
+        !service.outer_after_nested ||
+        context.object_index != std::optional<std::size_t>{9U}) {
+        return fail("lifecycle object context did not restore across nesting");
+    }
+    return 0;
+}
+
 class LifecycleMarkerService final : public A32HostServiceHandler {
 public:
     A32HostServiceDisposition handle(
@@ -1096,6 +1207,11 @@ int main() {
         return status;
     }
     if (const int status = test_fini_execution_dispatches_guest_services();
+        status != 0) {
+        return status;
+    }
+    if (const int status =
+            test_lifecycle_execution_context_nested_restoration();
         status != 0) {
         return status;
     }
