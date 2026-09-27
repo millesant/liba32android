@@ -540,7 +540,33 @@ int main(int argc, char** argv) {
             close_marker_symbol.symbol.symbol.guest_value) != 0x0D1C105EU ||
         lifecycle.objects[*provider_index].destructors !=
             Elf32LifecycleObjectStatus::Complete) {
-        return fail("real libdl dlclose lifecycle transaction failed");
+        std::string detail =
+            "real libdl dlclose lifecycle transaction failed";
+        if (result.has_value()) {
+            detail += ": r0=" + std::to_string(result->regs[0]) +
+                      ", services=" +
+                      std::to_string(result->services_handled) +
+                      ", marker=" +
+                      std::to_string(read_u32_le(
+                          memory,
+                          close_marker_symbol.symbol.symbol.guest_value)) +
+                      ", lifecycle=" +
+                      std::to_string(static_cast<unsigned int>(
+                          lifecycle.objects[*provider_index].destructors));
+
+            const auto error_result = run_wrapper(
+                memory, link_map.graph, "fixture_dlerror", registry,
+                stack_top, *stop);
+            if (error_result && *error_result &&
+                error_result->regs[0] != 0U) {
+                const std::string error_text = read_c_string(
+                    memory, error_result->regs[0], 127U);
+                if (!error_text.empty()) {
+                    detail += ", dlerror=" + error_text;
+                }
+            }
+        }
+        return fail(detail);
     }
     ++service_calls;
 
