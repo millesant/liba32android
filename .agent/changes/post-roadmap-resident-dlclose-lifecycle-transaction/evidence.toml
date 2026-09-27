@@ -1,0 +1,38 @@
+schema = 1
+change = "post-roadmap-resident-dlclose-lifecycle-transaction"
+
+[[evidence]]
+id = "accepted-lifecycle-prerequisites"
+kind = "repository"
+status = "observed"
+claim = "Persistent lifecycle state, __aeabi_atexit registration, registered finalization, linked __cxa_finalize, and service-aware FINI execution are accepted prerequisites."
+source = ".agent/specs/elf32.md and .agent/specs/compat.md"
+result = "The service-aware FINI prerequisite passed all nine required checks at 0cd4e1ee1e9d08eb3bde9f50238fd61a5f6af5a6."
+limitations = "Recursive unload ownership and mapping reclamation remain separate."
+
+[[evidence]]
+id = "focused-transaction-regression"
+kind = "test"
+status = "not_run"
+claim = "Focused regression proves non-final decrement, exact FINI_ARRAY/__cxa_finalize/registered-destructor/DT_FINI final close, Complete state, and handle preservation on incomplete finalization."
+source = "tests/compat/a32_libdl_close_transaction.cpp"
+result = "Integrated on bleeding; exact-head execution has not yet been observed."
+limitations = "Synthetic graph does not remove objects or reclaim mappings."
+
+[[evidence]]
+id = "real-arm-dlclose-regression"
+kind = "test"
+status = "not_run"
+claim = "Ordinary linked ARM32 dlclose delegates to the transaction and executes the resident provider FINI_ARRAY marker before invalidating its synthetic handle."
+source = "tests/compat/a32_libdl_shim.cpp and .github/workflows/compat-libdl-shim.yml"
+result = "Integrated on bleeding; exact-head execution has not yet been observed."
+limitations = "Provider fixture has no registered C++ destructor; that subpath is covered by the focused transaction test and prior libc integration."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "The resident dlclose lifecycle transaction passes required exact-head checks before closure."
+source = "GitHub commit checks on the integration revision"
+result = ""
+limitations = "The follow-up remains implemented rather than done until terminal exact-head success is observed."

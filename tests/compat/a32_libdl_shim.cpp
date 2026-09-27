@@ -13,7 +13,9 @@
 
 #include "compat/a32_android_namespace_policy.h"
 #include "compat/a32_android_platform_provider.h"
+#include "compat/a32_aeabi_atexit.h"
 #include "compat/a32_libdl.h"
+#include "compat/a32_libdl_close_transaction.h"
 #include "cpu/a32_cpu.h"
 #include "elf/elf32_dependency_loader.h"
 #include "elf/elf32_link_map.h"
@@ -29,7 +31,12 @@ using liba32android::compat::A32AndroidNamespaceAccessPolicy;
 using liba32android::compat::A32AndroidNamespaceBinding;
 using liba32android::compat::A32AndroidNamespaceLink;
 using liba32android::compat::A32AndroidPlatformCatalogProvider;
+using liba32android::compat::A32AeabiAtexitRecord;
+using liba32android::compat::A32AeabiAtexitService;
+using liba32android::compat::A32LibDlCloseTransaction;
+using liba32android::compat::A32LibDlCloseTransactionOptions;
 using liba32android::compat::A32LibDlHandle;
+using liba32android::compat::A32LibDlObjectLifecycleBinding;
 using liba32android::compat::A32LibDlOptions;
 using liba32android::compat::A32LibDlService;
 using liba32android::compat::kA32LibDlDladdrSvcImmediate;
@@ -50,6 +57,8 @@ using liba32android::elf::Elf32DependencyLoadSource;
 using liba32android::elf::Elf32DependencyProvider;
 using liba32android::elf::Elf32DependencyProviderChain;
 using liba32android::elf::Elf32GraphSymbolLookupResult;
+using liba32android::elf::Elf32LifecycleObjectStatus;
+using liba32android::elf::Elf32LifecycleState;
 using liba32android::elf::Elf32LinkMap;
 using liba32android::elf::Elf32LinkMapRootPolicy;
 using liba32android::elf::Elf32RelocationOptions;
@@ -341,6 +350,25 @@ int main(int argc, char** argv) {
         return fail("resident provider symbol did not resolve from provider object");
     }
 
+    const auto close_marker_symbol = lookup_elf32_graph_symbol(
+        memory,
+        link_map.graph,
+        0U,
+        "fixture_dlclose_marker",
+        symbol_options());
+    const auto dso_handle_symbol = lookup_elf32_graph_symbol(
+        memory,
+        link_map.graph,
+        0U,
+        "fixture_dlclose_dso_handle",
+        symbol_options());
+    if (!close_marker_symbol || !dso_handle_symbol ||
+        close_marker_symbol.symbol.object_index != *provider_index ||
+        dso_handle_symbol.symbol.object_index != *provider_index ||
+        dso_handle_symbol.symbol.symbol.guest_value == 0U) {
+        return fail("resident provider teardown symbols were not retained");
+    }
+
     const auto relocated = apply_elf32_combined_relocations(
         memory, link_map.graph, 0U, relocation_options());
     if (!relocated) {
@@ -389,6 +417,41 @@ int main(int argc, char** argv) {
         static_cast<std::uint32_t>(stack_top64) & ~7U;
 
     std::array<A32LibDlHandle, 8> handles{};
+    std::array<A32AeabiAtexitRecord, 1> atexit_records{};
+    A32AeabiAtexitService registrations{std::span{atexit_records}};
+
+    Elf32LifecycleState lifecycle;
+    lifecycle.objects.resize(link_map.graph.objects.size());
+    for (auto& object_state : lifecycle.objects) {
+        object_state.constructors = Elf32LifecycleObjectStatus::Complete;
+    }
+
+    const std::array<A32LibDlObjectLifecycleBinding, 1> close_bindings{{
+        {
+            .object_index = *provider_index,
+            .dso_handle = dso_handle_symbol.symbol.symbol.guest_value,
+        },
+    }};
+    const std::array<A32HostServiceRegistryEntry, 0> lifecycle_services{};
+    A32HostServiceRegistry lifecycle_registry{std::span{lifecycle_services}};
+    A32LibDlCloseTransaction close_transaction{
+        link_map,
+        std::span{handles},
+        lifecycle,
+        registrations,
+        std::span{close_bindings},
+        A32LibDlCloseTransactionOptions{
+            .max_fini_array_entries = 4U,
+            .execution = {
+                .stack_top = stack_top,
+                .return_pc = *stop,
+                .max_instructions_per_call = kInstructionBudget,
+                .service_handler = &lifecycle_registry,
+                .max_service_calls_per_call = 1U,
+            },
+        },
+    };
+
     A32LibDlOptions dl_options;
     dl_options.max_name_bytes = kMaxFixtureNameBytes;
     dl_options.handle_base = 0x7f000000U;
@@ -401,6 +464,7 @@ int main(int argc, char** argv) {
         link_map,
         std::span{handles},
         dl_options,
+        &close_transaction,
     };
     const std::array<A32HostServiceRegistryEntry, 5> services{{
         {kA32LibDlDlopenSvcImmediate, &service},
@@ -470,8 +534,13 @@ int main(int argc, char** argv) {
         memory, link_map.graph, "fixture_dlclose", registry,
         stack_top, *stop, handle);
     if (!result || !*result || result->regs[0] != 0U ||
-        result->services_handled != 1U) {
-        return fail("real libdl dlclose wrapper failed");
+        result->services_handled != 1U ||
+        read_u32_le(
+            memory,
+            close_marker_symbol.symbol.symbol.guest_value) != 0x0D1C105EU ||
+        lifecycle.objects[*provider_index].destructors !=
+            Elf32LifecycleObjectStatus::Complete) {
+        return fail("real libdl dlclose lifecycle transaction failed");
     }
     ++service_calls;
 
@@ -500,6 +569,7 @@ int main(int argc, char** argv) {
         << "fixture.libdl.namespace_access=linked\n"
         << "fixture.libdl.symbol_object=" << *shim_index << '\n'
         << "fixture.libdl.provider_object=" << *provider_index << '\n'
+        << "fixture.libdl.fini_marker=0x0d1c105e\n"
         << "fixture.libdl.service_calls=" << service_calls << '\n'
         << "fixture.libdl.status=PASS\n";
     return 0;

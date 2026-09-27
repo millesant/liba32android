@@ -684,3 +684,39 @@ registration remains Complete and is not replayed.
 This contract does not yet bind DSO handles to link-map ownership, decide the
 last-reference dlclose transaction, reclaim mappings, or make registered
 destructor callbacks themselves service-aware.
+
+
+## L32-C028 — Bounded resident last-reference dlclose transaction
+
+The resident libdl service may borrow an `A32LibDlCloseTransaction`. When no
+transaction is supplied, the accepted refcount-only resident behavior remains
+available. When supplied, `dlclose` delegates synthetic-handle ownership to
+the transaction.
+
+Each teardown-capable resident object has exactly one finite binding from its
+stable link-map object index to one non-zero opaque guest DSO-handle word.
+Non-final synthetic references decrement only. A final reference requires
+Complete constructors and Pending destructors for the exact object.
+
+The final-reference transaction executes only that object's FINI_ARRAY in
+reverse order through the accepted service-aware lifecycle seam. After
+FINI_ARRAY returns, every registered `__aeabi_atexit` record for the exact
+bound DSO word must be Complete; no fallback callback ordering is invented.
+Legacy DT_FINI then executes through the same bounded seam. Only full success
+marks destructors Complete and releases the final synthetic handle.
+
+Decode/binding/state failures before guest teardown preserve the final handle.
+Guest FINI/DT_FINI failure or incomplete registered-finalization after FINI
+latches destructor state Failed and preserves the handle, preventing silent
+ownership loss or replay of partially executed teardown.
+
+A focused regression proves non-final decrement, exact
+FINI_ARRAY -> __cxa_finalize -> registered destructor -> DT_FINI ordering,
+once-only completion, and final-handle preservation on incomplete
+finalization. The real ARM32 libdl integration wires the transaction into the
+ordinary dlclose SVC and proves a provider FINI_ARRAY side effect before the
+synthetic handle becomes invalid.
+
+Dependency-object recursive ownership, removal from the persistent link map,
+mapping reclamation, RTLD_NODELETE/global-group policy, and dynamic
+missing-object dlopen remain out of scope.
