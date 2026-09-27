@@ -153,3 +153,47 @@ This contract is planning only. It does not remove roots, execute destructors,
 prune global scope, erase or recycle stable object indexes, reload tombstoned
 objects, or unmap guest memory. Those mutations require a later transaction
 that consumes this ownership/reachability result.
+
+
+## L32-E020 — Persistent link-map reclamation transaction
+
+Persistent link-map object slots may be Active or Retired. An empty explicit
+state vector is the legacy all-Active representation; once materialized, state
+covers every accumulated graph slot. Retired slots preserve their stable object
+indexes and never become Active again or participate in active identity reuse.
+A later append resolving the same identity allocates a new accumulated slot.
+Active dependency edges, root records, global-scope records, and caller live
+anchors may not target Retired slots.
+
+Root release removes one exact persistent ownership root from the liveness
+calculation. A separate sweep operation reclaims objects that become unreachable
+after non-root owners disappear. Both operations preserve all remaining roots
+and caller-supplied live anchors, follow active dependency edges transitively,
+and reclaim active unreachable objects in deterministic reverse-postorder.
+
+Physical reclamation is lifecycle-gated. Caller lifecycle state must cover every
+accumulated graph slot. A reclaim candidate is eligible only when it was never
+constructed (Pending constructors, Pending destructors) or is fully torn down
+(Complete constructors, Complete destructors). Failed lifecycle state or a
+Complete/Pending partially torn-down object blocks reclamation before unmapping.
+
+Before the first unmap, every reclaimable PT_LOAD mapping is checked against
+caller segment and total snapshot-byte ceilings, must remain page-aligned,
+non-overlapping, mapped, and readable, and is snapshotted with current guest
+bytes plus current per-page permissions. This preserves relocation and RELRO
+effects rather than reconstructing mappings from original image bytes.
+
+Unmapping occurs in reclamation teardown order. If an unmap fails, every
+mapping touched so far, including the failing range when it remains mapped, is
+restored from snapshots; restoration failure is distinct. Link-map root,
+global-scope, and object-state mutation is published only after every unmap
+succeeds.
+
+Successful publication marks reclaimed slots Retired, preserves graph slots and
+indexes, removes only an explicitly released root when root release was
+requested, and recomputes global scope from remaining Active DF_1_GLOBAL objects
+plus remaining Active Global roots.
+
+This contract does not execute destructors, apply RTLD_NODELETE, recycle or
+compact Retired slots, coordinate concurrent link-map mutation, or dynamically
+acquire a missing dlopen object.
