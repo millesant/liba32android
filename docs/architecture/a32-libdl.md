@@ -99,6 +99,35 @@ same-name retry into a fresh stable slot, and constructor-failure no-replay.
 The existing pinned-NDK integration remains the real ARM32 resident libdl proof;
 this follow-up does not yet claim a real ARM32 missing-object dlopen fixture.
 
+## Targeted final-close unload
+
+An optional `A32LibDlUnloadTransaction` extends final `dlclose` beyond the
+single-object lifecycle transaction.
+
+Before guest teardown, the transaction treats every other live handle as an
+ownership anchor and requires ordinary reclamation planning to report no
+pre-existing unowned Active object. It then asks the read-only root-release
+planner what would become unreachable if the closing object's exact persistent
+root disappeared.
+
+Only that newly unreachable vector is finalized, in
+requester-before-dependency order. Exact-object teardown keeps the existing
+FINI_ARRAY -> registered finalization -> DT_FINI rule. Completed object teardown
+is idempotent on retry, while Failed lifecycle state remains latched.
+
+The root and final handle remain live until every selected object is Complete.
+Physical root release then performs the accepted snapshot/unmap/tombstone
+transaction using the same remaining-handle anchors. A reclamation failure
+keeps the root and handle, so a retry skips completed teardown and retries only
+the physical release stage.
+
+The service enables this path only for `MappedGuestMemory`, because generic
+`GuestMemory` does not promise map/protect/unmap operations.
+
+Automatic derivation of the opaque per-object `__dso_handle` binding is not
+part of this transaction; embeddings still supply the object-to-DSO binding
+table.
+
 ## Limits
 
 Recursive final-close lifecycle over only newly unreachable objects,
