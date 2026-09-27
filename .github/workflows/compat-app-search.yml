@@ -1,0 +1,88 @@
+name: ARM32 Android app library search
+
+on:
+  push:
+    branches: [bleeding]
+  pull_request:
+    branches: [bleeding]
+
+permissions:
+  contents: read
+
+jobs:
+  arm32-app-search:
+    name: ARM32 Android app library search integration
+    runs-on: ubuntu-24.04
+    env:
+      NDK_VERSION: 27.3.13750724
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libboost-dev binutils
+
+      - name: Ensure pinned NDK
+        run: |
+          set -euxo pipefail
+          if [ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION"
+          fi
+          test -x "$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi26-clang"
+
+      - name: Build reproducible ARM32 app-search fixture
+        run: |
+          set -euxo pipefail
+          bash -n tools/fixtures/build_arm32_android_app_search_fixture.sh
+          rm -rf build-fixtures/app-search build-fixtures/app-search-second
+          bash tools/fixtures/build_arm32_android_app_search_fixture.sh             "$ANDROID_HOME/ndk/$NDK_VERSION"             build-fixtures/app-search
+          bash tools/fixtures/build_arm32_android_app_search_fixture.sh             "$ANDROID_HOME/ndk/$NDK_VERSION"             build-fixtures/app-search-second
+          cmp             build-fixtures/app-search/libfixture_app_root.so             build-fixtures/app-search-second/libfixture_app_root.so
+          cmp             build-fixtures/app-search/libfixture_app_child.so             build-fixtures/app-search-second/libfixture_app_child.so
+
+          readelf -dW build-fixtures/app-search/libfixture_app_root.so |
+            tee build-fixtures/app-search-root-dynamic.txt
+          readelf -rW build-fixtures/app-search/libfixture_app_root.so |
+            tee build-fixtures/app-search-root-relocations.txt
+          readelf -sW build-fixtures/app-search/libfixture_app_child.so |
+            tee build-fixtures/app-search-child-symbols.txt
+
+          grep -F 'Library soname: [libfixture_app_root.so]' build-fixtures/app-search-root-dynamic.txt
+          grep -F 'Shared library: [libfixture_app_child.so]' build-fixtures/app-search-root-dynamic.txt
+          grep -F 'R_ARM_JUMP_SLOT' build-fixtures/app-search-root-relocations.txt |
+            grep -F 'fixture_app_child_value'
+          grep -F 'fixture_app_child_value' build-fixtures/app-search-child-symbols.txt
+
+      - name: Configure integration
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DLIBA32ANDROID_BUILD_TESTS=ON             -DLIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH="$GITHUB_WORKSPACE/build-fixtures/app-search/libfixture_app_root.so"             -DLIBA32ANDROID_ARM32_APP_SEARCH_CHILD_PATH="$GITHUB_WORKSPACE/build-fixtures/app-search/libfixture_app_child.so"
+
+      - name: Build integration
+        run: cmake --build build --target compat_android_library_search_integration_test --parallel 2
+
+      - name: Test integration
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build --output-on-failure -R '^a32_android_library_search_integration$'
+          build/compat_android_library_search_integration_test             build-fixtures/app-search/libfixture_app_root.so             build-fixtures/app-search/libfixture_app_child.so |
+            tee build-fixtures/app-search-integration-evidence.txt
+          grep -F 'fixture.android_search.object_count=2' build-fixtures/app-search-integration-evidence.txt
+          grep -F 'fixture.android_search.requested=libfixture_app_child.so' build-fixtures/app-search-integration-evidence.txt
+          grep -F 'fixture.android_search.virtual_path=base.apk!/lib/armeabi-v7a/libfixture_app_child.so' build-fixtures/app-search-integration-evidence.txt
+          grep -F 'fixture.android_search.relocation_count=1' build-fixtures/app-search-integration-evidence.txt
+          grep -F 'fixture.android_search.result=123' build-fixtures/app-search-integration-evidence.txt
+          grep -F 'fixture.android_search.status=PASS' build-fixtures/app-search-integration-evidence.txt
+
+      - name: Upload app-search integration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm32-android-app-search
+          path: |
+            build-fixtures/app-search/libfixture_app_root.so
+            build-fixtures/app-search/libfixture_app_child.so
+            build-fixtures/app-search-root-dynamic.txt
+            build-fixtures/app-search-root-relocations.txt
+            build-fixtures/app-search-child-symbols.txt
+            build-fixtures/app-search-integration-evidence.txt
+          if-no-files-found: error
+          retention-days: 14

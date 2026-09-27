@@ -531,3 +531,41 @@ This feature does not claim complete Android `libm.so`, vector/complex math,
 the larger VLC-only math surface, guest floating-point exception flags,
 guest errno behavior for math domain/range errors, alternate rounding-mode
 semantics, or architecture-specific bionic assembly equivalence.
+
+## L32-C023 — Requester-scoped Android app-library search
+
+The compatibility layer may provide a bounded requester-aware application
+library search provider above the generic ELF dependency-provider contract.
+
+`A32AndroidLibrarySearchProvider` borrows a finite ordered span of search-root
+records, one `A32AndroidLibrarySource`, and a non-zero `max_path_bytes`
+ceiling. Each root binds one exact opaque requester identity to one virtual
+library directory. A dependency request is eligible only when requester
+identity is non-empty and the requested dependency is a bare non-empty name
+containing no NUL, forward slash, or backslash.
+
+For each root whose requester identity matches byte-for-byte, the provider
+constructs `root + "/" + requested_name` (without duplicating an existing
+trailing slash), rejects an empty/malformed root or candidate exceeding
+`max_path_bytes`, and calls the borrowed source with the candidate path plus
+the exact generic `max_image_bytes` ceiling.
+
+Source `NotFound` falls through to the next matching root; source `Failed`
+terminates as provider failure. Success requires a non-empty opaque identity,
+a non-empty image, and image size not exceeding the forwarded ceiling before
+the result is published to the generic loader. If no matching source succeeds,
+the provider returns `NotFound`. Context-free `resolve` therefore returns
+`NotFound` unless a future caller explicitly supplies requester context.
+
+The source abstraction owns concrete filesystem, APK/ZIP, asset-manager, or
+other byte acquisition. This feature performs no host I/O itself and does not
+interpret `RUNPATH`/`RPATH`, `LD_LIBRARY_PATH`, namespace permitted paths,
+explicit slash-containing dlopen paths, transitive namespace links, platform
+library allowlists, or dynamic unload policy.
+
+A reproducible ARM32 integration fixture must model an APK-style virtual root
+`base.apk!/lib/armeabi-v7a`: a root DSO has one ordinary `DT_NEEDED` child,
+the search provider acquires that child through requester-scoped virtual-path
+lookup, the loader forms a two-object graph, eager `R_ARM_JUMP_SLOT`
+relocation targets the searched child, and real A32 execution reaches the child
+implementation successfully.

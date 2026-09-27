@@ -1,0 +1,38 @@
+schema = 1
+change = "048-a32-android-library-search-provider"
+
+[[evidence]]
+id = "target-apk-native-dependencies"
+kind = "artifact"
+status = "observed"
+claim = "The supplied VLC APK stores ARMv7 DSOs under lib/armeabi-v7a and contains app-local dependency edges requiring native-library search beyond the platform catalog."
+source = "docs/research/evidence/arm32-android-app-library-search-2026-09-27.md"
+result = "Bounded APK/readelf inspection records libc++_shared.so, libmla.so, libvlc.so, and libvlcjni.so under lib/armeabi-v7a; libvlcjni needs libvlc and libmla needs libvlc plus libc++_shared."
+limitations = "Static package layout does not establish the full package-manager/linker search configuration used on every Android device."
+
+[[evidence]]
+id = "search-provider-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused tests cover exact requester matching, APK/filesystem-style root ordering, NotFound fallback, hard failures, resource validation, invalid explicit-path requests, malformed roots, and context-free behavior."
+source = "tests/compat/a32_android_library_search.cpp"
+result = "Feature 048 tests are integrated; exact-head execution has not yet been observed."
+limitations = "The source is synthetic and intentionally does not perform actual ZIP/filesystem I/O."
+
+[[evidence]]
+id = "real-app-search-integration"
+kind = "test"
+status = "not_run"
+claim = "Pinned-NDK real ARM32 integration loads a root DSO whose child is available only through base.apk!/lib/armeabi-v7a, relocates its JUMP_SLOT, and executes into the searched child."
+source = "tests/compat/a32_android_library_search_integration.cpp and .github/workflows/compat-app-search.yml"
+result = "Feature 048 real integration is integrated; exact-head execution has not yet been observed."
+limitations = "The virtual source proves search policy composition but not concrete APK ZIP parsing or Android filesystem permissions."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "Feature 048 passes required checks only after features 046 and 047 are accepted and feature 048 is integrated on bleeding."
+source = "GitHub commit checks on the feature-048 integration revision"
+result = ""
+limitations = "Feature 048 remains implemented rather than done until terminal exact-head checks are observed."

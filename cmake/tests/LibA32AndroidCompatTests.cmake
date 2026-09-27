@@ -171,6 +171,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_android_library_search_test
+    tests/compat/a32_android_library_search.cpp
+)
+
+add_test(
+    NAME a32_android_library_search_provider
+    COMMAND compat_android_library_search_test
+)
+
+liba32android_add_test_executable(
     compat_libdl_shim_integration_test
     tests/compat/a32_libdl_shim.cpp
 )
@@ -237,5 +247,36 @@ if(LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH AND
         COMMAND compat_libm_shim_integration_test
                 "${LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH}"
                 "${LIBA32ANDROID_ARM32_LIBM_SHIM_PATH}"
+    )
+endif()
+
+liba32android_add_test_executable(
+    compat_android_library_search_integration_test
+    tests/compat/a32_android_library_search_integration.cpp
+)
+
+if((LIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH AND
+    NOT LIBA32ANDROID_ARM32_APP_SEARCH_CHILD_PATH) OR
+   (LIBA32ANDROID_ARM32_APP_SEARCH_CHILD_PATH AND
+    NOT LIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH))
+    message(FATAL_ERROR
+        "LIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH and LIBA32ANDROID_ARM32_APP_SEARCH_CHILD_PATH must be supplied together")
+endif()
+
+if(LIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH AND
+   LIBA32ANDROID_ARM32_APP_SEARCH_CHILD_PATH)
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH}")
+        message(FATAL_ERROR
+            "Android app-search root fixture does not exist: ${LIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH}")
+    endif()
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_APP_SEARCH_CHILD_PATH}")
+        message(FATAL_ERROR
+            "Android app-search child fixture does not exist: ${LIBA32ANDROID_ARM32_APP_SEARCH_CHILD_PATH}")
+    endif()
+    add_test(
+        NAME a32_android_library_search_integration
+        COMMAND compat_android_library_search_integration_test
+                "${LIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH}"
+                "${LIBA32ANDROID_ARM32_APP_SEARCH_CHILD_PATH}"
     )
 endif()

@@ -11,6 +11,7 @@ add_library(liba32android SHARED
     src/compat/a32_pthread_sync.cpp
     src/compat/a32_libdl.cpp
     src/compat/a32_libm.cpp
+    src/compat/a32_android_library_search.cpp
     src/elf/loading/elf32_dynamic_placement.cpp
     src/elf/loading/elf32_load_plan.cpp
     src/elf/loading/elf32_loader.cpp
