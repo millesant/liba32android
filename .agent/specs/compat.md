@@ -720,3 +720,53 @@ synthetic handle becomes invalid.
 Dependency-object recursive ownership, removal from the persistent link map,
 mapping reclamation, RTLD_NODELETE/global-group policy, and dynamic
 missing-object dlopen remain out of scope.
+
+
+## L32-C029 — Dynamic missing-object dlopen acquisition
+
+The resident libdl service may additionally borrow an
+`A32LibDlOpenTransaction`. Without one, feature-046 resident-only named
+`dlopen` behavior remains unchanged. With one, named `dlopen` delegates
+initialization/ownership publication to the transaction while the service
+continues to own guest string/flag/error ABI handling.
+
+Only Active persistent-link-map slots participate in resident name/identity
+lookup, `dlsym` handle roots, or `dladdr` address matching. Retired
+tombstones are never reopened through resident lookup and cannot shadow a later
+fresh active slot.
+
+An Active resident object is reopenable only while destructor state is Pending
+and constructor state is Pending or Complete. Failed constructors or
+Complete/Failed destructor state reject new handle ownership. Repeated
+successful resident opens reuse one synthetic handle and increment its bounded
+refcount.
+
+For a missing name, the transaction resolves one root through the caller-owned
+dependency-provider seam, validates the provider result, and appends/reuses it
+as a Local persistent root. A genuinely new identity must have synthetic-handle
+capacity available before graph mutation. The loader, relocation symbol scope,
+persistent lifecycle, reclamation, and libdl service ceilings must all admit the
+same accumulated object count.
+
+Objects appended by that root operation receive the accepted combined eager
+main+PLT relocation transaction using the post-append persistent global scope,
+then GNU RELRO sealing. Persistent constructors run dependency-first from the
+root and skip already-Complete shared dependencies. When invoked synchronously
+from guest `dlopen`, the transaction replaces the configured constructor stack
+top with trapped live guest r13.
+
+A failure before constructor execution removes a root record added by that
+attempt and reclaims newly unreachable Pending/Pending mappings while treating
+all currently live synthetic-handle objects as additional ownership anchors.
+Cleanup failure is explicit.
+
+Once constructor execution begins, failure is not rolled back: the affected
+lifecycle state latches Failed and the object/root remains resident because
+arbitrary guest side effects may have occurred. Handle publication occurs only
+after successful initialization; if re-entrant constructor activity consumes
+preflighted handle capacity before publication, the initialized root remains
+resident and the open reports failure rather than discarding initialized state.
+
+This contract does not implement recursive final-close teardown of only newly
+unreachable objects, RTLD_NODELETE, RTLD_GLOBAL/LOCAL flag expansion, lazy
+binding, RTLD_NEXT, or concrete pathname/APK search policy.
