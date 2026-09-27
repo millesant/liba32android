@@ -117,6 +117,11 @@ public:
         std::size_t object_index,
         bool& ambiguous) const noexcept;
 
+    // Drop learned association state only after the owning object has been
+    // physically retired. Registration records remain as historical
+    // Complete/Failed evidence and are not compacted.
+    void forget_binding_for_object(std::size_t object_index) noexcept;
+
     // Finalize pending records in reverse registration order. A null DSO
     // selector finalizes every pending record; otherwise only exact DSO-handle
     // matches are selected. Guest execution failure latches the affected
