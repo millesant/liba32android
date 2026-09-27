@@ -3,50 +3,48 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `039-android17-release-alignment` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: `040-a32-libc-guest-heap` — IMPLEMENTED, exact-head validation NOT RUN.
 
 ## Phase
 
-Features 011-038 are accepted.
+Features 011-039 are accepted.
 
-Feature 038 passed all five exact-head checks at
-`4305b0d06aa007741984a013ac354c95162cf5a0`, including the dedicated
-thirteen-symbol ARM32 partial-libc errno integration.
+Feature 039 passed all five exact-head checks at
+`9160aa24c9f1cebdfe65a79ecc1543a662bec5c4`.
 
-Feature 039 is now integrated. It resolves current Android semantics against the
-official `android-latest-release` baseline, recorded as `android17-release`
-with Android 17.0.0 r1 exact-source comparisons.
+Feature 040 is now integrated. It adds bounded ARM32 `malloc/calloc/realloc/free`
+host services at private SVC IDs `0xAE-0xB1` over a caller-provided,
+already-mapped writable guest arena and finite caller-owned allocation metadata.
 
-The audit preserves the accepted namespace-link, atoi/strtol, guest errno, and
-Android-log ABI boundaries. It also preserves the already accepted feature-033
-memmem no-read fast-path ordering and adds its release-alignment regression.
+The heap returns only logical 32-bit guest addresses, uses deterministic
+16-byte-aligned first-fit placement, publishes Android ENOMEM through the
+feature-037 guest errno sink, preserves old allocations on failed realloc
+growth, and owns no guest mappings.
 
-The implementation change in this batch corrects `strncpy` source access:
-the full destination count range is validated before mutation, but source bytes
-are read only until NUL/count. Padding after an observed NUL no longer requires
-fictitious source addressability. A sparse high-address regression places
-`{'A',0}` at guest address `0xfffffffe` and requires four-byte padded output.
+The accepted feature-039 Android-17 alignment and feature-033 memmem correction
+remain preserved.
 
 ## Validation and repository-truth evidence
 
-Latest accepted behavior-changing result: feature 038 at
-`4305b0d06aa007741984a013ac354c95162cf5a0`:
+Latest accepted behavior-changing result: feature 039 at
+`9160aa24c9f1cebdfe65a79ecc1543a662bec5c4`:
 
-- Linux A32 smoke `108523987365` — PASS.
-- Android x86_64 address-space probe `108523987348` — PASS.
-- Android arm64-v8a cross-build `108523987276` — PASS.
-- ARM32 libc memory string shim integration `108523987139` — PASS.
-- ARM32 liblog shim integration `108523987047` — PASS.
+- Linux A32 smoke `108524978723` — PASS.
+- Android arm64-v8a cross-build `108524978738` — PASS.
+- Android x86_64 address-space probe `108524978623` — PASS.
+- ARM32 liblog shim integration `108524978481` — PASS.
+- ARM32 libc memory string shim integration `108524978431` — PASS.
 
-Feature 039 exact-head validation: NOT RUN.
+Feature 040 exact-head validation: NOT RUN.
 
 ## Prepared lineage
 
 Off-ref work remains prepared through feature 049:
-`040 -> 041 -> 042 -> 043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
+`041 -> 042 -> 043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
 
 ## Deferred / partial
 
-Allocator, constructor/destructor lifecycle, ARM EABI memory helpers,
-pthread/semaphore scheduling boundaries, libdl, libm, Android filesystem/search,
-stable embedding API, and device execution remain later work.
+The matching allocator guest-shim exports, constructor/destructor lifecycle,
+ARM EABI memory helpers, pthread/semaphore scheduling boundaries, libdl, libm,
+Android filesystem/search, stable embedding API, and device execution remain
+later work.

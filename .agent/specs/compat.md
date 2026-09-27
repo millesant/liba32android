@@ -331,3 +331,27 @@ that are never read.
 
 Future Android-semantic changes must record the release/ref used as evidence
 rather than relying on unqualified `main`/`master` behavior.
+
+
+## L32-C017 — Bounded logical guest heap
+
+The compatibility layer may expose private SVC IDs `0xAE` through `0xB1`
+for ARM32 `malloc`, `calloc`, `realloc`, and `free`.
+
+`A32LibcGuestHeap` borrows one already mapped writable logical guest arena,
+finite caller-owned allocation metadata, and the existing guest errno sink. It
+owns no guest mapping and never exposes host allocation pointers.
+
+Placement is deterministic first-fit with 16-byte minimum alignment. Zero-size
+allocation receives a minimum internal block when capacity exists. `calloc`
+detects 32-bit size multiplication overflow and zeroes exactly the requested
+bytes. Allocation exhaustion/overflow returns null and publishes Android
+ENOMEM=12.
+
+`realloc(nullptr,n)` follows allocation; `realloc(ptr,0)` frees an exact live
+pointer and returns null. Growth preserves the minimum old/new requested payload
+and a failed growth leaves the old allocation live. `free(nullptr)` is a
+no-op. Unknown non-null free/realloc pointers return `Failed`.
+
+Scudo internals, page ownership, locking, aligned allocation, usable-size,
+mallinfo/mallopt, and C++ allocation operators remain outside this contract.

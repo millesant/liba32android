@@ -1,0 +1,32 @@
+schema = 1
+id = "040-a32-libc-guest-heap"
+kind = "feature"
+size = "S2"
+status = "implemented"
+workflow = "feature"
+control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
+base_revision = "9160aa24c9f1cebdfe65a79ecc1543a662bec5c4"
+acceptance = [
+  "Android 17 release evidence defines the bounded observable malloc/calloc/realloc/free behavior without copying Scudo internals",
+  "private shared SVC IDs 0xAE through 0xB1 represent malloc, calloc, realloc, and free",
+  "A32LibcGuestHeap returns only logical 32-bit guest addresses from a caller-provided already mapped arena and borrows finite caller-owned metadata plus the guest errno sink",
+  "allocation is deterministic first-fit with 16-byte minimum alignment and zero-size requests receive a minimum internal allocation",
+  "calloc detects ARM32 size_t multiplication overflow, returns null/ENOMEM on overflow/exhaustion, and zeroes exactly the requested bytes on success",
+  "realloc(nullptr,n) follows allocation, realloc(ptr,0) frees and returns null, growing realloc preserves min(old_requested,new_requested), and failed growth preserves the old allocation",
+  "free(nullptr) is a no-op while invalid non-null free/realloc pointers fail-stop rather than being silently accepted",
+  "out-of-memory conditions publish Android ENOMEM through the existing guest errno sink and required errno-publication failure returns Failed",
+  "focused tests cover direct semantics plus ARM SVC -> exact registry -> guest heap composition",
+  "no guest libc shim export, Scudo quarantine/tagging/hooks, page ownership, pthread locking, aligned allocation, usable-size, mallinfo/mallopt, or C++ allocator surface is introduced",
+  "feature 040 integrates only after feature 039 and closes only after exact-head applicable checks pass"
+]
+
+[convergence]
+requirements = "aligned"
+specs = "aligned"
+implementation = "aligned"
+tests = "aligned"
+documentation = "aligned"
+decisions = "not_applicable"
+tasks = "aligned"
+evidence = "pending"
+repository = "aligned"

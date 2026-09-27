@@ -2,10 +2,11 @@ schema = 1
 id = "039-android17-release-alignment"
 kind = "fix"
 size = "S2"
-status = "implemented"
+status = "done"
 workflow = "fix"
 control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
 base_revision = "4305b0d06aa007741984a013ac354c95162cf5a0"
+result_revision = "9160aa24c9f1cebdfe65a79ecc1543a662bec5c4"
 acceptance = [
   "resolve the official android-latest-release manifest and record android17-release/Android 17.0.0 r1 as the current semantic comparison baseline",
   "release-pin current namespace-link, atoi/strtol, __errno, and Android-log evidence instead of treating unqualified main/master as the release contract",
@@ -27,5 +28,5 @@ tests = "aligned"
 documentation = "aligned"
 decisions = "not_applicable"
 tasks = "aligned"
-evidence = "pending"
+evidence = "aligned"
 repository = "aligned"

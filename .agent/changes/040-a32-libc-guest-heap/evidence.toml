@@ -1,0 +1,29 @@
+schema = 1
+change = "040-a32-libc-guest-heap"
+
+[[evidence]]
+id = "android17-allocator-contract"
+kind = "research"
+status = "passed"
+claim = "Android 17 bionic/Scudo source defines the allocator entry behavior used by the bounded guest heap, including calloc overflow, realloc null/zero paths, ENOMEM publication, and allocator alignment."
+source = "docs/research/evidence/android17-libc-heap-2026-09-26.md"
+result = "Exact Android 17 bionic/Scudo source is recorded and the project copies observable ABI decisions rather than allocator internals."
+limitations = "The project heap is a deterministic bounded compatibility allocator, not Scudo."
+
+[[evidence]]
+id = "guest-heap-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused tests cover aligned/reused allocation, malloc(0), calloc zeroing/overflow, realloc growth/shrink/null/zero/failure preservation, free null/invalid handling, ENOMEM, and ARM registry composition."
+source = "tests/compat/a32_libc_heap.cpp"
+result = "Feature 040 is integrated; exact-head execution has not yet been observed."
+limitations = "Integrated tests are not passing evidence until they actually run."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "Feature 040 passes exact-head required checks after feature 039 is accepted."
+source = "GitHub commit checks on the feature-040 integration revision"
+result = ""
+limitations = "Feature 040 remains implemented rather than done until terminal exact-head checks are observed."

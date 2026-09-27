@@ -1,16 +1,17 @@
 # Next Work
 
-Features 011 through 038 are DONE.
+Features 011 through 039 are DONE.
 
-`039-android17-release-alignment` is IMPLEMENTED on `bleeding`; its
-exact-head applicable checks are the immediate acceptance gate.
+`040-a32-libc-guest-heap` is IMPLEMENTED on `bleeding`; its exact-head
+required checks are the immediate acceptance gate.
 
-Once terminal success is observed, close 039 and integrate prepared feature 040,
-the bounded logical ARM32 guest heap for `malloc/calloc/realloc/free`.
+Once terminal success is observed, close 040 and integrate prepared feature 041,
+which carries `malloc/calloc/realloc/free` through the real partial-libc
+JUMP_SLOT -> SVC -> logical guest heap path.
 
-Prepared order after 039:
+Prepared order after 040:
 
-`040 -> 041 -> 042 -> 043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
+`041 -> 042 -> 043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
 
 ## Local-machine validation note
 

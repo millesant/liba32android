@@ -69,6 +69,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_libc_heap_test
+    tests/compat/a32_libc_heap.cpp
+)
+
+add_test(
+    NAME a32_libc_heap_service
+    COMMAND compat_libc_heap_test
+)
+
+liba32android_add_test_executable(
     compat_android_log_shim_integration_test
     tests/compat/a32_android_log_shim.cpp
 )
