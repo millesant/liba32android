@@ -154,6 +154,23 @@ live anchors that it consumes before returning a successful plan. Destructor
 execution, root/global removal, stable-slot tombstoning/reuse, and guest
 unmapping remain later transactions.
 
+### Read-only root-release planning
+
+The ownership planner also exposes a non-mutating root-release query. It
+validates the same persistent link-map invariants as ordinary planning, requires
+one exact current root, and computes reachability as if only that root were
+absent while preserving caller live anchors.
+
+This avoids copying accumulated graph objects and their retained ELF image bytes
+just to model a prospective release. The result keeps the existing deterministic
+reachable/reclaimable ordering and performs no lifecycle, mapping, root, global,
+or tombstone mutation.
+
+Higher ownership transactions may require the ordinary current-state plan to
+have no reclaimable Active objects before consuming the root-release result.
+That makes the prospective reclaimable set exactly the objects newly orphaned
+by the proposed release rather than unrelated pre-existing garbage.
+
 ## Reclamation transaction
 
 Post-roadmap reclamation mutation keeps feature-016 stable object indexes
