@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "compat/a32_libdl_close_transaction.h"
+#include "compat/a32_libdl_open_transaction.h"
 #include "elf/elf32_linker_strings.h"
 #include "memory/guest_memory.h"
 
@@ -46,11 +47,13 @@ A32LibDlService::A32LibDlService(
     elf::Elf32LinkMap& link_map,
     std::span<A32LibDlHandle> handles,
     A32LibDlOptions options,
-    A32LibDlCloseTransaction* close_transaction) noexcept
+    A32LibDlCloseTransaction* close_transaction,
+    A32LibDlOpenTransaction* open_transaction) noexcept
     : link_map_(link_map),
       handles_(handles),
       options_(options),
-      close_transaction_(close_transaction) {
+      close_transaction_(close_transaction),
+      open_transaction_(open_transaction) {
     for (auto& handle : handles_) {
         handle = {};
     }
@@ -78,7 +81,9 @@ bool A32LibDlService::configuration_valid() const noexcept {
         static_cast<std::uint64_t>(options_.handle_base) +
         (handles_.size() - 1U) * 4ULL;
     return last_handle <= std::numeric_limits<std::uint32_t>::max() &&
-           last_handle != kA32RtldNext;
+           last_handle != kA32RtldNext &&
+           (open_transaction_ == nullptr ||
+            open_transaction_->handle_base() == options_.handle_base);
 }
 
 bool A32LibDlService::read_guest_string(
@@ -134,6 +139,9 @@ std::optional<std::size_t> A32LibDlService::find_object(
     ambiguous = false;
     std::optional<std::size_t> result;
     for (std::size_t index = 0; index < link_map_.graph.objects.size(); ++index) {
+        if (!link_map_.object_active(index)) {
+            continue;
+        }
         const auto& object = link_map_.graph.objects[index];
         const bool match =
             object.identity == name ||
@@ -250,7 +258,8 @@ A32LibDlService::SymbolSearchResult A32LibDlService::lookup_symbol(
     }
 
     const auto slot = find_handle(handle);
-    if (!slot.has_value()) {
+    if (!slot.has_value() ||
+        !link_map_.object_active(handles_[*slot].object_index)) {
         return SymbolSearchResult{
             .status = SymbolSearchStatus::Failed,
         };
@@ -263,6 +272,9 @@ std::optional<std::size_t> A32LibDlService::object_for_address(
     for (std::size_t object_index = 0;
          object_index < link_map_.graph.objects.size();
          ++object_index) {
+        if (!link_map_.object_active(object_index)) {
+            continue;
+        }
         const auto& object = link_map_.graph.objects[object_index];
         for (const auto& segment : object.load.segments) {
             const std::uint64_t begin = segment.guest_address;
@@ -282,7 +294,8 @@ bool A32LibDlService::nearest_symbol(
     std::uint32_t address,
     std::optional<DladdrSymbol>& result) const {
     result.reset();
-    if (object_index >= link_map_.graph.objects.size()) {
+    if (object_index >= link_map_.graph.objects.size() ||
+        !link_map_.object_active(object_index)) {
         return false;
     }
     const auto& object = link_map_.graph.objects[object_index];
@@ -438,33 +451,6 @@ runtime::A32HostServiceDisposition A32LibDlService::handle(
     }
 
     if (svc_immediate == kA32LibDlDlopenSvcImmediate) {
-        std::optional<std::size_t> object_index;
-        if (regs[0] == 0U) {
-            if (link_map_.roots.empty()) {
-                set_error("dlopen: no main object");
-                regs[0] = 0U;
-                return A32HostServiceDisposition::Handled;
-            }
-            object_index = link_map_.roots.front().object_index;
-        } else {
-            std::string name;
-            if (!read_guest_string(memory, regs[0], name) || name.empty()) {
-                return A32HostServiceDisposition::Failed;
-            }
-            bool ambiguous = false;
-            object_index = find_object(name, ambiguous);
-            if (ambiguous) {
-                set_error("dlopen: ambiguous resident object");
-                regs[0] = 0U;
-                return A32HostServiceDisposition::Handled;
-            }
-            if (!object_index.has_value()) {
-                set_error("dlopen: object not resident");
-                regs[0] = 0U;
-                return A32HostServiceDisposition::Handled;
-            }
-        }
-
         const std::uint32_t mode = regs[1];
         const bool lazy = (mode & kA32RtldLazy) != 0U;
         const bool now = (mode & kA32RtldNow) != 0U;
@@ -475,9 +461,55 @@ runtime::A32HostServiceDisposition A32LibDlService::handle(
             return A32HostServiceDisposition::Handled;
         }
 
-        if (*object_index >= link_map_.graph.objects.size()) {
+        if (regs[0] == 0U) {
+            if (link_map_.roots.empty()) {
+                set_error("dlopen: no main object");
+                regs[0] = 0U;
+                return A32HostServiceDisposition::Handled;
+            }
+            const std::size_t object_index =
+                link_map_.roots.front().object_index;
+            if (!link_map_.object_active(object_index)) {
+                return A32HostServiceDisposition::Failed;
+            }
+            regs[0] = acquire_handle(object_index);
+            if (regs[0] == 0U) {
+                set_error("dlopen: handle table exhausted");
+            }
+            return A32HostServiceDisposition::Handled;
+        }
+
+        std::string name;
+        if (!read_guest_string(memory, regs[0], name) || name.empty()) {
             return A32HostServiceDisposition::Failed;
         }
+
+        if (open_transaction_ != nullptr) {
+            const auto opened = open_transaction_->open(name, regs[13]);
+            if (!opened) {
+                set_error(
+                    std::string{"dlopen: acquisition failed: "} +
+                    to_string(opened.error));
+                regs[0] = 0U;
+                return A32HostServiceDisposition::Handled;
+            }
+            regs[0] = opened.guest_handle;
+            return A32HostServiceDisposition::Handled;
+        }
+
+        bool ambiguous = false;
+        const auto object_index = find_object(name, ambiguous);
+        if (ambiguous) {
+            set_error("dlopen: ambiguous resident object");
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+        if (!object_index.has_value()) {
+            set_error("dlopen: object not resident");
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+
         regs[0] = acquire_handle(*object_index);
         if (regs[0] == 0U) {
             set_error("dlopen: handle table exhausted");
