@@ -83,7 +83,9 @@ bool A32LibDlService::configuration_valid() const noexcept {
     return last_handle <= std::numeric_limits<std::uint32_t>::max() &&
            last_handle != kA32RtldNext &&
            (open_transaction_ == nullptr ||
-            open_transaction_->handle_base() == options_.handle_base);
+            (open_transaction_->handle_base() == options_.handle_base &&
+             open_transaction_->max_objects() <=
+                 options_.symbols.max_scope_objects));
 }
 
 bool A32LibDlService::read_guest_string(
