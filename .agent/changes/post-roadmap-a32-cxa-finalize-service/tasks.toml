@@ -1,0 +1,26 @@
+schema = 1
+change = "post-roadmap-a32-cxa-finalize-service"
+
+[[tasks]]
+id = "T001"
+status = "implemented"
+depends_on = []
+acceptance = "Define private SVC 0xD3 and bounded guest selector semantics over accepted registered-finalizer state."
+
+[[tasks]]
+id = "T002"
+status = "implemented"
+depends_on = ["T001"]
+acceptance = "Implement delegated __cxa_finalize service success/failure behavior with retained diagnostics."
+
+[[tasks]]
+id = "T003"
+status = "implemented"
+depends_on = ["T002"]
+acceptance = "Add real ARM service-registry regression proving exact DSO selection, r0 object delivery, and Complete state."
+
+[[tasks]]
+id = "T004"
+status = "active"
+depends_on = ["T003"]
+acceptance = "Run exact-head required checks and reconcile closure evidence/state."

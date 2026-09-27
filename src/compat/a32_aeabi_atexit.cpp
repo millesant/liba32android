@@ -163,6 +163,26 @@ A32AeabiFinalizeResult A32AeabiAtexitService::finalize(
     return result;
 }
 
+runtime::A32HostServiceDisposition A32CxaFinalizeService::handle(
+    memory::GuestMemory& memory,
+    std::uint32_t svc_immediate,
+    std::array<std::uint32_t, 16>& regs,
+    std::uint32_t&) {
+    if (svc_immediate != kA32CxaFinalizeSvcImmediate) {
+        return runtime::A32HostServiceDisposition::Unhandled;
+    }
+
+    const std::optional<std::uint32_t> selector =
+        regs[0] == 0U
+            ? std::nullopt
+            : std::optional<std::uint32_t>{regs[0]};
+    last_result_ = registrations_.finalize(
+        memory, selector, options_);
+    return *last_result_
+        ? runtime::A32HostServiceDisposition::Handled
+        : runtime::A32HostServiceDisposition::Failed;
+}
+
 const char* to_string(A32AeabiFinalizeError error) noexcept {
     switch (error) {
     case A32AeabiFinalizeError::None: return "none";

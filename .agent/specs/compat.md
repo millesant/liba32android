@@ -626,3 +626,28 @@ selector matches the opaque registered DSO word exactly. This contract does
 not yet expose guest `__cxa_finalize`, map DSO handles to link-map objects,
 choose dlclose/process-exit ordering against ELF FINI_ARRAY/DT_FINI, decrement
 shared-object reference counts, or unmap objects.
+
+
+## L32-C026 — Guest __cxa_finalize service boundary
+
+The compatibility layer may expose private SVC `0xD3` for guest
+`__cxa_finalize(dso_handle)`.
+
+`A32CxaFinalizeService` borrows the accepted
+`A32AeabiAtexitService` registration/finalization state plus fixed bounded
+finalization options. Guest r0 equal to zero selects process-wide finalization;
+otherwise r0 is preserved as the exact opaque DSO-handle selector. No host
+pointer conversion or link-map inference occurs.
+
+The service delegates to the accepted reverse-order registered-destructor
+finalizer. Successful completion returns Handled so the guest void function may
+resume after SVC. Any bounded finalization error returns Failed and preserves
+the underlying detailed finalization result for host diagnostics. Unknown SVC
+IDs remain Unhandled.
+
+This service boundary exists because Android shared-object CRT code places an
+`__on_dlclose` destructor in FINI_ARRAY that calls
+`__cxa_finalize(&__dso_handle)`; Android linker destruction runs FINI_ARRAY
+in reverse before DT_FINI. The service itself does not yet export a
+`__cxa_finalize` libc shim, make ELF lifecycle execution service-aware, bind
+DSO handles to link-map objects, or own dlclose/unmapping.

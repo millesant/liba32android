@@ -6,23 +6,21 @@ The Android filesystem source, persistent legacy lifecycle,
 `__aeabi_atexit` registration, and registered-destructor finalization
 follow-ups are DONE.
 
-No acceptance gate is currently active.
+`post-roadmap-a32-cxa-finalize-service` is IMPLEMENTED on `bleeding`;
+exact-head required checks are its current acceptance gate.
 
-## Ready next follow-up
-
-Bind resident libdl handles to stable link-map object indexes and implement a
-bounded dlclose transaction for the last synthetic handle reference. The
-transaction should compose registered finalization with persistent
-FINI_ARRAY/DT_FINI execution while keeping actual mapping reclamation separate
-until ownership/refcount rules are explicit.
+After terminal success, extend the generated partial libc with
+`__cxa_finalize` and make ELF destructor execution service-aware. That allows
+normal Android CRT FINI_ARRAY code to trigger the accepted registered
+destructor state before a bounded dlclose ownership transaction is added.
 
 ## Other ready follow-up candidates
 
+- DSO-handle/link-map binding and dlclose ownership after service-aware FINI.
 - Broader pthread/thread creation/TLS services.
 - Dynamic missing-object libdl acquisition semantics.
 - Concrete APK/ZIP byte acquisition and richer Android search policy.
 - Higher-level public ELF/platform embedding APIs.
-- Broader/exceptional libm behavior.
 
 ## Environment-blocked or decision-blocked work
 

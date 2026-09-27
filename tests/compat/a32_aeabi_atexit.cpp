@@ -16,7 +16,9 @@ using liba32android::compat::A32AeabiAtexitRecordStatus;
 using liba32android::compat::A32AeabiAtexitService;
 using liba32android::compat::A32AeabiFinalizeError;
 using liba32android::compat::A32AeabiFinalizeOptions;
+using liba32android::compat::A32CxaFinalizeService;
 using liba32android::compat::kA32AeabiAtexitSvcImmediate;
+using liba32android::compat::kA32CxaFinalizeSvcImmediate;
 using liba32android::cpu::ExecutionRequest;
 using liba32android::memory::LinearGuestMemory;
 using liba32android::runtime::A32HostServiceDisposition;
@@ -76,7 +78,7 @@ int test_exact_registration_and_capacity() {
     }
 
     regs = {};
-    if (service.handle(memory, 0xD3U, regs, cpsr) !=
+    if (service.handle(memory, 0xD4U, regs, cpsr) !=
         A32HostServiceDisposition::Unhandled) {
         return fail("unknown __aeabi_atexit service ID was not unhandled");
     }
@@ -228,6 +230,74 @@ int test_finalization_failure_latches_record() {
     return 0;
 }
 
+int test_guest_cxa_finalize_service() {
+    constexpr std::array<std::uint8_t, 8> finalize_code{
+        0xD3, 0x00, 0x00, 0xEF,
+        0x1E, 0xFF, 0x2F, 0xE1,
+    };
+    constexpr std::array<std::uint8_t, 16> destructor_code{
+        0x04, 0x10, 0x9F, 0xE5,
+        0x00, 0x00, 0x81, 0xE5,
+        0x1E, 0xFF, 0x2F, 0xE1,
+        0x00, 0x03, 0x00, 0x00,
+    };
+
+    LinearGuestMemory memory{4096};
+    if (!memory.write(0U, finalize_code) ||
+        !memory.write(0x100U, destructor_code)) {
+        return fail("could not stage guest __cxa_finalize fixture");
+    }
+
+    std::array<A32AeabiAtexitRecord, 2> records{};
+    A32AeabiAtexitService registrations{std::span{records}};
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t cpsr{};
+    regs[0] = 0xAABBCCDDU;
+    regs[1] = 0x100U;
+    regs[2] = 0x77770000U;
+    if (registrations.handle(
+            memory, kA32AeabiAtexitSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("could not register guest __cxa_finalize fixture");
+    }
+
+    A32CxaFinalizeService finalizer{
+        registrations,
+        A32AeabiFinalizeOptions{
+            .stack_top = 0x0ff8U,
+            .return_pc = 0x1000U,
+            .max_instructions_per_call = 16U,
+            .max_callbacks = 2U,
+        },
+    };
+    const std::array<A32HostServiceRegistryEntry, 1> entries{{
+        {kA32CxaFinalizeSvcImmediate, &finalizer},
+    }};
+    A32HostServiceRegistry registry{std::span{entries}};
+
+    ExecutionRequest request{};
+    request.regs[0] = 0x77770000U;
+    request.regs[14] = 4096U;
+    request.instruction_count = 2U;
+    request.stop_pc = 4096U;
+
+    const auto result =
+        execute_a32_with_services(memory, request, registry, 1U);
+    if (!result ||
+        !result.stop_pc_reached ||
+        result.services_handled != 1U ||
+        read_u32_le(memory, 0x300U) != 0xAABBCCDDU ||
+        registrations.records()[0].status !=
+            A32AeabiAtexitRecordStatus::Complete ||
+        !finalizer.last_result().has_value() ||
+        !*finalizer.last_result() ||
+        finalizer.last_result()->callbacks_completed != 1U) {
+        return fail("guest __cxa_finalize SVC did not run matching destructor");
+    }
+    return 0;
+}
+
 int test_arm_registry_integration() {
     constexpr std::array<std::uint8_t, 8> code{
         0xD2, 0x00, 0x00, 0xEF,
@@ -281,6 +351,10 @@ int main() {
         return status;
     }
     if (const int status = test_finalization_failure_latches_record();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_guest_cxa_finalize_service();
         status != 0) {
         return status;
     }

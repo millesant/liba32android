@@ -1,6 +1,7 @@
 #pragma once
 
 #define LIBA32ANDROID_A32_AEABI_ATEXIT_SVC 0xD2
+#define LIBA32ANDROID_A32_CXA_FINALIZE_SVC 0xD3
 
 #ifdef __cplusplus
 
@@ -17,6 +18,8 @@ namespace liba32android::compat {
 
 inline constexpr std::uint32_t kA32AeabiAtexitSvcImmediate =
     LIBA32ANDROID_A32_AEABI_ATEXIT_SVC;
+inline constexpr std::uint32_t kA32CxaFinalizeSvcImmediate =
+    LIBA32ANDROID_A32_CXA_FINALIZE_SVC;
 
 enum class A32AeabiAtexitRecordStatus : std::uint8_t {
     Pending = 0,
@@ -99,6 +102,33 @@ public:
 private:
     std::span<A32AeabiAtexitRecord> records_;
     std::size_t record_count_{};
+};
+
+// Guest-callable __cxa_finalize boundary. The DSO selector remains an opaque
+// guest word; r0 == 0 selects process-wide finalization.
+class A32CxaFinalizeService final
+    : public runtime::A32HostServiceHandler {
+public:
+    A32CxaFinalizeService(
+        A32AeabiAtexitService& registrations,
+        A32AeabiFinalizeOptions options) noexcept
+        : registrations_(registrations), options_(options) {}
+
+    [[nodiscard]] runtime::A32HostServiceDisposition handle(
+        memory::GuestMemory& memory,
+        std::uint32_t svc_immediate,
+        std::array<std::uint32_t, 16>& regs,
+        std::uint32_t& cpsr) override;
+
+    [[nodiscard]] const std::optional<A32AeabiFinalizeResult>&
+    last_result() const noexcept {
+        return last_result_;
+    }
+
+private:
+    A32AeabiAtexitService& registrations_;
+    A32AeabiFinalizeOptions options_;
+    std::optional<A32AeabiFinalizeResult> last_result_;
 };
 
 [[nodiscard]] const char* to_string(
