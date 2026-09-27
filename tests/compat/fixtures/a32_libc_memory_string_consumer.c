@@ -24,6 +24,10 @@ __attribute__((visibility("default")))
 char* strcpy(char* destination, const char* source);
 __attribute__((visibility("default")))
 char* strncpy(char* destination, const char* source, fixture_size_t count);
+__attribute__((visibility("default")))
+int atoi(const char* text);
+__attribute__((visibility("default")))
+long strtol(const char* text, char** endptr, int base);
 
 __attribute__((visibility("default"), noinline))
 void* fixture_memcpy(void* destination, const void* source, fixture_size_t count) {
@@ -74,4 +78,14 @@ char* fixture_strcpy(char* destination, const char* source) {
 __attribute__((visibility("default"), noinline))
 char* fixture_strncpy(char* destination, const char* source, fixture_size_t count) {
     return strncpy(destination, source, count);
+}
+
+__attribute__((visibility("default"), noinline))
+int fixture_atoi(const char* text) {
+    return atoi(text);
+}
+
+__attribute__((visibility("default"), noinline))
+long fixture_strtol(const char* text, char** endptr, int base) {
+    return strtol(text, endptr, base);
 }

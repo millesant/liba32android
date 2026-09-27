@@ -3,30 +3,30 @@ change = "035-a32-libc-integer-service"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Capture current bionic atoi/strtol behavior plus supplied-target import evidence and define the bounded ARM32 contract."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Add shared SVC IDs, caller-owned guest errno sink, and A32LibcIntegerService ABI/options."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Implement bounded signed parsing, prefix/base/endptr semantics, saturation, and EINVAL/ERANGE publication ordering."
 
 [[tasks]]
 id = "T004"
-status = "implemented"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Add focused deterministic regressions, ARM registry/dispatcher composition, and CMake registration."
 
 [[tasks]]
 id = "T005"
-status = "active"
+status = "verified"
 depends_on = ["T004"]
 acceptance = "Run exact-head required checks and reconcile closure evidence."

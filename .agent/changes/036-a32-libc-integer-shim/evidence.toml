@@ -1,0 +1,29 @@
+schema = 1
+change = "036-a32-libc-integer-shim"
+
+[[evidence]]
+id = "twelve-symbol-partial-libc-fixture"
+kind = "test"
+status = "not_run"
+claim = "The pinned-NDK partial libc fixture exports/imports all twelve prepared functions with eager JUMP_SLOT relocations."
+source = "tests/compat/fixtures/, tools/fixtures/build_arm32_libc_memory_string_fixture.sh, and .github/workflows/compat-libc-shim.yml"
+result = "Feature 036 is integrated; exact-head dedicated fixture execution has not yet been observed."
+limitations = "Integrated fixture logic is not passing evidence until the dedicated check actually runs."
+
+[[evidence]]
+id = "integer-shim-end-to-end"
+kind = "test"
+status = "not_run"
+claim = "Real ARM32 atoi/strtol consumer wrappers execute through the partial libc shim and bounded integer service, including strtol guest endptr."
+source = "tests/compat/a32_libc_memory_string_shim.cpp"
+result = "Feature 036 is integrated; exact-head end-to-end execution has not yet been observed."
+limitations = "Guest errno storage is not exported; this is normal-conversion path evidence only."
+
+[[evidence]]
+id = "exact-head-ci"
+kind = "validation"
+status = "not_run"
+claim = "Feature 036 passes dedicated partial-libc integration and required exact-head checks after ordered integration."
+source = "GitHub commit checks on the feature-036 integration revision"
+result = ""
+limitations = "Feature 036 remains implemented rather than done until terminal exact-head checks complete successfully."

@@ -1,16 +1,17 @@
 # Next Work
 
-Features 011 through 034 are DONE.
+Features 011 through 035 are DONE.
 
-`035-a32-libc-integer-service` is IMPLEMENTED on `bleeding`; its exact-head
-required checks are the immediate acceptance gate.
+`036-a32-libc-integer-shim` is IMPLEMENTED on `bleeding`; its exact-head
+required checks plus dedicated ARM32 partial-libc integration are the immediate
+acceptance gate.
 
-Once terminal success is observed, close 035 and integrate prepared feature 036,
-which carries `atoi/strtol` through the real partial-libc shim path.
+Once terminal success is observed, close 036 and integrate prepared feature 037
+(the logical guest errno slot / `__errno` service).
 
-Prepared order after 035:
+Prepared order after 036:
 
-`036 -> 037 -> 038 -> 039 -> 040 -> 041 -> 042 -> 043 -> 044 -> 045`.
+`037 -> 038 -> 039 -> 040 -> 041 -> 042 -> 043 -> 044 -> 045 -> 046 -> 047 -> 048 -> 049`.
 
 Preserve the accepted feature-033 memmem no-read ordering when integrating older
 prepared trees until feature 039's broader Android-17 alignment lands.

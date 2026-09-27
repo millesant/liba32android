@@ -250,3 +250,24 @@ errno/r0 publication.
 Feature 035 adds no guest atoi/strtol shim exports, guest __errno/TLS storage,
 locale-aware ctype, unsigned/wide/64-bit conversion, floating conversion, or
 broader libc behavior.
+
+
+## L32-C013 — Partial libc integer shim extension
+
+The prepared partial ARM32 `libc.so` may additionally export `atoi` and
+`strtol` using shared feature-035 SVC IDs `0xAB` and `0xAC`. The guest
+stubs preserve incoming AAPCS32 arguments, execute only their SVC, and return
+with `bx lr`.
+
+The freestanding consumer may import both functions. Real integration must
+resolve all twelve prepared partial-libc symbols from the shim, require a
+JUMP_SLOT target for each, register the ten memory/string/copy/search SVCs plus
+the two integer SVCs, and execute real `atoi` and `strtol` wrappers through
+the existing namespace-gated finite platform catalog.
+
+The strtol integration must verify a logical guest end-pointer write. Guest
+errno storage remains outside the shim; the caller-owned feature-035 errno sink
+remains the error publication seam.
+
+No additional libc symbol or full-libc/application compatibility claim is
+introduced by feature 036.

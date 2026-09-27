@@ -1,0 +1,26 @@
+schema = 1
+change = "036-a32-libc-integer-shim"
+
+[[tasks]]
+id = "T001"
+status = "implemented"
+depends_on = []
+acceptance = "Extend partial libc assembly/consumer with atoi and strtol using shared feature-035 service IDs."
+
+[[tasks]]
+id = "T002"
+status = "implemented"
+depends_on = ["T001"]
+acceptance = "Extend real symbol/JUMP_SLOT validation and service registry from ten to twelve functions with the separate integer handler."
+
+[[tasks]]
+id = "T003"
+status = "implemented"
+depends_on = ["T002"]
+acceptance = "Execute real atoi and strtol wrappers, including strtol guest endptr validation, and update dedicated workflow expectations."
+
+[[tasks]]
+id = "T004"
+status = "active"
+depends_on = ["T003"]
+acceptance = "Run dedicated partial-libc integration and exact-head required checks, then reconcile closure evidence."
