@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "compat/a32_libdl_close_transaction.h"
 #include "elf/elf32_linker_strings.h"
 #include "memory/guest_memory.h"
 
@@ -44,10 +45,12 @@ void store_u32_le(
 A32LibDlService::A32LibDlService(
     elf::Elf32LinkMap& link_map,
     std::span<A32LibDlHandle> handles,
-    A32LibDlOptions options) noexcept
+    A32LibDlOptions options,
+    A32LibDlCloseTransaction* close_transaction) noexcept
     : link_map_(link_map),
       handles_(handles),
-      options_(options) {
+      options_(options),
+      close_transaction_(close_transaction) {
     for (auto& handle : handles_) {
         handle = {};
     }
@@ -506,6 +509,21 @@ runtime::A32HostServiceDisposition A32LibDlService::handle(
     }
 
     if (svc_immediate == kA32LibDlDlcloseSvcImmediate) {
+        if (close_transaction_ != nullptr) {
+            const auto closed = close_transaction_->close(memory, regs[0]);
+            if (!closed) {
+                set_error(
+                    closed.error == A32LibDlCloseTransactionError::InvalidHandle
+                        ? "dlclose: invalid handle"
+                        : std::string{"dlclose: lifecycle transaction failed: "} +
+                              to_string(closed.error));
+                regs[0] = 0xffffffffU;
+                return A32HostServiceDisposition::Handled;
+            }
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+
         const auto slot = find_handle(regs[0]);
         if (!slot.has_value()) {
             set_error("dlclose: invalid handle");
