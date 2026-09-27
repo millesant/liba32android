@@ -12,7 +12,10 @@
 namespace {
 
 using liba32android::compat::A32AeabiAtexitRecord;
+using liba32android::compat::A32AeabiAtexitRecordStatus;
 using liba32android::compat::A32AeabiAtexitService;
+using liba32android::compat::A32AeabiFinalizeError;
+using liba32android::compat::A32AeabiFinalizeOptions;
 using liba32android::compat::kA32AeabiAtexitSvcImmediate;
 using liba32android::cpu::ExecutionRequest;
 using liba32android::memory::LinearGuestMemory;
@@ -80,6 +83,151 @@ int test_exact_registration_and_capacity() {
     return 0;
 }
 
+std::uint32_t read_u32_le(
+    const LinearGuestMemory& memory,
+    std::uint32_t address) {
+    std::array<std::uint8_t, 4> bytes{};
+    if (!memory.read(address, bytes)) {
+        return 0xffffffffU;
+    }
+    return static_cast<std::uint32_t>(bytes[0]) |
+           (static_cast<std::uint32_t>(bytes[1]) << 8U) |
+           (static_cast<std::uint32_t>(bytes[2]) << 16U) |
+           (static_cast<std::uint32_t>(bytes[3]) << 24U);
+}
+
+int test_reverse_per_dso_finalization_and_once_state() {
+    LinearGuestMemory memory{4096};
+    constexpr std::array<std::uint8_t, 16> store_object{
+        0x04, 0x10, 0x9F, 0xE5,
+        0x00, 0x00, 0x81, 0xE5,
+        0x1E, 0xFF, 0x2F, 0xE1,
+        0x00, 0x03, 0x00, 0x00,
+    };
+    if (!memory.write(0x100U, store_object)) {
+        return fail("could not stage registered destructor code");
+    }
+
+    std::array<A32AeabiAtexitRecord, 4> records{};
+    A32AeabiAtexitService service{std::span{records}};
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t cpsr{};
+    const auto register_one =
+        [&](std::uint32_t object, std::uint32_t dso) {
+            regs = {};
+            regs[0] = object;
+            regs[1] = 0x100U;
+            regs[2] = dso;
+            return service.handle(
+                memory, kA32AeabiAtexitSvcImmediate, regs, cpsr) ==
+                    A32HostServiceDisposition::Handled &&
+                regs[0] == 0U;
+        };
+
+    if (!register_one(0x11111111U, 0xAAAA0000U) ||
+        !register_one(0x22222222U, 0xAAAA0000U) ||
+        !register_one(0x33333333U, 0xBBBB0000U)) {
+        return fail("could not register finalization fixture");
+    }
+
+    const A32AeabiFinalizeOptions one_callback{
+        .stack_top = 0x0ff8U,
+        .return_pc = 0x1000U,
+        .max_instructions_per_call = 16U,
+        .max_callbacks = 1U,
+    };
+    const auto limited =
+        service.finalize(memory, 0xAAAA0000U, one_callback);
+    if (limited.error != A32AeabiFinalizeError::CallbackLimitExceeded ||
+        limited.callbacks_completed != 0U ||
+        service.records()[0].status != A32AeabiAtexitRecordStatus::Pending ||
+        service.records()[1].status != A32AeabiAtexitRecordStatus::Pending ||
+        read_u32_le(memory, 0x300U) != 0U) {
+        return fail("callback ceiling did not fail before guest side effects");
+    }
+
+    const A32AeabiFinalizeOptions options{
+        .stack_top = 0x0ff8U,
+        .return_pc = 0x1000U,
+        .max_instructions_per_call = 16U,
+        .max_callbacks = 4U,
+    };
+    const auto dso_result =
+        service.finalize(memory, 0xAAAA0000U, options);
+    if (!dso_result ||
+        dso_result.callbacks_completed != 2U ||
+        read_u32_le(memory, 0x300U) != 0x11111111U ||
+        service.records()[0].status != A32AeabiAtexitRecordStatus::Complete ||
+        service.records()[1].status != A32AeabiAtexitRecordStatus::Complete ||
+        service.records()[2].status != A32AeabiAtexitRecordStatus::Pending) {
+        return fail("per-DSO registered destructors did not execute in reverse order");
+    }
+
+    const auto all_result =
+        service.finalize(memory, std::nullopt, options);
+    if (!all_result ||
+        all_result.callbacks_completed != 1U ||
+        read_u32_le(memory, 0x300U) != 0x33333333U ||
+        service.records()[2].status != A32AeabiAtexitRecordStatus::Complete) {
+        return fail("process-wide finalization did not execute remaining record");
+    }
+
+    const auto repeated =
+        service.finalize(memory, std::nullopt, options);
+    if (!repeated || repeated.callbacks_completed != 0U) {
+        return fail("completed registered destructors were replayed");
+    }
+    return 0;
+}
+
+int test_finalization_failure_latches_record() {
+    LinearGuestMemory memory{4096};
+    constexpr std::array<std::uint8_t, 4> loop_code{
+        0xFE, 0xFF, 0xFF, 0xEA,
+    };
+    if (!memory.write(0x100U, loop_code)) {
+        return fail("could not stage failing registered destructor");
+    }
+
+    std::array<A32AeabiAtexitRecord, 1> records{};
+    A32AeabiAtexitService service{std::span{records}};
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t cpsr{};
+    regs[0] = 0x11111111U;
+    regs[1] = 0x100U;
+    regs[2] = 0xAAAA0000U;
+    if (service.handle(
+            memory, kA32AeabiAtexitSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("could not register failing destructor");
+    }
+
+    const A32AeabiFinalizeOptions options{
+        .stack_top = 0x0ff8U,
+        .return_pc = 0x1000U,
+        .max_instructions_per_call = 2U,
+        .max_callbacks = 1U,
+    };
+    const auto first =
+        service.finalize(memory, 0xAAAA0000U, options);
+    if (first.error != A32AeabiFinalizeError::InstructionLimitExceeded ||
+        first.callbacks_completed != 0U ||
+        first.failing_record != 0U ||
+        service.records()[0].status != A32AeabiAtexitRecordStatus::Failed) {
+        return fail("failed registered destructor was not latched");
+    }
+
+    const auto repeated =
+        service.finalize(memory, 0xAAAA0000U, options);
+    if (repeated.error != A32AeabiFinalizeError::InvalidRecordState ||
+        repeated.callbacks_completed != 0U ||
+        repeated.failing_record != 0U) {
+        return fail("failed registered destructor was replayed");
+    }
+    return 0;
+}
+
 int test_arm_registry_integration() {
     constexpr std::array<std::uint8_t, 8> code{
         0xD2, 0x00, 0x00, 0xEF,
@@ -125,6 +273,14 @@ int test_arm_registry_integration() {
 
 int main() {
     if (const int status = test_exact_registration_and_capacity();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_reverse_per_dso_finalization_and_once_state();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_finalization_failure_latches_record();
         status != 0) {
         return status;
     }

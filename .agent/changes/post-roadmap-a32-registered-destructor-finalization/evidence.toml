@@ -1,0 +1,29 @@
+schema = 1
+change = "post-roadmap-a32-registered-destructor-finalization"
+
+[[evidence]]
+id = "accepted-registration-base"
+kind = "repository"
+status = "observed"
+claim = "The accepted __aeabi_atexit service preserves exact object/destructor/DSO triples but explicitly defers callback execution."
+source = "docs/architecture/a32-aeabi-atexit.md and .agent/specs/compat.md"
+result = "The accepted registration contract supplies finite ordered records and identifies finalization as the next lifecycle gap."
+limitations = "Repository evidence does not validate the new executor until exact-head tests run."
+
+[[evidence]]
+id = "registered-finalization-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused tests prove per-DSO reverse order, process-wide remaining callbacks, preflight callback ceiling, once-only Complete state, and Failed-state replay rejection."
+source = "tests/compat/a32_aeabi_atexit.cpp"
+result = "Integrated on bleeding; exact-head execution has not yet been observed."
+limitations = "Synthetic callbacks do not establish dlclose/process-exit ordering or DSO/link-map ownership."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "Registered-destructor finalization passes required exact-head checks before closure."
+source = "GitHub commit checks on the integration revision"
+result = ""
+limitations = "The follow-up remains implemented rather than done until terminal exact-head success is observed."

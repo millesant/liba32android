@@ -1,0 +1,30 @@
+schema = 1
+id = "post-roadmap-a32-registered-destructor-finalization"
+kind = "feature"
+size = "S1"
+status = "implemented"
+workflow = "feature"
+control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
+base_revision = "33993ddf2db2022001b23d8edd1a99a4d42cde9b"
+acceptance = [
+  "accepted __aeabi_atexit records gain explicit Pending/Complete/Failed finalization state without changing exact registered guest values",
+  "host finalization supports exact opaque DSO-handle selection or process-wide selection and executes matching Pending callbacks in reverse registration order",
+  "registered object is passed exactly in guest r0 and destructor bit0 selects ARM/Thumb while no host pointer is exposed",
+  "caller supplies aligned guest stack, normalized stop PC, finite per-callback instruction budget, and finite callback ceiling",
+  "callback ceiling is preflighted before guest execution so limit failure produces no callback side effect or record mutation",
+  "successful callbacks latch Complete and are never replayed",
+  "invalid function addresses and guest memory/CPU/instruction-limit failures latch the affected record Failed and later selection returns InvalidRecordState",
+  "focused regressions prove per-DSO reverse order, process-wide remaining finalization, limit preflight, once-only suppression, and failure latching",
+  "guest __cxa_finalize, DSO/link-map binding, dlclose/process-exit ordering with ELF destructors, reference-count unload ownership, and unmapping remain out of scope"
+]
+
+[convergence]
+requirements = "aligned"
+specs = "aligned"
+implementation = "aligned"
+tests = "aligned"
+documentation = "aligned"
+decisions = "not_applicable"
+tasks = "aligned"
+evidence = "pending"
+repository = "aligned"

@@ -596,3 +596,33 @@ This contract provides registration state only. It does not execute registered
 destructors, implement `__cxa_finalize`, choose process-exit versus DSO-unload
 timing, validate destructor code, tie DSO handles to link-map objects, or reclaim
 loaded mappings.
+
+
+## L32-C025 — Bounded registered-destructor finalization
+
+The accepted `A32AeabiAtexitService` registration state additionally tracks
+each record as Pending, Complete, or Failed.
+
+A host lifecycle transaction may finalize either one exact DSO handle or all
+records. Matching Pending records are executed in reverse registration order.
+Each callback receives the exact registered object value in guest r0 and uses
+the registered destructor word as an ARM/Thumb function value. The caller
+provides an 8-byte-aligned guest stack top, normalized return/stop PC, finite
+instruction ceiling per callback, and a maximum callback count.
+
+Before executing guest code, the finalizer scans the selected records. A Failed
+selected record is an explicit InvalidRecordState. If the number of selected
+Pending callbacks exceeds the caller ceiling, finalization fails before any
+guest callback is executed or record state is mutated.
+
+Successful callbacks become Complete and are never replayed. Invalid callback
+addresses or guest memory/CPU/instruction-limit failures mark the affected
+record Failed before returning, because the callback may have produced partial
+guest side effects. Later finalization that selects that record fails rather
+than replaying it.
+
+A null host-side DSO selector means process-wide finalization; a concrete
+selector matches the opaque registered DSO word exactly. This contract does
+not yet expose guest `__cxa_finalize`, map DSO handles to link-map objects,
+choose dlclose/process-exit ordering against ELF FINI_ARRAY/DT_FINI, decrement
+shared-object reference counts, or unmap objects.
