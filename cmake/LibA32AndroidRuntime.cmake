@@ -13,6 +13,7 @@ add_library(liba32android SHARED
     src/compat/a32_libdl.cpp
     src/compat/a32_libdl_close_transaction.cpp
     src/compat/a32_libdl_open_transaction.cpp
+    src/compat/a32_libdl_unload_transaction.cpp
     src/compat/a32_libm.cpp
     src/compat/a32_aeabi_atexit.cpp
     src/compat/a32_android_library_search.cpp
