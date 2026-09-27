@@ -3,11 +3,11 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `048-a32-android-library-search-provider` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: none; feature 048 is accepted and feature 049 is next to integrate.
 
 ## Phase
 
-Features 011-047 are accepted.
+Features 011-048 are accepted.
 
 ## Validation and repository-truth evidence
 
@@ -17,15 +17,18 @@ Feature 046 passed all six required exact-head checks at
 Feature 047 passed all seven required exact-head checks at
 `8790fec8894159e034a60c5b86e5552dd375d39b`.
 
-Feature 048 is now integrated. It adds finite requester-scoped Android
-application native-library search over caller-owned virtual roots and a
-caller-owned byte source. Bare SONAME requests can fall through ordered
-APK/filesystem-style roots while concrete I/O remains outside the provider.
-A real ARM32 root/child fixture proves requester propagation, APK-style virtual
-path construction, dependency loading, eager JUMP_SLOT relocation, and child
-execution.
-
-Feature 048 exact-head validation: NOT RUN.
+Feature 048 adds finite requester-scoped Android application native-library
+search over caller-owned virtual roots and a caller-owned byte source. It passed
+all eight exact-head checks at
+`765429cb1db3a0e1e5f3b49b75e1c0f0712e9808`:
+- Android arm64-v8a cross-build `108684077343` — PASS.
+- Android x86_64 address-space probe `108684077333` — PASS.
+- Linux A32 smoke `108684077211` — PASS.
+- ARM32 libdl shim integration `108684077155` — PASS.
+- ARM32 liblog shim integration `108684076853` — PASS.
+- ARM32 libc memory string shim integration `108684076842` — PASS.
+- ARM32 Android app library search integration `108684076829` — PASS.
+- ARM32 libm shim integration `108684076663` — PASS.
 
 Prepared order remains:
 `049`.

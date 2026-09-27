@@ -3,24 +3,24 @@ change = "048-a32-android-library-search-provider"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Define the caller-owned virtual library source, finite requester-root records, and bounded bare-name search contract."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Implement ordered requester-root lookup with exact max-image forwarding, path ceilings, NotFound fallback, hard-failure stop, and result validation."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Add focused policy tests plus deterministic real ARM32 APK-style root/child dependency loading, JUMP_SLOT relocation, and execution integration."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Run exact-head required checks and reconcile closure evidence/state."

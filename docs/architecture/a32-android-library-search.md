@@ -1,6 +1,6 @@
 # Requester-scoped Android application library search
 
-Status: feature 048 implemented; exact-head validation pending
+Status: feature 048 accepted; exact-head validation PASSed
 
 ## Goal
 
