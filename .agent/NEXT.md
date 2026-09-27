@@ -3,23 +3,21 @@
 The numbered 011-049 roadmap is COMPLETE.
 
 The Android filesystem source, persistent legacy lifecycle,
-`__aeabi_atexit` registration, registered finalization, and guest
-`__cxa_finalize` service follow-ups are DONE.
+`__aeabi_atexit` registration, registered finalization, guest
+`__cxa_finalize`, and service-aware FINI follow-ups are DONE.
 
-`post-roadmap-a32-libc-cxa-service-aware-fini` is IMPLEMENTED on
-`bleeding`; exact-head required checks are its current acceptance gate.
+No acceptance gate is active.
 
-After terminal success, bind synthetic libdl handles and registered DSO handles
-to stable link-map object indexes and build a bounded last-reference dlclose
-transaction: service-aware FINI_ARRAY/DT_FINI first, ownership release second,
-with mapping reclamation still deferred until reachability rules are explicit.
+## Ready next follow-up
 
-## Other ready follow-up candidates
+Rebase and integrate the prepared resident last-reference dlclose lifecycle
+transaction. Bind stable link-map objects to exact guest DSO handles, wire the
+transaction into the resident libdl close path, and add focused plus real ARM
+regressions. Teardown ordering is reverse FINI_ARRAY / registered finalization /
+DT_FINI before releasing the final synthetic handle.
 
-- Broader pthread/thread creation/TLS services.
-- Dynamic missing-object libdl acquisition semantics.
-- Concrete APK/ZIP byte acquisition and richer Android search policy.
-- Higher-level public ELF/platform embedding APIs.
+Keep dependency mapping reclamation separate until recursive ownership and
+reachability rules are explicit.
 
 ## Environment-blocked or decision-blocked work
 

@@ -11,46 +11,46 @@ result = "Accepted primary-source evidence establishes the Android lifecycle sha
 limitations = "The project does not yet own dlclose reachability or mapping reclamation."
 
 [[evidence]]
-id = "service-aware-lifecycle-regression"
-kind = "test"
-status = "not_run"
-claim = "A real ARM FINI call executes an SVC through the bounded host-service registry and resumes to the lifecycle return PC."
-source = "tests/elf/unit/elf32_lifecycle.cpp"
-result = "Integrated on bleeding; exact-head execution has not yet been observed."
-limitations = "Focused regression uses a synthetic marker service rather than the libc finalizer."
-
-[[evidence]]
-id = "real-linked-cxa-fini-integration"
-kind = "test"
-status = "not_run"
-claim = "The forty-one-symbol partial libc resolves __cxa_finalize and a controlled consumer FINI_ARRAY entry reaches SVC 0xD3, finalizes an exact registration, executes the guest destructor, resumes FINI, and preserves once-only state."
-source = "tests/compat/a32_libc_memory_string_shim.cpp and .github/workflows/compat-libc-shim.yml"
-result = "Integrated on bleeding; exact-head execution has not yet been observed."
-limitations = "The integration does not yet bind the DSO word to libdl/link-map ownership or unmap objects."
-
-[[evidence]]
 id = "failed-initial-exact-head"
 kind = "validation"
 status = "failed"
-claim = "The first linked __cxa_finalize/service-aware FINI integration revision was not acceptable."
+claim = "The initial linked __cxa_finalize/service-aware FINI revision was not acceptable."
 source = "GitHub commit checks at 07ab332fc0566da3218cc3dcee6c66d12b143ded"
-result = "Seven checks passed. Linux A32 smoke 108704827414 failed in Build because tests/elf/unit/elf32_lifecycle.cpp omitted the Elf32FiniExecutionOptions alias. ARM32 libc memory string shim integration 108704826917 built successfully but failed its controlled service-aware FINI_ARRAY assertion."
-limitations = "Failure logs identified the compile defect exactly. The original libc assertion did not expose which subcondition failed, so the correction also adds bounded failure diagnostics."
+result = "Linux smoke exposed a missing test alias and the ARM32 libc integration exposed an unresolved FINI-path defect."
+limitations = "Superseded by later corrected revisions."
 
 [[evidence]]
 id = "failed-second-exact-head"
 kind = "validation"
 status = "failed"
-claim = "The first correction fixed Linux compilation but still exposed one nested guest-stack bug in the real libc FINI path."
+claim = "The first correction still exposed a nested guest-stack bug."
 source = "GitHub commit checks at 85b7e9f3211eff47288232eee8b30517fe380a01"
-result = "Eight required checks passed. ARM32 libc memory string shim integration 108708220124 failed after its bounded diagnostic reported lifecycle_error=MemoryFault with marker 0xC0DEC0DE, record status Complete, finalizer error None, and one finalized callback. This proves __cxa_finalize and the registered destructor completed before the outer FINI frame faulted while resuming."
-limitations = "Inspection of A32CxaFinalizeService showed nested callbacks reused the configured outer stack top, allowing an -O0 guest callback frame to overwrite the active FINI caller frame."
+result = "Eight checks passed. The libc diagnostic proved __cxa_finalize and its registered destructor succeeded before the outer FINI frame faulted; the nested callback had reused the outer configured stack top."
+limitations = "Superseded by live-r13 nested callback correction."
+
+[[evidence]]
+id = "service-aware-lifecycle-regression"
+kind = "test"
+status = "passed"
+claim = "Real ARM FINI code dispatches a bounded host service and resumes to the lifecycle return PC."
+source = "tests/elf/unit/elf32_lifecycle.cpp via Linux A32 smoke 108713564773 at 0cd4e1ee1e9d08eb3bde9f50238fd61a5f6af5a6"
+result = "Exact-head Linux validation passed."
+limitations = "Focused regression uses a synthetic marker service."
+
+[[evidence]]
+id = "real-linked-cxa-fini-integration"
+kind = "test"
+status = "passed"
+claim = "The forty-one-symbol partial libc resolves __cxa_finalize and its controlled FINI_ARRAY path finalizes the exact registration, executes the guest destructor, preserves the active guest frame, resumes FINI, and does not replay the completed callback."
+source = "ARM32 libc memory string shim integration 108713564008 at 0cd4e1ee1e9d08eb3bde9f50238fd61a5f6af5a6"
+result = "Exact-head real ARM32 integration passed."
+limitations = "DSO/link-map ownership and mapping reclamation remain separate."
 
 [[evidence]]
 id = "exact-head-validation"
 kind = "validation"
-status = "not_run"
-claim = "The second corrected linked __cxa_finalize/service-aware FINI follow-up passes required exact-head checks before closure."
-source = "GitHub commit checks on the second corrected integration revision"
-result = ""
-limitations = "The follow-up remains implemented rather than done until terminal exact-head success is observed."
+status = "passed"
+claim = "The corrected linked __cxa_finalize/service-aware FINI follow-up passes all required exact-head checks."
+source = "GitHub commit checks at 0cd4e1ee1e9d08eb3bde9f50238fd61a5f6af5a6"
+result = "Android arm64-v8a 108713564818, Android x86_64 108713564803, Linux A32 smoke 108713564773, app search 108713564052, ARM32 libc 108713564008, libm 108713563710, liblog 108713563627, public C API 108713563604, and libdl 108713563416 all completed successfully."
+limitations = "Unload ownership and unmapping remain separate follow-up work."
