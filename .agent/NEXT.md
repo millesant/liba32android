@@ -2,27 +2,30 @@
 
 The numbered 011-049 roadmap is COMPLETE.
 
-`post-roadmap-link-map-reclamation-planning` is DONE. Its validated result
-revision is `8093ad7cc7ed83f97202eb87ff1da375406e6a9e`.
+`post-roadmap-link-map-reclamation-transaction` is DONE. Its validated result
+revision is `33037680cdf3dd25a7b60dc12b051fef5cfebf98`.
 
-`post-roadmap-link-map-reclamation-transaction` is IMPLEMENTED on `bleeding`.
-Exact-head required checks are its current acceptance gate.
+Next, implement bounded dynamic missing-object libdl acquisition above the
+accepted persistent loader/lifecycle/reclamation primitives.
 
-The mutation layer now preserves permanent stable graph slots, retires reclaimed
-objects as tombstones, releases exact persistent roots, sweeps objects after the
-last non-root owner disappears, lifecycle-gates physical reclamation, recomputes
-global visibility, snapshots live mapping bytes/permissions, and publishes
-link-map mutation only after successful unmapping.
+The first slice should resolve one requested root through the caller-owned
+provider seam, append/reuse it as a persistent Local root, eagerly apply the
+accepted relocation subset to newly loaded objects, seal their GNU RELRO,
+run persistent constructors without replaying already-Complete shared
+dependencies, and publish/increment a synthetic handle only after successful
+initialization.
 
-After terminal success, the next ownership step should connect this foundation
-to dynamic libdl acquisition/unload orchestration rather than teaching the
-low-level transaction about dlopen policy. A higher layer can then make a
-missing-object dlopen append a persistent root, run relocation/constructors,
-create the synthetic handle ownership anchor, and on final close run teardown,
-release that dynamic root, and invoke reclamation.
+Preflight handle capacity before mutating a genuinely new load. Failures before
+guest constructor execution should release the just-added root and physically
+reclaim newly unreachable Pending/Pending objects. Constructor execution failure
+must remain resident with latched lifecycle failure rather than pretending guest
+side effects can be rolled back.
 
-Keep RTLD_NODELETE/global-group policy explicit at that higher ownership seam;
-do not silently fold it into generic graph reachability.
+Keep recursive final-close unload lifecycle separate: it must finalize only the
+objects that become unreachable after releasing the dynamic owner, not blindly
+destroy an entire root closure containing shared dependencies.
+
+Keep RTLD_NODELETE/global-group policy explicit and separate.
 
 Other ready work remains broader pthread/TLS, concrete APK/ZIP acquisition, and
 higher-level public ELF/platform embedding.
