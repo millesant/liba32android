@@ -1,6 +1,7 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <span>
 
 #include "compat/a32_aeabi_atexit.h"
