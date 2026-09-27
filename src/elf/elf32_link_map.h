@@ -20,6 +20,11 @@ struct Elf32LinkMapRoot {
     Elf32LinkMapRootPolicy policy{Elf32LinkMapRootPolicy::Local};
 };
 
+enum class Elf32LinkMapObjectState : std::uint8_t {
+    Active = 0,
+    Retired,
+};
+
 // Caller-owned persistent loaded-object registry. Object indexes are stable:
 // successful appends only add objects and never reorder existing entries.
 // roots/global_scope_objects contain indexes into graph.objects. Mutation is
@@ -29,9 +34,24 @@ struct Elf32LinkMap {
     Elf32DependencyGraph graph;
     std::vector<Elf32LinkMapRoot> roots;
     std::vector<std::size_t> global_scope_objects;
+    // Empty is the legacy all-Active representation. Once materialized, this
+    // vector must exactly match graph.objects and Retired slots never return
+    // to Active or change stable index.
+    std::vector<Elf32LinkMapObjectState> object_states;
 
     [[nodiscard]] std::span<const std::size_t> global_scope() const noexcept {
         return global_scope_objects;
+    }
+
+    [[nodiscard]] bool object_active(std::size_t object_index) const noexcept {
+        if (object_index >= graph.objects.size()) {
+            return false;
+        }
+        if (object_states.empty()) {
+            return true;
+        }
+        return object_states.size() == graph.objects.size() &&
+               object_states[object_index] == Elf32LinkMapObjectState::Active;
     }
 };
 
