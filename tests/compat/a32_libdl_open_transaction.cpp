@@ -355,6 +355,51 @@ int test_preconstructor_failure_reclaims_added_root() {
     return 0;
 }
 
+int test_constructor_failure_remains_resident_and_latched() {
+    MappedGuestMemory memory;
+    const std::array<Elf32DependencyCatalogEntry, 0> entries{};
+    Elf32DependencyCatalogProvider provider{std::span{entries}};
+    Elf32LinkMap link_map;
+    link_map.graph.objects.emplace_back();
+    link_map.graph.objects[0].identity = "failed-resident";
+    link_map.graph.objects[0].linker_metadata.init_function = 0x20000U;
+    link_map.object_states = {Elf32LinkMapObjectState::Active};
+
+    Elf32LifecycleState lifecycle;
+    lifecycle.objects.resize(1U);
+    std::array<A32LibDlHandle, 1> handles{};
+    A32LibDlOpenTransaction transaction{
+        memory,
+        link_map,
+        provider,
+        std::span{handles},
+        lifecycle,
+        transaction_options(),
+    };
+
+    const auto failed = transaction.open("failed-resident", 0x8ff8U);
+    if (failed.error != A32LibDlOpenTransactionError::ConstructorFailed ||
+        !failed.retained_after_failure ||
+        failed.root_added ||
+        failed.object_index != std::optional<std::size_t>{0U} ||
+        lifecycle.objects[0].constructors !=
+            Elf32LifecycleObjectStatus::Failed ||
+        handles[0].refcount != 0U ||
+        link_map.object_states[0] != Elf32LinkMapObjectState::Active) {
+        return fail("constructor failure did not latch resident object state");
+    }
+
+    const auto repeated = transaction.open("failed-resident", 0x8ff8U);
+    if (repeated.error !=
+            A32LibDlOpenTransactionError::InvalidResidentLifecycle ||
+        handles[0].refcount != 0U ||
+        lifecycle.objects[0].constructors !=
+            Elf32LifecycleObjectStatus::Failed) {
+        return fail("failed constructor state was replayed by later dlopen");
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -363,5 +408,10 @@ int main() {
         status != 0) {
         return status;
     }
-    return test_preconstructor_failure_reclaims_added_root();
+    if (const int status =
+            test_preconstructor_failure_reclaims_added_root();
+        status != 0) {
+        return status;
+    }
+    return test_constructor_failure_remains_resident_and_latched();
 }
