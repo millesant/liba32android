@@ -66,6 +66,8 @@ enum class Elf32LinkMapReclamationError : std::uint8_t {
     InvalidLinkMap,
     InvalidLiveAnchor,
     ObjectLimitExceeded,
+    // Appended to preserve existing public error values.
+    InvalidRoot,
 };
 
 struct Elf32LinkMapReclamationPlan {
@@ -95,6 +97,15 @@ struct Elf32LinkMapReclamationResult {
 [[nodiscard]] Elf32LinkMapReclamationResult
 plan_elf32_link_map_reclamation(
     const Elf32LinkMap& link_map,
+    std::span<const std::size_t> additional_live_anchors,
+    const Elf32LinkMapReclamationOptions& options);
+
+// Read-only variant that computes ownership/reclamation as if one exact
+// persistent root were removed. The supplied link map is never mutated.
+[[nodiscard]] Elf32LinkMapReclamationResult
+plan_elf32_link_map_root_release(
+    const Elf32LinkMap& link_map,
+    std::size_t root_object_index,
     std::span<const std::size_t> additional_live_anchors,
     const Elf32LinkMapReclamationOptions& options);
 
