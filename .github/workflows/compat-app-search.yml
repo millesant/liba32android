@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libboost-dev binutils
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libboost-dev binutils zlib1g-dev
 
       - name: Ensure pinned NDK
         run: |
@@ -38,6 +38,18 @@ jobs:
           bash tools/fixtures/build_arm32_android_app_search_fixture.sh             "$ANDROID_HOME/ndk/$NDK_VERSION"             build-fixtures/app-search-second
           cmp             build-fixtures/app-search/libfixture_app_root.so             build-fixtures/app-search-second/libfixture_app_root.so
           cmp             build-fixtures/app-search/libfixture_app_child.so             build-fixtures/app-search-second/libfixture_app_child.so
+          python3 tools/fixtures/build_arm32_android_app_search_apk.py             build-fixtures/app-search/libfixture_app_child.so             build-fixtures/app-search/fixture-app.apk
+          python3 tools/fixtures/build_arm32_android_app_search_apk.py             build-fixtures/app-search-second/libfixture_app_child.so             build-fixtures/app-search-second/fixture-app.apk
+          cmp             build-fixtures/app-search/fixture-app.apk             build-fixtures/app-search-second/fixture-app.apk
+
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile("build-fixtures/app-search/fixture-app.apk") as archive:
+              entry = archive.getinfo("lib/armeabi-v7a/libfixture_app_child.so")
+              assert entry.compress_type == zipfile.ZIP_DEFLATED
+              print(f"fixture.apk.method={entry.compress_type}")
+              print(f"fixture.apk.uncompressed_size={entry.file_size}")
+          PY
 
           readelf -dW build-fixtures/app-search/libfixture_app_root.so |
             tee build-fixtures/app-search-root-dynamic.txt
@@ -55,7 +67,7 @@ jobs:
       - name: Configure integration
         run: |
           set -euxo pipefail
-          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DLIBA32ANDROID_BUILD_TESTS=ON             -DLIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH="$GITHUB_WORKSPACE/build-fixtures/app-search/libfixture_app_root.so"             -DLIBA32ANDROID_ARM32_APP_SEARCH_CHILD_PATH="$GITHUB_WORKSPACE/build-fixtures/app-search/libfixture_app_child.so"
+          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DLIBA32ANDROID_BUILD_TESTS=ON             -DLIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH="$GITHUB_WORKSPACE/build-fixtures/app-search/libfixture_app_root.so"             -DLIBA32ANDROID_ARM32_APP_SEARCH_APK_PATH="$GITHUB_WORKSPACE/build-fixtures/app-search/fixture-app.apk"
 
       - name: Build integration
         run: cmake --build build --target compat_android_library_search_integration_test --parallel 2
@@ -64,12 +76,12 @@ jobs:
         run: |
           set -euxo pipefail
           ctest --test-dir build --output-on-failure -R '^a32_android_library_search_integration$'
-          build/compat_android_library_search_integration_test             build-fixtures/app-search/libfixture_app_root.so             build-fixtures/app-search/libfixture_app_child.so |
+          build/compat_android_library_search_integration_test             build-fixtures/app-search/libfixture_app_root.so             build-fixtures/app-search/fixture-app.apk |
             tee build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.object_count=2' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.requested=libfixture_app_child.so' build-fixtures/app-search-integration-evidence.txt
-          grep -F 'fixture.android_search.source=filesystem' build-fixtures/app-search-integration-evidence.txt
-          grep -F 'fixture.android_search.child_identity=build-fixtures/app-search/libfixture_app_child.so' build-fixtures/app-search-integration-evidence.txt
+          grep -F 'fixture.android_search.source=apk' build-fixtures/app-search-integration-evidence.txt
+          grep -F 'fixture.android_search.child_identity=build-fixtures/app-search/fixture-app.apk!/lib/armeabi-v7a/libfixture_app_child.so' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.relocation_count=1' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.result=123' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.status=PASS' build-fixtures/app-search-integration-evidence.txt
@@ -81,6 +93,7 @@ jobs:
           path: |
             build-fixtures/app-search/libfixture_app_root.so
             build-fixtures/app-search/libfixture_app_child.so
+            build-fixtures/app-search/fixture-app.apk
             build-fixtures/app-search-root-dynamic.txt
             build-fixtures/app-search-root-relocations.txt
             build-fixtures/app-search-child-symbols.txt
