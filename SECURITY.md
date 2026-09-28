@@ -25,7 +25,7 @@ Include, when possible:
 
 ## Supported versions
 
-There are no stable releases yet. Security fixes target the current `bleeding`
+There are no stable releases yet. Security fixes target the current `main`
 integration branch unless a released version is explicitly documented later.
 
 ## Scope

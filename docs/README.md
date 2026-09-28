@@ -1,5 +1,7 @@
 # Documentation
 
+**Language:** English | [Português (Brasil)](README.pt-BR.md)
+
 This directory separates current architecture/development guidance from
 research and historical evidence.
 

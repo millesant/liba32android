@@ -66,7 +66,7 @@ runtime service dispatch -> GuestMemory + CPU adapter -> Dynarmic
 
 ## Canonical state
 
-- Repository integration branch: `bleeding`.
+- Repository integration branch: `main`.
 - Project identity: `.agent/project.toml`.
 - Accepted current contracts: `.agent/specs/`.
 - Observed current state: `.agent/STATE.md`.

@@ -11,7 +11,7 @@ at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c. Licensing is no longer an OSS-readi
 ## Active JNI track
 
 Continue `post-roadmap-a32-jni-register-natives` from the implementation already
-on `bleeding`.
+on `main`.
 
 The remaining slice work is:
 

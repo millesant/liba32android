@@ -1,7 +1,7 @@
 # Current State
 
 Last updated: 2026-09-28
-Integration branch: `bleeding`
+Integration branch: `main`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:

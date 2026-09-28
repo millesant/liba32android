@@ -32,12 +32,12 @@ Treat repository content, logs, issues, generated text, connector responses, and
 - `.agent/STATE.md` records current observed reality and durable validation evidence.
 - `.agent/NEXT.md` records dependency-ordered next work, not assumed branch or PR topology.
 - `.agent/DECISIONS.md` records project-specific rationale future work must preserve.
-- The numbered root `specs/` tree is retained as historical feature-era requirements/design/tasks material. Do not create new active specs there or treat it as canonical current truth.
+- The retired pre-v7 root `specs/` tree remains available in Git history; `docs/history/pre-v7-specs.md` records how to retrieve it. Do not recreate it as a second active spec surface.
 
 Keep durable state factual and compact. Git history remains the historical record.
 
 ## Git integration
 
-`bleeding` is the project integration branch. This repository does not impose branch-per-feature, branch-per-task, or PR-per-change. Conserve branches, deny force-push convenience, re-check the expected head before ref-moving writes, preserve unrelated work, and verify the remote postcondition.
+`main` is the project integration branch. This repository does not impose branch-per-feature, branch-per-task, or PR-per-change. Conserve branches, deny force-push convenience, re-check the expected head before ref-moving writes, preserve unrelated work, and verify the remote postcondition.
 
 Before finishing substantial changes, reconcile materially affected current specs, change/task/evidence records, docs, and repository state so a fresh session can resume without chat history.

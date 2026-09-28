@@ -1,7 +1,9 @@
 # liba32android
 
-[![CI](https://github.com/millesant/liba32android/actions/workflows/ci.yml/badge.svg?branch=bleeding)](https://github.com/millesant/liba32android/actions/workflows/ci.yml)
-[![Public C embedding API](https://github.com/millesant/liba32android/actions/workflows/public-embedding-api.yml/badge.svg?branch=bleeding)](https://github.com/millesant/liba32android/actions/workflows/public-embedding-api.yml)
+**Language:** English | [Português (Brasil)](README.pt-BR.md)
+
+[![CI](https://github.com/millesant/liba32android/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/millesant/liba32android/actions/workflows/ci.yml)
+[![Public C embedding API](https://github.com/millesant/liba32android/actions/workflows/public-embedding-api.yml/badge.svg?branch=main)](https://github.com/millesant/liba32android/actions/workflows/public-embedding-api.yml)
 
 **liba32android** is an experimental AArch32 compatibility runtime for executing
 32-bit ARM Android native code inside a 64-bit Android process.

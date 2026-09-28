@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 REQUIRED = (
     "README.md",
+    "README.pt-BR.md",
     "LICENSE",
     "CONTRIBUTING.md",
     "SECURITY.md",
@@ -19,6 +20,7 @@ REQUIRED = (
     "ROADMAP.md",
     "AGENTS.md",
     "docs/README.md",
+    "docs/README.pt-BR.md",
     "docs/development/build-and-test.md",
     "docs/development/public-api-quickstart.md",
     "docs/history/pre-v7-specs.md",
@@ -30,6 +32,7 @@ REQUIRED = (
 
 MARKDOWN_ROOT_FILES = (
     ROOT / "README.md",
+    ROOT / "README.pt-BR.md",
     ROOT / "CONTRIBUTING.md",
     ROOT / "SECURITY.md",
     ROOT / "CODE_OF_CONDUCT.md",

@@ -2,9 +2,9 @@ name: ARM32 libdl shim
 
 on:
   push:
-    branches: [bleeding]
+    branches: [main]
   pull_request:
-    branches: [bleeding]
+    branches: [main]
 
 permissions:
   contents: read
