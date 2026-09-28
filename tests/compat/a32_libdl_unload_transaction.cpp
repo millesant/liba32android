@@ -553,6 +553,76 @@ int test_nodelete_final_close_survives_plain_reopen() {
     return 0;
 }
 
+int test_global_final_close_stays_mapped() {
+    MappedGuestMemory memory;
+    Elf32LinkMap link_map;
+    if (!stage_object(memory, link_map, "global-root", 0x2C000U)) {
+        return fail("could not map global-retention fixture");
+    }
+    link_map.roots = {
+        Elf32LinkMapRoot{
+            .object_index = 0U,
+            .policy = Elf32LinkMapRootPolicy::Global,
+            .nodelete = false,
+        },
+    };
+    link_map.global_scope_objects = {0U};
+    link_map.object_states = {Elf32LinkMapObjectState::Active};
+
+    Elf32LifecycleState lifecycle;
+    lifecycle.objects.resize(1U);
+    lifecycle.objects[0].constructors =
+        Elf32LifecycleObjectStatus::Complete;
+    std::array<A32LibDlHandle, 1> handles{{
+        {
+            .guest_handle = 0x70000000U,
+            .object_index = 0U,
+            .refcount = 1U,
+        },
+    }};
+    std::array<A32AeabiAtexitRecord, 1> records{};
+    A32AeabiAtexitService registrations{std::span{records}};
+    const std::array<A32HostServiceRegistryEntry, 0> service_entries{};
+    A32HostServiceRegistry registry{std::span{service_entries}};
+    const std::array<A32LibDlObjectLifecycleBinding, 1> bindings{{
+        {.object_index = 0U, .dso_handle = 0x16000U},
+    }};
+    A32LibDlCloseTransaction finalizer{
+        link_map,
+        std::span{handles},
+        lifecycle,
+        registrations,
+        std::span{bindings},
+        close_options(registry),
+    };
+    A32LibDlUnloadTransaction unload{
+        link_map,
+        std::span{handles},
+        lifecycle,
+        finalizer,
+        unload_options(),
+    };
+
+    const auto result =
+        unload.close(memory, 0x70000000U, 0x8ff8U);
+    if (!result ||
+        result.outcome !=
+            A32LibDlUnloadTransactionOutcome::LoadPolicyRetained ||
+        handles[0].refcount != 0U ||
+        link_map.roots.size() != 1U ||
+        link_map.roots[0].policy != Elf32LinkMapRootPolicy::Global ||
+        link_map.roots[0].nodelete ||
+        link_map.global_scope_objects !=
+            std::vector<std::size_t>{0U} ||
+        link_map.object_states[0] != Elf32LinkMapObjectState::Active ||
+        lifecycle.objects[0].destructors !=
+            Elf32LifecycleObjectStatus::Pending ||
+        !mapped(memory, link_map, 0U)) {
+        return fail("RTLD_GLOBAL final close unloaded a retained root");
+    }
+    return 0;
+}
+
 int test_nonfinal_reference_only_decrements() {
     MappedGuestMemory memory;
     Elf32LinkMap link_map;
@@ -632,6 +702,10 @@ int main() {
     }
     if (const int status =
             test_nodelete_final_close_survives_plain_reopen();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_global_final_close_stays_mapped();
         status != 0) {
         return status;
     }
