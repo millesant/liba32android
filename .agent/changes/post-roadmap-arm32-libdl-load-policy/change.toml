@@ -10,13 +10,13 @@ acceptance = [
   "ARM32 bionic libdl constants use the LP32 ABI values: RTLD_NOW=0, RTLD_LAZY=1, RTLD_GLOBAL=2, RTLD_NOLOAD=4, RTLD_NODELETE=0x1000, RTLD_DEFAULT=0xffffffff, RTLD_NEXT=0xfffffffe",
   "RTLD_LAZY remains accepted only as an ABI compatibility flag while all relocations continue to use the existing eager behavior",
   "RTLD_LOCAL is the absence of RTLD_GLOBAL and never demotes an already-Global root",
-  "RTLD_GLOBAL promotes an existing or newly acquired root exactly once and deterministically publishes it to persistent global scope",
+  "RTLD_GLOBAL promotes an existing or newly acquired root exactly once, deterministically publishes it to persistent global scope, and follows bionic can_unload semantics by retaining the linked root on final close",
   "every successful named dlopen has an exact persistent root ownership record, including reopening an already-loaded dependency",
   "RTLD_NOLOAD never invokes the dependency provider or maps a missing object; it returns null for missing objects and can acquire/promote an already-Active object",
-  "RTLD_NODELETE is a persistent monotonic root property; final dlclose clears the synthetic handle without lifecycle teardown, root release, tombstoning, or unmapping",
+  "RTLD_NODELETE is a persistent monotonic root property; final dlclose of either a Global or NODELETE root clears the synthetic handle without lifecycle teardown, root release, tombstoning, or unmapping",
   "a later non-NODELETE reopen cannot remove a root previously marked NODELETE",
   "RTLD_DEFAULT and RTLD_NEXT dlsym special handles follow the ARM32 bionic LP32 values without colliding with generated synthetic handles",
-  "focused regressions cover ARM32 constants, local/global promotion, NOLOAD hit/miss/provider suppression, NODELETE final-close retention/reopen, active dependency root creation, and special-handle lookup behavior",
+  "focused regressions cover ARM32 constants, local/global promotion, NOLOAD hit/miss/provider suppression, Global and NODELETE final-close retention, NODELETE reopen persistence, active dependency root creation, and special-handle lookup behavior",
   "RTLD_NEXT lookup semantics, true lazy binding, Android pathname/search accessibility, and NODELETE process-exit teardown remain separate"
 ]
 
