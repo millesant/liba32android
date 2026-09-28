@@ -318,7 +318,6 @@ if(LIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH AND
     add_test(
         NAME a32_android_library_search_integration
         COMMAND compat_android_library_search_integration_test
-                "${LIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH}"
                 "${LIBA32ANDROID_ARM32_APP_SEARCH_APK_PATH}"
     )
 endif()
