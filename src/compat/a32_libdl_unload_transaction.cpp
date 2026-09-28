@@ -111,12 +111,13 @@ A32LibDlUnloadTransactionResult A32LibDlUnloadTransaction::close(
             A32LibDlUnloadTransactionError::InvalidOwnershipState,
             object_index);
     }
-    if (exact_root->nodelete) {
+    if (exact_root->nodelete ||
+        exact_root->policy == elf::Elf32LinkMapRootPolicy::Global) {
         handle = {};
         A32LibDlUnloadTransactionResult result;
         result.object_index = object_index;
         result.outcome =
-            A32LibDlUnloadTransactionOutcome::NodeleteRetained;
+            A32LibDlUnloadTransactionOutcome::LoadPolicyRetained;
         return result;
     }
 
