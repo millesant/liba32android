@@ -198,8 +198,8 @@ int test_vm_install_and_getenv() {
             cpsr) != A32HostServiceDisposition::Handled ||
         regs[0] !=
             static_cast<std::uint32_t>(kA32JniEversion) ||
-        read_u32(memory, 0x1200U) != 0U) {
-        return fail("JNI GetEnv below-range version did not return EVERSION/null");
+        read_u32(memory, 0x1200U) != 0xdeadbeefU) {
+        return fail("JNI GetEnv below-range version touched output on EVERSION");
     }
 
     if (!write_u32(memory, 0x1200U, 0xdeadbeefU)) {
@@ -216,8 +216,8 @@ int test_vm_install_and_getenv() {
             cpsr) != A32HostServiceDisposition::Handled ||
         regs[0] !=
             static_cast<std::uint32_t>(kA32JniEversion) ||
-        read_u32(memory, 0x1200U) != 0U) {
-        return fail("JNI GetEnv unsupported version did not return EVERSION/null");
+        read_u32(memory, 0x1200U) != 0xdeadbeefU) {
+        return fail("JNI GetEnv above-range version touched output on EVERSION");
     }
 
     regs = {};
@@ -230,6 +230,20 @@ int test_vm_install_and_getenv() {
             regs,
             cpsr) != A32HostServiceDisposition::Failed) {
         return fail("JNI GetEnv accepted wrong JavaVM pointer");
+    }
+
+    regs = {};
+    regs[0] = configured.java_vm_address;
+    regs[1] = 0U;
+    regs[2] = 0x00010008U;
+    if (service.handle(
+            memory,
+            kA32JniGetEnvSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] !=
+            static_cast<std::uint32_t>(kA32JniEversion)) {
+        return fail("JNI GetEnv EVERSION incorrectly required output pointer");
     }
 
     regs = {};
