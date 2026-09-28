@@ -382,9 +382,10 @@ int test_apk_runtime_bootstrap_provider_composition() {
     Elf32LifecycleState lifecycle;
     std::array<A32LibDlHandle, 4> handles{};
     RecordingPlatformProvider platform;
-    const std::array<std::string_view, 2> application_sonames{{
+    const std::array<std::string_view, 3> application_sonames{{
         "libroot.so",
         "libchild.so",
+        "libmissing.so",
     }};
 
     A32AndroidApkRuntimeBootstrap bootstrap{
@@ -399,7 +400,7 @@ int test_apk_runtime_bootstrap_provider_composition() {
         bootstrap_options(),
     };
     if (!bootstrap.configuration_valid() ||
-        bootstrap.application_library_count() != 2U ||
+        bootstrap.application_library_count() != 3U ||
         bootstrap.search_root() !=
             apk_path.string() + "!/lib/armeabi-v7a") {
         return fail("valid APK bootstrap configuration was rejected");
@@ -438,6 +439,22 @@ int test_apk_runtime_bootstrap_provider_composition() {
         provided.source.image != child_image ||
         !platform.names.empty()) {
         return fail("requester-scoped APK dependency did not resolve");
+    }
+
+    provided = bootstrap.provider().resolve(
+        "libmissing.so", 16U);
+    if (provided.error != Elf32DependencyProviderError::Failed ||
+        !platform.names.empty()) {
+        return fail("missing declared APK root fell through to platform");
+    }
+
+    provided = bootstrap.provider().resolve_for(
+        root_identity,
+        "libmissing.so",
+        16U);
+    if (provided.error != Elf32DependencyProviderError::Failed ||
+        !platform.names.empty()) {
+        return fail("missing declared APK dependency fell through to platform");
     }
 
     provided = bootstrap.provider().resolve_for(
