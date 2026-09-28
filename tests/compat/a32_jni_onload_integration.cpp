@@ -30,12 +30,13 @@ using liba32android::elf::Elf32DependencyLoadSource;
 using liba32android::elf::Elf32DependencyProvider;
 using liba32android::elf::Elf32DependencyProviderError;
 using liba32android::elf::Elf32DependencyProviderResult;
+using liba32android::elf::Elf32LifecycleExecutionContext;
 using liba32android::elf::Elf32SymbolLookupOptions;
 using liba32android::elf::load_elf32_dependency_graph;
 using liba32android::memory::MappedGuestMemory;
 using liba32android::memory::MemoryPermission;
-using liba32android::runtime::A32HostServiceRegistry;
-using liba32android::runtime::A32HostServiceRegistryEntry;
+using liba32android::runtime::A32HostServiceDisposition;
+using liba32android::runtime::A32HostServiceHandler;
 
 constexpr std::uint64_t kMaxFixtureImageBytes = 4U << 20;
 constexpr std::size_t kStackPages = 4U;
@@ -44,6 +45,42 @@ int fail(const std::string& message) {
     std::cerr << message << '\n';
     return 1;
 }
+
+class ContextCheckingJniHandler final
+    : public A32HostServiceHandler {
+public:
+    ContextCheckingJniHandler(
+        A32JniVmService& vm,
+        Elf32LifecycleExecutionContext& context,
+        std::size_t expected_object) noexcept
+        : vm_(vm),
+          context_(context),
+          expected_object_(expected_object) {}
+
+    A32HostServiceDisposition handle(
+        liba32android::memory::GuestMemory& memory,
+        std::uint32_t svc_immediate,
+        std::array<std::uint32_t, 16>& regs,
+        std::uint32_t& cpsr) override {
+        if (!context_.object_index.has_value() ||
+            *context_.object_index != expected_object_) {
+            return A32HostServiceDisposition::Failed;
+        }
+        saw_expected_context_ = true;
+        return vm_.handle(
+            memory, svc_immediate, regs, cpsr);
+    }
+
+    [[nodiscard]] bool saw_expected_context() const noexcept {
+        return saw_expected_context_;
+    }
+
+private:
+    A32JniVmService& vm_;
+    Elf32LifecycleExecutionContext& context_;
+    std::size_t expected_object_{};
+    bool saw_expected_context_{};
+};
 
 class FailIfCalledProvider final : public Elf32DependencyProvider {
 public:
@@ -191,10 +228,9 @@ int main(int argc, char** argv) {
                 installed.error));
     }
 
-    const std::array<A32HostServiceRegistryEntry, 1> services{{
-        {kA32JniGetEnvSvcImmediate, &vm},
-    }};
-    A32HostServiceRegistry registry{std::span{services}};
+    Elf32LifecycleExecutionContext execution_context;
+    ContextCheckingJniHandler handler{
+        vm, execution_context, 0U};
 
     const std::uint64_t stack_top64 =
         static_cast<std::uint64_t>(*stack) +
@@ -211,19 +247,22 @@ int main(int argc, char** argv) {
         .max_instructions = 256U,
         .max_service_calls = 1U,
         .symbols = symbol_options(),
+        .execution_context = &execution_context,
     };
     const auto result = invoke_a32_jni_on_load(
         memory,
         loaded.graph,
         0U,
         vm_layout.java_vm_address,
-        registry,
+        handler,
         options);
     if (!result ||
         result.returned_version != kA32JniVersion16 ||
         !result.execution.has_value() ||
         !result.execution->stop_pc_reached ||
-        result.execution->services_handled != 1U) {
+        result.execution->services_handled != 1U ||
+        !handler.saw_expected_context() ||
+        execution_context.object_index.has_value()) {
         return fail(
             std::string("ARM32 JNI_OnLoad/GetEnv execution failed: ") +
             liba32android::compat::to_string(result.error));
