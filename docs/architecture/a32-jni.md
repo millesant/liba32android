@@ -87,3 +87,79 @@ A32 service dispatcher.
 This slice does not implement FindClass, RegisterNatives, Java class/reference
 state, strings/arrays/exceptions, native-method dispatch, attach/detach,
 JNI_OnUnload, Android framework services, graphics, or audio.
+
+
+## Continuous JNI roadmap
+
+JNI is now one continuous compatibility track rather than a one-off bootstrap
+feature. Each bounded slice keeps the guest ARM32 ABI stable, reuses the
+service-aware executor, and adds only the Java-side state real native libraries
+prove they need.
+
+Planned order:
+
+1. **RegisterNatives + reverse native dispatch**
+   - expand the JNIEnv table through real slot 215;
+   - add FindClass at slot 6 because supplied libmla uses it with
+     RegisterNatives;
+   - parse bounded ARM32 JNINativeMethod arrays;
+   - retain class/name/signature/function associations;
+   - invoke one registered guest native through a bounded reverse-dispatch
+     transaction.
+
+2. **Class/member identity substrate**
+   - bounded class registry;
+   - GetObjectClass and IsInstanceOf;
+   - deterministic guest jclass/jmethodID/jfieldID handles;
+   - GetMethodID/GetStaticMethodID/GetFieldID/GetStaticFieldID.
+
+3. **Reference model**
+   - local/global/weak references;
+   - local frames/capacity;
+   - IsSameObject and reference-type queries;
+   - explicit lifetime/count ceilings.
+
+4. **Strings**
+   - NewString/NewStringUTF;
+   - UTF-16 and modified-UTF-8 length/access/release paths;
+   - region APIs with bounded copies.
+
+5. **Arrays**
+   - primitive/object array creation and length;
+   - element/region access and release behavior;
+   - object-array element references.
+
+6. **Exceptions**
+   - Throw/ThrowNew;
+   - ExceptionOccurred/Check/Clear/Describe;
+   - bounded pending-exception state per guest execution context.
+
+7. **Object construction and method calls**
+   - NewObject[A/V];
+   - Call<type>Method[A/V], nonvirtual, and static families;
+   - normalize ARM32 varargs to one internal jvalue-array path.
+
+8. **Fields**
+   - Get/Set<type>Field;
+   - static-field families;
+   - deterministic backing storage for compatibility-model classes.
+
+9. **Thread/VM invocation surface**
+   - AttachCurrentThread / DetachCurrentThread;
+   - GetEnv detached behavior;
+   - daemon attach and DestroyJavaVM only if real evidence requires them.
+
+10. **Direct buffers, critical access, monitors**
+    - NewDirectByteBuffer / address / capacity;
+    - primitive/string critical APIs;
+    - MonitorEnter / MonitorExit.
+
+11. **Compatibility completion**
+    - inspect VLC/MLA/FMOD and later APK evidence after every slice;
+    - fill remaining JNI table slots only when real binaries require them;
+    - keep Android framework-class behavior distinct from generic JNI ABI
+      plumbing.
+
+The goal is broad native-facing JNI compatibility, not reimplementation of ART.
+The compatibility runtime may model only the Java classes/objects required by
+native libraries until a future real-Java-runtime bridge proves useful.
