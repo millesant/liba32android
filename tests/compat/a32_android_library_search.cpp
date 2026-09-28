@@ -526,6 +526,46 @@ int test_apk_native_catalog_failures() {
         return fail("could not write bounded APK catalog fixture");
     }
 
+    auto source_limited = apk_options();
+    source_limited.max_archive_bytes = bounded_archive.size() - 1U;
+    if (A32ApkLibrarySource{source_limited}.catalog(
+            apk_path.string(),
+            "lib/armeabi-v7a",
+            catalog_options()).error !=
+        A32ApkLibraryCatalogError::Failed) {
+        return fail("APK catalog ignored archive-byte ceiling");
+    }
+
+    source_limited = apk_options();
+    source_limited.max_entries = 1U;
+    if (A32ApkLibrarySource{source_limited}.catalog(
+            apk_path.string(),
+            "lib/armeabi-v7a",
+            catalog_options()).error !=
+        A32ApkLibraryCatalogError::Failed) {
+        return fail("APK catalog ignored ZIP entry-count ceiling");
+    }
+
+    source_limited = apk_options();
+    source_limited.max_central_directory_bytes = 1U;
+    if (A32ApkLibrarySource{source_limited}.catalog(
+            apk_path.string(),
+            "lib/armeabi-v7a",
+            catalog_options()).error !=
+        A32ApkLibraryCatalogError::Failed) {
+        return fail("APK catalog ignored central-directory ceiling");
+    }
+
+    source_limited = apk_options();
+    source_limited.max_entry_name_bytes = 8U;
+    if (A32ApkLibrarySource{source_limited}.catalog(
+            apk_path.string(),
+            "lib/armeabi-v7a",
+            catalog_options()).error !=
+        A32ApkLibraryCatalogError::Failed) {
+        return fail("APK catalog ignored ZIP entry-name ceiling");
+    }
+
     auto limited = catalog_options();
     limited.max_libraries = 1U;
     if (source.catalog(
