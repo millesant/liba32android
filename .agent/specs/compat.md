@@ -891,3 +891,44 @@ lookup remains explicitly unsupported.
 
 NODELETE process-exit teardown, true lazy binding, RTLD_NEXT lookup, and
 Android pathname/namespace search policy remain separate.
+
+
+## L32-C033 — Bounded APK native-library source
+
+`A32ApkLibrarySource` is a concrete implementation of the accepted
+`A32AndroidLibrarySource` seam for exact `<archive>!/<entry>` paths. It does
+not change the generic ELF dependency-provider contract.
+
+The source requires caller-selected non-zero ceilings for virtual-path bytes,
+archive bytes, ZIP entry count, central-directory bytes, and entry-name bytes.
+The generic source call continues to supply the exact maximum published image
+bytes.
+
+Only ordinary single-disk ZIP32 archives are accepted. EOCD is located within
+the standard ZIP comment bound. Multi-disk metadata, ZIP64 sentinel fields,
+malformed/truncated directory records, and duplicate exact entry names fail
+without publishing bytes.
+
+The selected entry must use stored or DEFLATE compression and must not be
+encrypted. Central metadata supplies the bounded compressed/uncompressed sizes
+and CRC. The selected local header must agree on flags, method, and exact
+filename; without a data descriptor it must also agree on CRC and sizes.
+
+Stored entries publish exact payload bytes. DEFLATE entries use raw
+platform/NDK zlib inflation and succeed only when the full compressed stream is
+consumed, exactly the declared uncompressed byte count is produced, and CRC32
+matches. Successful identity is the exact virtual path and returned bytes are
+owned.
+
+A missing archive (ENOENT/ENOTDIR) or missing exact entry returns NotFound.
+Invalid options, unsupported archive/entry features, malformed structures,
+resource ceilings, I/O failure, decompression failure, or integrity mismatch
+return Failed.
+
+The existing requester-scoped Android search provider composes with this source
+unchanged, allowing a root such as
+`/path/base.apk!/lib/armeabi-v7a` to satisfy bare DT_NEEDED lookups.
+
+Package-manager/AssetManager discovery, split-APK policy, APK signature
+verification, extraction caches, ZIP64/encrypted archive support, explicit-path
+dlopen, and general archive mutation remain out of scope.
