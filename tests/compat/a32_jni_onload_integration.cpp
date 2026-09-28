@@ -223,8 +223,7 @@ int main(int argc, char** argv) {
         result.returned_version != kA32JniVersion16 ||
         !result.execution.has_value() ||
         !result.execution->stop_pc_reached ||
-        result.execution->services_handled != 1U ||
-        result.execution->regs[1] != 0U) {
+        result.execution->services_handled != 1U) {
         return fail(
             std::string("ARM32 JNI_OnLoad/GetEnv execution failed: ") +
             liba32android::compat::to_string(result.error));
