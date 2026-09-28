@@ -40,6 +40,31 @@ public:
         std::uint64_t max_image_bytes) = 0;
 };
 
+struct A32ApkLibrarySourceOptions {
+    std::uint32_t max_virtual_path_bytes{};
+    std::uint64_t max_archive_bytes{};
+    std::uint32_t max_entries{};
+    std::uint64_t max_central_directory_bytes{};
+    std::uint32_t max_entry_name_bytes{};
+};
+
+// Exact-entry source for ordinary single-disk ZIP32 APK paths expressed as
+// "<archive>!/<entry>". The source never extracts to disk and supports only
+// stored and raw-DEFLATE entries.
+class A32ApkLibrarySource final : public A32AndroidLibrarySource {
+public:
+    explicit A32ApkLibrarySource(
+        A32ApkLibrarySourceOptions options) noexcept
+        : options_(options) {}
+
+    [[nodiscard]] A32AndroidLibrarySourceResult load(
+        std::string_view virtual_path,
+        std::uint64_t max_image_bytes) override;
+
+private:
+    A32ApkLibrarySourceOptions options_;
+};
+
 struct A32FilesystemLibrarySourceOptions {
     std::uint32_t max_path_bytes{};
 };
