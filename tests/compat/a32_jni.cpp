@@ -158,10 +158,12 @@ int test_vm_install_and_getenv() {
     }
 
     std::uint32_t cpsr{};
-    for (const std::uint32_t version : {
-             kA32JniVersion12,
-             kA32JniVersion14,
-             kA32JniVersion16}) {
+    constexpr std::array<std::uint32_t, 3> supported_versions{{
+        kA32JniVersion12,
+        kA32JniVersion14,
+        kA32JniVersion16,
+    }};
+    for (const std::uint32_t version : supported_versions) {
         std::array<std::uint32_t, 16> regs{};
         regs[0] = configured.java_vm_address;
         regs[1] = 0x1200U;
@@ -218,6 +220,18 @@ int test_vm_install_and_getenv() {
             regs,
             cpsr) != A32HostServiceDisposition::Failed) {
         return fail("JNI GetEnv accepted null output pointer");
+    }
+
+    regs = {};
+    regs[0] = configured.java_vm_address;
+    regs[1] = 0x3000U;
+    regs[2] = kA32JniVersion16;
+    if (service.handle(
+            memory,
+            kA32JniGetEnvSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI GetEnv accepted unreadable output pointer");
     }
 
     regs = {};
