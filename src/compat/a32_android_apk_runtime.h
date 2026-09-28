@@ -44,10 +44,11 @@ struct A32AndroidApkRuntimeBootstrapResult {
     }
 };
 
-// Context-free application-root provider used only for initial application
-// bootstrap and later named app-local dlopen. Requester-aware dependency lookup
-// deliberately returns NotFound so transitive app dependencies flow through the
-// accepted requester-scoped Android search provider.
+// Application-local guard/root provider. Context-free lookup resolves declared
+// app SONAMEs for initial bootstrap/later named dlopen. In requester-aware
+// lookup it runs after the accepted app search provider and fails closed for a
+// declared app SONAME that the APK search could not supply, preventing accidental
+// platform substitution; undeclared names continue to platform fallback.
 class A32AndroidApkRootProvider final
     : public elf::Elf32DependencyProvider {
 public:
