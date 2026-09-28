@@ -18,6 +18,9 @@ enum class Elf32LinkMapRootPolicy : std::uint8_t {
 struct Elf32LinkMapRoot {
     std::size_t object_index{};
     Elf32LinkMapRootPolicy policy{Elf32LinkMapRootPolicy::Local};
+    // Monotonic libdl retention policy. Visibility remains controlled by
+    // policy/global_scope; nodelete affects final-close ownership only.
+    bool nodelete{};
 };
 
 enum class Elf32LinkMapObjectState : std::uint8_t {
