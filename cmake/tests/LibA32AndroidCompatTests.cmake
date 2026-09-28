@@ -233,6 +233,23 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_jni_onload_integration_test
+    tests/compat/a32_jni_onload_integration.cpp
+)
+
+if(LIBA32ANDROID_ARM32_JNI_ONLOAD_FIXTURE_PATH)
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_JNI_ONLOAD_FIXTURE_PATH}")
+        message(FATAL_ERROR
+            "JNI_OnLoad fixture does not exist: ${LIBA32ANDROID_ARM32_JNI_ONLOAD_FIXTURE_PATH}")
+    endif()
+    add_test(
+        NAME a32_jni_onload_integration
+        COMMAND compat_jni_onload_integration_test
+                "${LIBA32ANDROID_ARM32_JNI_ONLOAD_FIXTURE_PATH}"
+    )
+endif()
+
+liba32android_add_test_executable(
     compat_libdl_shim_integration_test
     tests/compat/a32_libdl_shim.cpp
 )
