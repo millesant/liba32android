@@ -40,7 +40,7 @@ enum class A32LibDlCloseTransactionOutcome : std::uint8_t {
     None = 0,
     RefcountDecremented,
     ObjectFinalized,
-    NodeleteRetained,
+    LoadPolicyRetained,
 };
 
 struct A32LibDlCloseTransactionResult {
