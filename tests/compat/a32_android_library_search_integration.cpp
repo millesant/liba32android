@@ -282,7 +282,7 @@ int main(int argc, char** argv) {
     if (!reopened_child ||
         !reopened_child.object_index.has_value() ||
         *reopened_child.object_index != 1U ||
-        reopened_child.guest_handle != 0x70000001U ||
+        reopened_child.guest_handle != 0x70000004U ||
         handles[1].refcount != 1U) {
         return fail("persistent APK bootstrap transaction could not dlopen child");
     }
