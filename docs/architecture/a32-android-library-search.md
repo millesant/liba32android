@@ -1,6 +1,6 @@
 # Requester-scoped Android application library search
 
-Status: feature 048, filesystem source, and bounded APK source accepted; caller-supplied APK runtime bootstrap implemented
+Status: feature 048, filesystem/APK sources, and APK runtime bootstrap accepted; bounded APK native catalog implemented
 
 ## Goal
 
@@ -86,6 +86,33 @@ Android:
 - `base.apk!/lib/armeabi-v7a/libvlc.so` through an archive-aware source;
 - `/data/app/example/lib/arm/libvlc.so` through the filesystem source.
 
+## Bounded APK native-library catalog
+
+The APK source now also exposes one bounded catalog operation for a
+caller-selected ABI directory.
+
+Catalog enumeration reuses the same private ZIP32 directory parser as exact
+entry loading. The parser opens and validates the archive once, decodes bounded
+central metadata into owned entry records, and feeds either exact-entry
+selection or catalog filtering. This avoids a second archive interpretation
+path.
+
+For a root such as `lib/armeabi-v7a`, only direct child basenames ending in
+`.so` qualify. Nested paths, other ABI directories, and non-native entries are
+ignored. Duplicate qualifying basenames are rejected. Caller ceilings bound the
+number of libraries, each SONAME, total published SONAME bytes, and the ABI
+directory in addition to the source's existing archive/directory/name bounds.
+
+Successful catalogs are lexicographically sorted and own their strings. They
+can be converted to views and passed directly to
+`A32AndroidApkRuntimeBootstrap`, removing the manually enumerated application
+membership list while preserving an explicit initial root choice.
+
+The real ARM32 bootstrap fixture now discovers its two packaged DSOs from the
+mini-APK before constructing the bootstrap. The supplied VLC APK yields exactly
+`libc++_shared.so`, `libmla.so`, `libvlc.so`, and `libvlcjni.so` under
+the same direct `lib/armeabi-v7a/` rule.
+
 ## Persistent APK runtime bootstrap
 
 `A32AndroidApkRuntimeBootstrap` moves one layer above byte acquisition without
@@ -153,8 +180,9 @@ stored/DEFLATE source behavior, and malformed/resource archive failures.
 ## Limits
 
 No AssetManager bridge, package-manager/manifest discovery, ABI auto-selection,
-split-APK selection, signature verification, extraction cache, ZIP64/encrypted
-archive support, explicit slash-containing dlopen path, RUNPATH/RPATH,
-LD_LIBRARY_PATH, automatic patching, JNI startup, graphics/audio integration,
-or device deployment is introduced. The bootstrap consumes caller-supplied
-application membership and platform policy rather than inferring either.
+root-library auto-selection, split-APK merging, signature verification,
+extraction cache, ZIP64/encrypted archive support, explicit slash-containing
+dlopen path, RUNPATH/RPATH, LD_LIBRARY_PATH, automatic patching, JNI startup,
+graphics/audio integration, or device deployment is introduced. Catalog
+discovery now supplies application membership, while APK/ABI/root choice and
+platform policy remain caller supplied.
