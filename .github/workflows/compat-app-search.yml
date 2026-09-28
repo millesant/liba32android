@@ -85,6 +85,7 @@ jobs:
           ctest --test-dir build --output-on-failure -R '^a32_android_library_search_integration$'
           build/compat_android_library_search_integration_test             build-fixtures/app-search/fixture-app.apk |
             tee build-fixtures/app-search-integration-evidence.txt
+          grep -F 'fixture.android_search.catalog_count=2' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.object_count=2' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.requested=libfixture_app_child.so' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.source=apk-bootstrap' build-fixtures/app-search-integration-evidence.txt
