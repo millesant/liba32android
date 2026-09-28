@@ -11,6 +11,7 @@
 
 #include "cpu/a32_cpu.h"
 #include "elf/elf32_dependency_graph.h"
+#include "elf/elf32_lifecycle.h"
 #include "elf/elf32_symbol_lookup.h"
 #include "runtime/a32_service_dispatch.h"
 
@@ -105,6 +106,10 @@ struct A32JniOnLoadOptions {
     std::size_t max_instructions{};
     std::size_t max_service_calls{};
     elf::Elf32SymbolLookupOptions symbols{};
+    // Optional borrowed provenance context. During JNI_OnLoad it identifies
+    // exactly object_index so nested __aeabi_atexit registration can learn the
+    // same object/DSO ownership as constructor execution.
+    elf::Elf32LifecycleExecutionContext* execution_context{};
 };
 
 enum class A32JniOnLoadError : std::uint8_t {
