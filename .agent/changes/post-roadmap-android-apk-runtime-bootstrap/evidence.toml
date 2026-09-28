@@ -13,19 +13,19 @@ limitations = "The accepted source performs exact-entry acquisition only and doe
 [[evidence]]
 id = "bootstrap-provider-regressions"
 kind = "test"
-status = "not_run"
+status = "passed"
 claim = "Focused host coverage proves bounded unique app SONAME validation, exact virtual requester identities, context-free app roots, requester-scoped transitive lookup, declared-name fail-closed behavior, undeclared platform fallback, and invalid root rejection."
 source = "tests/compat/a32_android_library_search.cpp"
-result = "Integrated focused coverage is present; exact-head execution has not yet been observed."
+result = "Project operator confirmed all required exact-head CI checks at 268d151bb8c93473c27abdefb9b9644b51ff3c96 were green."
 limitations = ""
 
 [[evidence]]
 id = "real-arm32-apk-bootstrap"
 kind = "test"
-status = "not_run"
+status = "passed"
 claim = "The real ARM32 integration starts from an empty link map, bootstraps root and child from one deterministic DEFLATED APK, initializes through A32LibDlOpenTransaction, reopens the resident child through the same transaction, and executes the relocated root call."
 source = ".github/workflows/compat-app-search.yml and tests/compat/a32_android_library_search_integration.cpp"
-result = "Integrated ARM32 bootstrap coverage is present; terminal workflow success has not yet been observed."
+result = "Project operator confirmed the corrected exact-head ARM32 APK bootstrap workflow was green at 268d151bb8c93473c27abdefb9b9644b51ff3c96."
 limitations = "The fixture has two app DSOs and a NotFound platform provider; richer platform compatibility composition remains caller supplied."
 
 [[evidence]]
@@ -40,8 +40,8 @@ limitations = "The GitHub connector did not expose the push workflow/run log, so
 [[evidence]]
 id = "exact-head-validation"
 kind = "validation"
-status = "not_run"
+status = "passed"
 claim = "The caller-supplied APK runtime bootstrap passes required exact-head checks before closure."
-source = "GitHub commit checks on the eventual integration revision"
-result = "Provider composition, validation/fail-closed regressions, accepted compat contract, architecture documentation, and full ARM32 APK bootstrap workflow are integrated; exact-head validation is pending."
-limitations = "The change remains implemented rather than done until terminal exact-head success is observed."
+source = "GitHub exact-head validation at 268d151bb8c93473c27abdefb9b9644b51ff3c96"
+result = "Project operator confirmed terminal exact-head CI success for the corrected caller-supplied APK runtime bootstrap at 268d151bb8c93473c27abdefb9b9644b51ff3c96."
+limitations = "Automatic APK catalog discovery, ABI/root selection, package discovery, JNI startup, graphics/audio, patching, and device deployment remain separate."
