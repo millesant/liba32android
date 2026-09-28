@@ -23,9 +23,9 @@ limitations = ""
 id = "supplied-arm32-jni-entrypoints"
 kind = "artifact"
 status = "observed"
-claim = "Supplied ARMv7 VLC/MLA/FMOD libraries export JNI_OnLoad, and libmla contains real GetEnv and RegisterNatives C++ wrappers."
+claim = "Supplied ARMv7 VLC/MLA/FMOD libraries export JNI_OnLoad, and libmla contains real GetEnv, FindClass, and RegisterNatives C++ wrappers."
 source = "docs/research/evidence/arm32-jni-entrypoints-2026-09-27.md"
-result = "libmla machine code uses JavaVM offset 0x18 for GetEnv and JNIEnv offset 0x35c (slot 215) for RegisterNatives."
+result = "libmla machine code uses JavaVM offset 0x18 for GetEnv, JNIEnv offset 0x18 (slot 6) for FindClass, and JNIEnv offset 0x35c (slot 215) for RegisterNatives."
 limitations = "The supplied binaries are evidence inputs only and are not checked into the repository."
 
 [[evidence]]
