@@ -1,3 +1,6 @@
+# Use platform/NDK zlib for bounded APK DEFLATE support.
+find_package(ZLIB REQUIRED)
+
 # Keep Dynarmic narrowly scoped to the A32 frontend needed by this runtime.
 set(DYNARMIC_FRONTENDS "A32" CACHE STRING "" FORCE)
 set(DYNARMIC_TESTS OFF CACHE BOOL "" FORCE)
