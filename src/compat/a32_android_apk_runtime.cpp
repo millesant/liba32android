@@ -137,7 +137,7 @@ elf::Elf32DependencyProviderResult A32AndroidApkRootProvider::resolve(
     switch (loaded.error) {
     case A32AndroidLibrarySourceError::NotFound:
         return provider_failure(
-            elf::Elf32DependencyProviderError::NotFound);
+            elf::Elf32DependencyProviderError::Failed);
     case A32AndroidLibrarySourceError::Failed:
         return provider_failure(
             elf::Elf32DependencyProviderError::Failed);
@@ -164,7 +164,9 @@ elf::Elf32DependencyProviderResult A32AndroidApkRootProvider::resolve_for(
     std::uint64_t max_image_bytes) {
     if (!requester_identity.empty()) {
         return provider_failure(
-            elf::Elf32DependencyProviderError::NotFound);
+            declared(requested_name)
+                ? elf::Elf32DependencyProviderError::Failed
+                : elf::Elf32DependencyProviderError::NotFound);
     }
     return resolve(requested_name, max_image_bytes);
 }
@@ -336,8 +338,8 @@ A32AndroidApkRuntimeBootstrap::A32AndroidApkRuntimeBootstrap(
           options_.search),
       platform_provider_(platform_provider),
       provider_list_{{
-          &root_provider_,
           &application_provider_,
+          &root_provider_,
           &platform_provider_,
       }},
       provider_chain_{
