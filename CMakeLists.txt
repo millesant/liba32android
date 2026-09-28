@@ -50,9 +50,9 @@ set(LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH "" CACHE FILEPATH
 set(LIBA32ANDROID_ARM32_LIBM_SHIM_PATH "" CACHE FILEPATH
     "Optional generated ARM32 Android libm.so compatibility shim used by feature-047 integration")
 set(LIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH "" CACHE FILEPATH
-    "Optional generated ARM32 Android app-root DSO used by feature-048 search integration")
+    "Legacy optional raw ARM32 app-root fixture path retained for compatibility")
 set(LIBA32ANDROID_ARM32_APP_SEARCH_APK_PATH "" CACHE FILEPATH
-    "Optional deterministic APK containing the ARM32 app-child DSO for app-search integration")
+    "Optional deterministic APK containing ARM32 app-root/child DSOs for bootstrap integration")
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibA32AndroidDependencies.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibA32AndroidRuntime.cmake)
