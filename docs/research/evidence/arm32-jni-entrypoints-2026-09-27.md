@@ -58,6 +58,21 @@ blx   r3
 This is direct machine-code evidence for the ARM32 JavaVM `GetEnv` table slot
 used by the first compatibility slice.
 
+### libmla.so JNIEnv::FindClass wrapper
+
+The weak `_JNIEnv::FindClass(char const*)` wrapper loads its native-interface
+function pointer from byte offset `0x18` before an indirect call:
+
+```text
+ldr   r1, [r0]
+ldr   r1, [r1, #0x18]
+...
+blx   r2
+```
+
+`0x18 / 4 == 6`, identifying native-table slot 6 as the real FindClass
+entry used by this supplied ARMv7 library.
+
 ### libmla.so JNIEnv::RegisterNatives wrapper
 
 The weak
