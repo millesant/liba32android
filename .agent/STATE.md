@@ -3,58 +3,59 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `post-roadmap-targeted-dlclose-unload` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: `post-roadmap-aeabi-dso-binding-association` — IMPLEMENTED, exact-head validation NOT RUN.
 
 ## Phase
 
 Features 011-049 remain accepted and the numbered roadmap remains COMPLETE.
 
-Accepted post-roadmap work includes service-aware ELF FINI, linked
-`__cxa_finalize`, resident exact-object final-close lifecycle, persistent
-ownership/reachability planning, physical link-map reclamation, and dynamic
-missing-object `dlopen` acquisition.
+Accepted post-roadmap work includes service-aware ELF lifecycle,
+`__aeabi_atexit` / `__cxa_finalize`, dynamic missing-object `dlopen`,
+ownership/reclamation planning, physical reclamation, and targeted final-close
+`dlclose` unload.
 
-Dynamic acquisition is DONE at
-`40479ffebe61c22c90d7d523292fc9e787be635d`.
+Targeted final-close unload is DONE at
+`742590cbc6740c9467e4b9d5f04884deeda16c1e`. The project operator confirmed all
+required exact-head CI checks were green.
 
 ## Active post-roadmap follow-up
 
-Targeted final-close physical unload is implemented.
+Lifecycle-scoped automatic DSO association is implemented.
 
-The ownership planner now supports a read-only exact-root-release query. It
-shares ordinary validation/reachability logic, excludes only the selected root
-from ownership, preserves caller live anchors, and mutates no graph/mapping
-state.
+ELF lifecycle execution can borrow a caller-owned current-object context. Every
+guest lifecycle call scopes it to the call's stable graph object index and
+restores the previous value on all exits; nested lifecycle execution restores
+the outer provenance correctly.
 
-Exact-object libdl teardown is now resumable without handle mutation. Complete
-destructor state is idempotent on retry; Failed state remains non-replayable.
+`A32AeabiAtexitService` may borrow finite learned object-to-DSO binding
+storage plus that context. Constructor-time non-zero DSO registrations learn
+exact stable object associations. Identical associations reuse capacity;
+conflicts or binding-capacity exhaustion return guest -1 atomically.
+Context-free registrations preserve legacy behavior and do not invent
+ownership.
 
-`A32LibDlUnloadTransaction` handles final synthetic references by preserving
-all other live handles, requiring a clean current ownership baseline, planning
-the exact post-root-release unreachable set, finalizing only that set in
-requester-before-dependency order, then invoking accepted physical root
-release/reclamation. The final synthetic handle is cleared only after physical
-release succeeds.
+The dynamic-open constructor path preserves the execution-context pointer while
+overriding only trapped live r13, so constructor registrations can learn the
+binding before handle publication.
 
-Lifecycle or reclamation failure preserves the final handle/root. A later retry
-skips objects already finalized successfully. Pre-existing unowned Active
-objects block the transaction rather than being collected opportunistically.
+Exact-object close consumes learned and/or caller-explicit bindings and rejects
+disagreement. Successful targeted physical unload forgets learned associations
+for reclaimed objects only after root release/unmapping succeeds; failed
+teardown/reclamation preserves them for retry.
 
-`A32LibDlService` may optionally delegate dlclose to this path. Physical
-service delegation requires `MappedGuestMemory`; legacy refcount-only and
-exact-object close paths remain available when targeted unload is absent.
-
-Focused regressions cover shared-root retention, live-handle retention,
-service-level unload, requester-before-dependency failure/retry, orphan
-rejection, non-final decrement, retirement, and physical unmapping.
+Focused regressions cover nested context restoration, real guest
+`svc #0xD2` learning, identical reuse, conflicts, bounded capacity, context-free
+legacy registration, binding-capacity reuse after retirement, dynamic-open
+constructor learning, learned-only close, and explicit/learned disagreement.
 
 Exact-head validation: NOT RUN.
 
 ## Deferred / partial
 
-Automatic dynamic object-to-DSO-handle discovery, RTLD_NODELETE/global-group
-policy, RTLD_GLOBAL/LOCAL flag expansion, RTLD_NEXT, lazy binding, Retired-slot
-reuse/compaction, concurrent graph mutation, `DT_PREINIT_ARRAY`, process
-argv/envp constructor ABI, broader pthread/TLS, concrete APK/ZIP byte
-acquisition, higher-level public ELF/platform orchestration, JNI/graphics/audio
-surfaces, and real Android device execution remain separate.
+RTLD_LOCAL/RTLD_GLOBAL/RTLD_NODELETE/NOLOAD policy, RTLD_NEXT, lazy binding,
+objects that never provide lifecycle-scoped `__aeabi_atexit` provenance,
+process-wide exit ownership, Retired-slot compaction, concurrent graph
+mutation, `DT_PREINIT_ARRAY`, process argv/envp constructor ABI, broader
+pthread/TLS, concrete APK/ZIP byte acquisition, higher-level public ELF/platform
+orchestration, JNI/graphics/audio surfaces, and real Android device execution
+remain separate.
