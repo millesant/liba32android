@@ -1,0 +1,30 @@
+schema = 1
+id = "post-roadmap-android-apk-runtime-bootstrap"
+kind = "feature"
+size = "S2"
+status = "active"
+workflow = "feature"
+control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
+base_revision = "021de93bde209f764f1ba109ffb5561ba8cc7439"
+acceptance = [
+  "one persistent APK bootstrap composition owns the archive source, finite application SONAME/identity storage, requester-scoped application search provider, context-free app-root provider, provider chain, and A32LibDlOpenTransaction",
+  "caller supplies exact APK path, ABI directory, finite application SONAME set, existing platform provider, memory/link-map/handle/lifecycle state, and existing open-transaction bounds",
+  "bootstrap validates bounded bare unique application SONAMEs, a bounded relative ABI directory, exact virtual identities, and requires the initial root SONAME to belong to the declared application set",
+  "context-free open resolves only declared app SONAMEs from the APK root while requester-aware dependency resolution uses the accepted exact requester-root provider before platform fallback",
+  "initial root load is performed through the existing A32LibDlOpenTransaction so append, relocation, RELRO, constructors, handle publication, Global/NODELETE policy, and failure semantics are not duplicated",
+  "the same exposed open transaction/provider chain remains valid for later app-local dynamic dlopen while the bootstrap object lives",
+  "focused host regressions prove provider ordering, exact requester identities, undeclared-name rejection, path/SONAME validation, platform fallback, and dynamic app-root resolution",
+  "real ARM32 integration packages both root and child DSOs into one deterministic DEFLATED mini-APK, bootstraps the root from the APK, resolves the child transitively, relocates, and executes the root call",
+  "package-manager/AssetManager discovery, ABI auto-detection, split-APK selection, manifest parsing, JNI startup, graphics/audio, automatic patching, and device deployment remain separate"
+]
+
+[convergence]
+requirements = "aligned"
+specs = "pending"
+implementation = "pending"
+tests = "pending"
+documentation = "pending"
+decisions = "not_applicable"
+tasks = "pending"
+evidence = "pending"
+repository = "aligned"
