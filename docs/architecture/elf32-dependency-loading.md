@@ -171,6 +171,22 @@ have no reclaimable Active objects before consuming the root-release result.
 That makes the prospective reclaimable set exactly the objects newly orphaned
 by the proposed release rather than unrelated pre-existing garbage.
 
+## Persistent root policy mutation
+
+Persistent roots now also retain a monotonic `nodelete` bit independently of
+their Local/Global visibility policy.
+
+`update_elf32_link_map_root_policy` operates on one exact Active stable object
+index without remapping it. It validates the current root/global representation,
+adds a root when an already-loaded dependency gains independent ownership,
+promotes Local to Global without allowing demotion, sets NODELETE without
+allowing it to clear, and maintains deterministic sorted global membership.
+
+The primitive intentionally does not make NODELETE a generic reclamation rule.
+Generic ELF root release remains policy-neutral; libdl checks NODELETE before
+requesting lifecycle or physical reclamation. This keeps platform dlopen policy
+above the reusable link-map ownership machinery.
+
 ## Reclamation transaction
 
 Post-roadmap reclamation mutation keeps feature-016 stable object indexes
