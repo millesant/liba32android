@@ -3,24 +3,24 @@ change = "post-roadmap-android-apk-library-source"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Add bounded ZIP32 archive source with stored/DEFLATE exact-entry loading and zlib integration."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Add focused archive/source/search regressions including malformed/resource/security cases."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Repackage the real ARM32 app-search child into a deterministic DEFLATED mini-APK and validate load/relocate/execute."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Converge accepted specs/architecture/evidence and run exact-head required checks."
