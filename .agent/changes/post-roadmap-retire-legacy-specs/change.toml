@@ -1,0 +1,28 @@
+schema = 1
+id = "post-roadmap-retire-legacy-specs"
+kind = "feature"
+size = "S1"
+status = "active"
+workflow = "feature"
+control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
+base_revision = "56a438e426408465ec23bac6c09960a792be090b"
+acceptance = [
+  "the stale root specs/ tree is absent from the current working tree while remaining recoverable from Git history",
+  ".agent/specs/ remains the sole accepted current specification surface",
+  "a compact history note identifies the last revision containing root specs/ and shows how to retrieve it",
+  "current README/context/repository-layout documentation no longer presents root specs/ as part of the live repository layout",
+  "historical completed .agent/changes and research evidence are not rewritten merely to hide old path references",
+  "repository hygiene rejects reintroduction of the legacy root specs/ tree",
+  "exact-head required checks remain green after the repository cleanup"
+]
+
+[convergence]
+requirements = "aligned"
+specs = "not_applicable"
+implementation = "aligned"
+tests = "pending"
+documentation = "aligned"
+decisions = "not_applicable"
+tasks = "aligned"
+evidence = "pending"
+repository = "aligned"

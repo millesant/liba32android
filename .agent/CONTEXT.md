@@ -62,7 +62,7 @@ runtime service dispatch -> GuestMemory + CPU adapter -> Dynarmic
 - `docs/research/`: research and environment-specific evidence.
 - `.agent/specs/`: accepted current contracts.
 - `.agent/changes/`: substantial change records/evidence.
-- root `specs/`: historical pre-v7 feature records only.
+- `docs/history/pre-v7-specs.md`: retrieval note for the retired pre-v7 root specification tree.
 
 ## Canonical state
 
@@ -75,4 +75,4 @@ runtime service dispatch -> GuestMemory + CPU adapter -> Dynarmic
 - Repository-specific agent overlay: `AGENTS.md`.
 - Generic workflow/control rules: private external `Millesant/.gpt` control plane.
 
-For substantial work, use a stable `.agent/changes/<change-id>/` identity. Historical feature packages under root `specs/` are evidence, not current contract authority.
+For substantial work, use a stable `.agent/changes/<change-id>/` identity. Retired pre-v7 feature packages remain available in Git history, but they are not current contract authority.

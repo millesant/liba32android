@@ -21,6 +21,7 @@ REQUIRED = (
     "docs/README.md",
     "docs/development/build-and-test.md",
     "docs/development/public-api-quickstart.md",
+    "docs/history/pre-v7-specs.md",
     ".github/ISSUE_TEMPLATE/bug_report.md",
     ".github/ISSUE_TEMPLATE/feature_request.md",
     ".github/pull_request_template.md",
@@ -62,6 +63,11 @@ def main() -> int:
     for rel in REQUIRED:
         if not (ROOT / rel).is_file():
             errors.append(f"missing required repository file: {rel}")
+
+    if (ROOT / "specs").exists():
+        errors.append(
+            "legacy root specs/ should remain retired; see docs/history/pre-v7-specs.md"
+        )
 
     root_resolved = ROOT.resolve()
     for source in markdown_files():

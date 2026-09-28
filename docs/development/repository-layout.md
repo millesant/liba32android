@@ -48,4 +48,4 @@ Tool scripts must resolve repository inputs relative to their own location and r
 - `docs/research/`: research notes and captured environment evidence.
 - `.agent/specs/`: accepted current project contracts.
 - `.agent/changes/`: substantial change identity/tasks/evidence.
-- root `specs/`: historical pre-v7 feature packages; do not extend for new work.
+- `docs/history/`: compact migration/history notes; retired pre-v7 specs remain in Git history rather than the working tree.

@@ -10,6 +10,7 @@ research and historical evidence.
 - [Repository layout](development/repository-layout.md)
 - [Architecture index](architecture/README.md)
 - [Project roadmap](../ROADMAP.md)
+- [Retired pre-v7 specifications](history/pre-v7-specs.md)
 - [Contributing](../CONTRIBUTING.md)
 
 ## Architecture

@@ -178,9 +178,9 @@ expectations are documented in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 Current accepted technical contracts live under `.agent/specs/`; observed
 implementation/validation state is summarized in `.agent/STATE.md`, and
-dependency-ordered next work is recorded in `.agent/NEXT.md`. Historical
-feature-era packages under `specs/` are retained as engineering history rather
-than current authority.
+dependency-ordered next work is recorded in `.agent/NEXT.md`. The retired
+pre-v7 root specification tree remains available in Git history; see the
+[historical specs note](docs/history/pre-v7-specs.md).
 
 ## License
 
