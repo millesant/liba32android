@@ -29,6 +29,15 @@ result = "Integrated ARM32 bootstrap coverage is present; terminal workflow succ
 limitations = "The fixture has two app DSOs and a NotFound platform provider; richer platform compatibility composition remains caller supplied."
 
 [[evidence]]
+id = "failed-head-child-handle-expectation"
+kind = "validation"
+status = "failed"
+claim = "The first bootstrap exact-head attempt contained an invalid child synthetic-handle expectation."
+source = "Operator CI report for b72ef8e6234288d6fdd75ed0c52362d4cdba9aea plus src/compat/a32_libdl_open_transaction.cpp and the ARM32 app-search integration/workflow"
+result = "The operator reported one CI lane failed. Static audit found the integration asserted child handle 0x70000001 / 1879048193, while the accepted handle allocator deterministically uses handle_base + slot*4, making slot 1 equal 0x70000004 / 1879048196. Test and workflow expectations were corrected."
+limitations = "The GitHub connector did not expose the push workflow/run log, so the unavailable log is not claimed as direct evidence of which lane emitted the failure."
+
+[[evidence]]
 id = "exact-head-validation"
 kind = "validation"
 status = "not_run"
