@@ -52,6 +52,12 @@ The resolved guest function is invoked with r0=JavaVM*, r1=0, caller stack,
 caller stop PC, and finite total instruction/service budgets through the
 existing service-aware A32 executor. ARM/Thumb state follows symbol bit 0.
 
+When the caller supplies the existing lifecycle execution context, the
+transaction scopes its object index to the exact JNI_OnLoad object for the
+entire guest call and restores the prior value afterward. Nested
+`__aeabi_atexit` registration can therefore retain the same automatic DSO
+ownership provenance as constructor execution.
+
 Success requires the returned jint to be exactly JNI_VERSION_1_2,
 JNI_VERSION_1_4, or JNI_VERSION_1_6, matching Dalvik's load-time contract.
 There is no Java class-loader/object model in this slice.
