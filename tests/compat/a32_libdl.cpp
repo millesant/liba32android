@@ -4,6 +4,7 @@
 #include <span>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "compat/a32_libdl.h"
 #include "elf/elf32_link_map.h"
