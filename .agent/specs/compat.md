@@ -1017,3 +1017,52 @@ SONAME remains an explicit caller choice.
 ABI auto-detection, manifest/root selection, split-APK merging,
 package-manager/AssetManager discovery, signatures, JNI startup, graphics/audio,
 patching, and device deployment remain separate.
+
+
+## L32-C036 — ARM32 JNI VM / JNI_OnLoad bootstrap
+
+The first JNI compatibility surface provides one currently-attached ARM32 guest
+JNI context without modeling Java objects/classes.
+
+The caller supplies already-mapped logical guest addresses for one JavaVM
+object, one eight-word JNI invocation table, one JNIEnv object, one five-word
+native-interface prefix, and one eight-byte ARM GetEnv SVC stub. Every range is
+nonzero, word-aligned, pairwise non-overlapping, and must fit in the 32-bit
+guest address space. Installation uses GuestMemory only, never changes mappings
+or permissions, snapshots current bytes, and rolls back prior writes if a later
+publication write fails.
+
+The JavaVM object contains the invocation-table guest pointer. The invocation
+table follows the Android JNI layout and publishes only GetEnv at slot 6
+(byte offset 0x18); unsupported invoke entries are zero. The JNIEnv object
+contains its native-table guest pointer, whose first five words are zero in this
+slice. The GetEnv entry targets one ARM `svc #0xd7; bx lr` stub.
+
+Matching Dalvik, GetEnv validates the JNI version before touching the output
+slot. The inclusive numeric range from JNI_VERSION_1_1 through
+JNI_VERSION_1_6 is accepted. For an in-range request, the exact installed
+JavaVM pointer and a writable output slot are required; the configured guest
+JNIEnv pointer is written and JNI_OK returned. An out-of-range request returns
+JNI_EVERSION without modifying the output slot. The current guest execution
+context is modeled as attached.
+
+`invoke_a32_jni_on_load` resolves `JNI_OnLoad` from exactly one requested
+loaded graph object using that object's bounded dynamic symbol metadata.
+Dependencies and global scope never satisfy a missing exact-object symbol. The
+resolved STT_FUNC is invoked as `jint JNI_OnLoad(JavaVM*, void*)` with
+`r0=JavaVM*`, `r1=null`, a caller-owned aligned stack/stop PC, and finite
+instruction/service-call budgets through the existing service-aware A32
+executor.
+
+When a lifecycle execution context is supplied, the exact target object index is
+scoped for the complete guest invocation and the prior context is restored
+afterward. Nested `__aeabi_atexit` registration therefore retains automatic
+object/DSO provenance.
+
+JNI_OnLoad succeeds only when its returned jint is exactly JNI_VERSION_1_2,
+JNI_VERSION_1_4, or JNI_VERSION_1_6, matching Dalvik/ART native-library load
+semantics. All other returns are an explicit unsupported-version failure.
+
+FindClass, RegisterNatives, native-method dispatch, Java
+objects/references/strings/arrays/exceptions, thread attach/detach,
+JNI_OnUnload, framework classes, graphics, and audio remain separate.
