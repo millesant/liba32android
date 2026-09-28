@@ -30,6 +30,7 @@ using liba32android::compat::A32LibDlOpenTransactionOptions;
 using liba32android::compat::A32LibDlOptions;
 using liba32android::compat::A32LibDlService;
 using liba32android::compat::kA32LibDlDlopenSvcImmediate;
+using liba32android::compat::kA32RtldGlobal;
 using liba32android::compat::kA32RtldNow;
 using liba32android::elf::Elf32DependencyCatalogEntry;
 using liba32android::elf::Elf32DependencyCatalogProvider;
@@ -261,7 +262,7 @@ int test_service_dynamic_open_and_resident_refcount() {
     std::array<std::uint32_t, 16> regs{};
     std::uint32_t cpsr{};
     regs[0] = io_page;
-    regs[1] = kA32RtldNow;
+    regs[1] = kA32RtldGlobal;
     regs[13] = 0x8ff8U;
     if (service.handle(
             memory,
@@ -272,6 +273,10 @@ int test_service_dynamic_open_and_resident_refcount() {
         link_map.graph.objects.size() != 1U ||
         link_map.roots.size() != 1U ||
         link_map.roots[0].object_index != 0U ||
+        link_map.roots[0].policy !=
+            liba32android::elf::Elf32LinkMapRootPolicy::Global ||
+        link_map.global_scope_objects !=
+            std::vector<std::size_t>{0U} ||
         link_map.object_states !=
             std::vector<Elf32LinkMapObjectState>{
                 Elf32LinkMapObjectState::Active} ||
@@ -298,6 +303,10 @@ int test_service_dynamic_open_and_resident_refcount() {
         regs[0] != 0x70000000U ||
         handles[0].refcount != 2U ||
         link_map.graph.objects.size() != 1U ||
+        link_map.roots[0].policy !=
+            liba32android::elf::Elf32LinkMapRootPolicy::Global ||
+        link_map.global_scope_objects !=
+            std::vector<std::size_t>{0U} ||
         lifecycle.objects[0].constructors !=
             Elf32LifecycleObjectStatus::Complete) {
         return fail("repeated dynamic dlopen did not reuse resident handle");
