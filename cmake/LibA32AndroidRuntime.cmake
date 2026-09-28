@@ -17,6 +17,7 @@ add_library(liba32android SHARED
     src/compat/a32_libm.cpp
     src/compat/a32_aeabi_atexit.cpp
     src/compat/a32_android_library_search.cpp
+    src/compat/a32_android_apk_library_source.cpp
     src/elf/loading/elf32_dynamic_placement.cpp
     src/elf/loading/elf32_load_plan.cpp
     src/elf/loading/elf32_loader.cpp
@@ -50,6 +51,7 @@ target_include_directories(liba32android
 target_link_libraries(liba32android
     PRIVATE
         dynarmic
+        ZLIB::ZLIB
         m
 )
 
