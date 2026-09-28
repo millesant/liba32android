@@ -1,0 +1,47 @@
+schema = 1
+change = "post-roadmap-apache-license"
+
+[[evidence]]
+id = "canonical-apache-license"
+kind = "repository"
+status = "observed"
+claim = "The repository root contains the canonical Apache License 2.0 text."
+source = "LICENSE"
+result = "LICENSE matched the locally packaged canonical Apache-2.0 text byte-for-byte; SHA-256 cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30."
+limitations = "Third-party dependencies retain their own licenses."
+
+[[evidence]]
+id = "repository-hygiene"
+kind = "validation"
+status = "passed"
+claim = "The public repository hygiene contract requires the project license and all maintained Markdown links remain valid."
+source = "tools/validate_repository.py"
+result = "repo-hygiene PASS at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c: required=14, markdown_files=87; git diff --check also passed."
+limitations = ""
+
+[[evidence]]
+id = "host-regressions"
+kind = "test"
+status = "passed"
+claim = "Licensing/documentation changes did not regress the configured host build or test suite."
+source = "CMake/Ninja/CTest on the maintainer Linux environment"
+result = "Build succeeded and CTest passed 61/61 tests at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c."
+limitations = "This validation is host-side; Android execution remains covered by CI/device-specific work."
+
+[[evidence]]
+id = "github-license-detection"
+kind = "external"
+status = "observed"
+claim = "GitHub recognizes the repository project license as Apache-2.0."
+source = "GitHub repository metadata at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c"
+result = "GitHub reported license key apache-2.0, name Apache License 2.0, SPDX identifier Apache-2.0."
+limitations = "GitHub metadata is mutable external state."
+
+[[evidence]]
+id = "exact-head-ci"
+kind = "validation"
+status = "passed"
+claim = "All required check-runs on the exact licensing revision completed successfully."
+source = "GitHub commit check-runs at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c"
+result = "11/11 checks concluded success, including Linux A32 smoke, Android arm64-v8a cross-build, Android x86_64 probe, JNI, libdl/libm/liblog/libc/app-search integrations, public C API, and repository/docs validation."
+limitations = ""

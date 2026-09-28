@@ -82,7 +82,8 @@ nine triggered workflows successful.
 The maintainer selected Apache License 2.0 for liba32android. The canonical
 license text is committed at the repository root, public contribution guidance
 uses the same inbound terms by default, and project-license selection is no
-longer an OSS-release blocker.
+longer an OSS-release blocker. GitHub recognizes Apache-2.0 and all 11 exact-head
+check-runs passed at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c.
 
 ## Deferred / partial
 

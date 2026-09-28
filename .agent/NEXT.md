@@ -5,9 +5,8 @@ The numbered 011-049 roadmap is COMPLETE.
 `post-roadmap-oss-readiness` is DONE with exact-head local and GitHub Actions
 validation at `d8564a7a465f1099e8c8b415997f0d1812e2998e`.
 
-The maintainer selected Apache License 2.0. Finish
-post-roadmap-apache-license by verifying GitHub license detection and exact-head
-validation; after that, licensing is no longer an OSS-readiness blocker.
+Apache-2.0 licensing is DONE with GitHub recognition and exact-head validation
+at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c. Licensing is no longer an OSS-readiness blocker.
 
 ## Active JNI track
 

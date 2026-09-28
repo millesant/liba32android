@@ -2,10 +2,11 @@ schema = 1
 id = "post-roadmap-apache-license"
 kind = "feature"
 size = "S1"
-status = "active"
+status = "done"
 workflow = "feature"
 control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
 base_revision = "4fc9d65eb8b95fbd795ac9c2bc9b759711ae6a4c"
+result_revision = "0e1a0b76f8568e53e9843e58b8f12768276f4c4c"
 acceptance = [
   "the repository root contains the canonical Apache License 2.0 text",
   "the public README identifies Apache-2.0 as the project license and links the committed license",
@@ -20,9 +21,9 @@ acceptance = [
 requirements = "aligned"
 specs = "not_applicable"
 implementation = "aligned"
-tests = "pending"
+tests = "aligned"
 documentation = "aligned"
 decisions = "aligned"
 tasks = "aligned"
-evidence = "pending"
+evidence = "aligned"
 repository = "aligned"
