@@ -1,0 +1,38 @@
+schema = 1
+change = "post-roadmap-android-apk-library-source"
+
+[[evidence]]
+id = "supplied-vlc-apk-zip"
+kind = "artifact"
+status = "observed"
+claim = "The supplied VLC ARMv7 APK requires DEFLATE-capable exact-entry loading."
+source = "docs/research/evidence/arm32-vlc-apk-zip-2026-09-27.md"
+result = "The 67,261,250-byte APK has 2,617 ordinary ZIP32 entries; all four lib/armeabi-v7a shared libraries use method 8 / DEFLATE with flags 0."
+limitations = "The supplied APK is user-provided evidence and is not checked into the repository."
+
+[[evidence]]
+id = "focused-apk-source-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused host coverage exercises stored and DEFLATE success, requester-search composition, resource ceilings, missing paths, encryption, unsupported compression, CRC failure, local/central disagreement, duplicate names, ZIP64 sentinel rejection, and truncation."
+source = "tests/compat/a32_android_library_search.cpp"
+result = "Integrated but exact-head execution has not yet been observed."
+limitations = ""
+
+[[evidence]]
+id = "real-arm32-apk-search-integration"
+kind = "test"
+status = "not_run"
+claim = "The real ARM32 app-search fixture resolves its child DSO from a deterministic DEFLATED mini-APK, relocates the root JUMP_SLOT, and executes through the child."
+source = ".github/workflows/compat-app-search.yml and tests/compat/a32_android_library_search_integration.cpp"
+result = "Integrated but terminal workflow success has not yet been observed."
+limitations = "The fixture is a deterministic mini-APK, not the full supplied VLC package."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "The APK native-library source passes all required exact-head checks before closure."
+source = "GitHub commit checks on the eventual integration revision"
+result = ""
+limitations = "The change remains active until exact-head validation succeeds."
