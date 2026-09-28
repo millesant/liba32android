@@ -3,7 +3,7 @@
 Last updated: 2026-09-27
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
-Active acceptance gate: `post-roadmap-android-apk-runtime-bootstrap` — IMPLEMENTED, exact-head validation NOT RUN.
+Active acceptance gate: `post-roadmap-android-apk-native-catalog` — IMPLEMENTED, exact-head validation NOT RUN.
 
 ## Phase
 
@@ -13,64 +13,59 @@ Accepted post-roadmap work includes service-aware ELF lifecycle,
 `__aeabi_atexit` / `__cxa_finalize`, dynamic missing-object `dlopen`,
 ownership/reclamation planning, physical reclamation, targeted final-close
 `dlclose` unload, lifecycle-scoped automatic DSO association, ARM32 bionic
-libdl load-policy semantics, and bounded APK native-library acquisition.
+libdl policy, bounded APK native-library acquisition, and caller-supplied APK
+runtime bootstrap composition.
 
-Bounded APK native-library acquisition is DONE at
-`4c3cca6e8bd9b04c4995e82b83c5976f9be52763`. The project operator confirmed
-all required exact-head CI checks were green.
+Caller-supplied APK runtime bootstrap is DONE at
+`268d151bb8c93473c27abdefb9b9644b51ff3c96`. The project operator confirmed
+all required exact-head CI checks were green after correcting the child
+synthetic-handle expectation to the accepted four-byte handle stride.
 
 ## Active post-roadmap follow-up
 
-Caller-supplied APK runtime bootstrap composition is implemented.
+Bounded APK native-library catalog discovery is implemented.
 
-`A32AndroidApkRuntimeBootstrap` owns bounded application SONAME/identity
-storage, the accepted APK source, exact requester roots, requester-scoped
-application search, an APK-local guard/root provider, the ordered provider
-chain, and one existing `A32LibDlOpenTransaction`.
+`A32ApkLibrarySource::catalog` reuses the exact same private ZIP32 archive-open
+and central-directory parser as exact-entry `load`. The refactor returns
+bounded owned central metadata once; exact loading selects one record while the
+catalog filters the same validated records.
 
-The caller supplies the exact APK path, a relative ABI directory such as
-`lib/armeabi-v7a`, one finite complete application-local SONAME set, an
-existing platform provider, persistent mapped-memory/link-map/handle/lifecycle
-state, and all existing source/search/open resource bounds.
+For one caller-selected relative ABI directory, only direct child basenames
+ending exactly in `.so` qualify. Nested paths, other ABI directories, and
+non-native entries are ignored. Qualifying names must be bare/NUL-free and are
+published as owned lexicographically sorted SONAME strings.
 
-Application SONAMEs are bounded, bare, unique names. ABI directory components
-are bounded and reject NUL, backslash, `!`, absolute paths, empty components,
-dot, and dot-dot. Exact app identities are
-`<apk>!/<abi>/<soname>` under the existing path ceilings.
+Caller-selected catalog limits bound discovered library count, per-SONAME bytes,
+total SONAME bytes, and ABI-directory bytes. Existing APK source limits continue
+to bound archive size, ZIP entry count, central-directory bytes, ZIP entry-name
+bytes, and path bytes. Duplicate direct SONAMEs fail as ambiguous.
 
-Provider order is requester-scoped app search -> APK-local guard/root ->
-platform provider. Context-free bootstrap/later app-root opens are resolved by
-the guard/root provider. Requester-aware app dependencies use exact requester
-roots first. A declared app-local SONAME missing from the APK fails closed and
-cannot silently fall through to a same-named platform library; undeclared names
-still fall through to platform policy.
+Focused host regressions cover filtering/order, duplicate ambiguity, missing APK,
+unsafe ABI directories, catalog count/name/total-name bounds, inherited
+archive/entry/central/name ZIP bounds, ZIP64 rejection, and feeding discovered
+strings directly into `A32AndroidApkRuntimeBootstrap`.
 
-`open_root` only validates declared membership and delegates to
-`A32LibDlOpenTransaction`; persistent append, eager relocation, GNU RELRO,
-dependency-first constructors, synthetic handle publication, load policy, and
-failure cleanup therefore keep the accepted implementations.
+The real pinned-NDK ARM32 bootstrap integration now catalogs its deterministic
+two-DSO DEFLATED APK before constructing the bootstrap. Only the initial root
+SONAME remains explicit. The workflow asserts `catalog_count=2` before the
+existing root/child load, relocation, execution, and persistent child-dlopen
+evidence.
 
-Focused host regressions cover exact identities, provider ordering, declared
-context-free app roots, transitive requester search, missing-declared fail
-closed, undeclared platform fallback, duplicate/count/path/ABI validation, and
-invalid root rejection.
+The supplied VLC APK direct `lib/armeabi-v7a/` catalog is exactly:
+`libc++_shared.so`, `libmla.so`, `libvlc.so`, and `libvlcjni.so`.
 
-The real pinned-NDK ARM32 integration now packages both root and child DSOs into
-one deterministic DEFLATED mini-APK, starts from an empty link map, bootstraps
-the root from the APK, resolves/initializes the child transitively, executes the
-relocated root call, and then acquires the resident child through the same
-persistent open transaction.
-
-Exact-head validation: the first attempt at `b72ef8e6234288d6fdd75ed0c52362d4cdba9aea` had one operator-reported CI failure. Static audit found and corrected an impossible child-handle expectation: slot 1 is `0x70000004`, not `0x70000001`. Corrected exact-head validation is pending.
+Exact-head validation: NOT RUN.
 
 ## Deferred / partial
 
-Automatic APK ABI native-library catalog discovery, package-manager/AssetManager
-discovery, manifest/root selection, ABI auto-selection, split-APK selection,
-APK signature verification, ZIP64/encrypted archive support, explicit-path
-dlopen, true lazy binding, caller-relative RTLD_NEXT, process-exit
-Global/NODELETE teardown, DF_1_GLOBAL-specific unload retention beyond explicit
-libdl root policy, Retired-slot compaction, concurrent graph mutation,
+JNI has no implementation surface yet: no JNIEnv, JavaVM, JNI_OnLoad, or
+RegisterNatives support is present.
+
+ABI auto-detection, manifest/root-library auto-selection, split-APK merging,
+package-manager/AssetManager discovery, APK signatures, ZIP64/encrypted archive
+support, explicit-path dlopen, true lazy binding, caller-relative RTLD_NEXT,
+process-exit Global/NODELETE teardown, DF_1_GLOBAL retention outside explicit
+libdl policy, Retired-slot compaction, concurrent graph mutation,
 `DT_PREINIT_ARRAY`, process argv/envp constructor ABI, broader pthread/TLS,
-higher-level public ELF/platform orchestration, JNI/graphics/audio surfaces,
-automatic app patching, and real Android device execution remain separate.
+higher-level public platform orchestration, graphics/audio surfaces, automatic
+app patching, and real Android device execution remain separate.
