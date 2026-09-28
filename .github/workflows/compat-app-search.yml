@@ -74,7 +74,7 @@ jobs:
       - name: Configure integration
         run: |
           set -euxo pipefail
-          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DLIBA32ANDROID_BUILD_TESTS=ON             -DLIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH="$GITHUB_WORKSPACE/build-fixtures/app-search/libfixture_app_root.so"             -DLIBA32ANDROID_ARM32_APP_SEARCH_APK_PATH="$GITHUB_WORKSPACE/build-fixtures/app-search/fixture-app.apk"
+          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DLIBA32ANDROID_BUILD_TESTS=ON             -DLIBA32ANDROID_ARM32_APP_SEARCH_APK_PATH="$GITHUB_WORKSPACE/build-fixtures/app-search/fixture-app.apk"
 
       - name: Build integration
         run: cmake --build build --target compat_android_library_search_integration_test --parallel 2
