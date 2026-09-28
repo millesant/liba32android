@@ -810,3 +810,39 @@ Object-to-DSO bindings remain caller supplied. Automatic dynamic
 `__dso_handle` discovery, RTLD_NODELETE/global-group policy,
 RTLD_GLOBAL/LOCAL expansion, RTLD_NEXT, lazy binding, and concurrent ownership
 mutation remain separate.
+
+
+## L32-C031 — Lifecycle-scoped __aeabi_atexit DSO association
+
+`A32AeabiAtexitService` may optionally borrow finite caller-owned
+`A32AeabiObjectDsoBinding` storage and the accepted lifecycle execution
+context. Existing record-only construction remains valid and unchanged.
+
+When a successful `__aeabi_atexit` call occurs with a known current lifecycle
+object and non-zero opaque r2 DSO word, the service learns one
+stable-object-index to DSO association. Repeated identical associations reuse
+the existing binding slot. Same-object/different-DSO, same-DSO/different-object,
+or learned-binding capacity conflicts return guest r0 == -1 and append neither
+the registration nor binding.
+
+A registration with no current lifecycle object or r2 == 0 remains an ordinary
+accepted record but does not invent ownership provenance.
+
+The exact-object libdl close transaction resolves a DSO from either its existing
+caller-supplied explicit binding table or the learned registration state. One
+source may satisfy lookup alone. Duplicate/invalid explicit entries, ambiguous
+learned state, or disagreement between explicit and learned values rejects the
+close as InvalidBinding.
+
+Dynamic libdl constructor execution preserves the lifecycle-context pointer when
+it overrides only the nested live stack top, so constructor-time registrations
+can learn their stable object association before handle publication.
+
+After a targeted physical unload succeeds, learned associations for the
+reclaimed object indexes are forgotten deterministically. Failed lifecycle or
+physical reclamation preserves them for retry. Registration records remain as
+their Complete/Failed historical state and are not compacted.
+
+Objects that never register `__aeabi_atexit`, registrations made outside a
+known lifecycle object context, and process-wide exit ownership may still
+require caller policy or explicit bindings.
