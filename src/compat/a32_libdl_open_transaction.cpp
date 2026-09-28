@@ -61,6 +61,7 @@ bool A32LibDlOpenTransaction::options_valid() const noexcept {
         static_cast<std::uint64_t>(options_.handle_base) +
         (handles_.size() - 1U) * 4ULL;
     return last_handle <= std::numeric_limits<std::uint32_t>::max() &&
+           last_handle != kA32RtldDefault &&
            last_handle != kA32RtldNext;
 }
 
@@ -171,6 +172,7 @@ std::uint32_t A32LibDlOpenTransaction::acquire_handle(
             index * 4ULL;
         if (value == 0U ||
             value > std::numeric_limits<std::uint32_t>::max() ||
+            value == kA32RtldDefault ||
             value == kA32RtldNext) {
             return 0U;
         }
@@ -221,7 +223,8 @@ A32LibDlOpenTransaction::cleanup_failure(
 
 A32LibDlOpenTransactionResult A32LibDlOpenTransaction::open(
     std::string_view requested_name,
-    std::optional<std::uint32_t> nested_stack_top) {
+    std::optional<std::uint32_t> nested_stack_top,
+    A32LibDlOpenPolicy policy) {
     if (!options_valid()) {
         return failure(A32LibDlOpenTransactionError::InvalidOptions);
     }
@@ -244,6 +247,10 @@ A32LibDlOpenTransactionResult A32LibDlOpenTransaction::open(
 
     std::size_t initial_object_count = link_map_.graph.objects.size();
     bool root_added = false;
+
+    if (!object_index.has_value() && policy.no_load) {
+        return failure(A32LibDlOpenTransactionError::NotLoaded);
+    }
 
     if (!object_index.has_value()) {
         auto provided = provider_.resolve(
@@ -398,6 +405,28 @@ A32LibDlOpenTransactionResult A32LibDlOpenTransaction::open(
         }
     }
 
+    const auto policy_updated = elf::update_elf32_link_map_root_policy(
+        link_map_,
+        *object_index,
+        policy.global
+            ? elf::Elf32LinkMapRootPolicy::Global
+            : elf::Elf32LinkMapRootPolicy::Local,
+        policy.nodelete);
+    if (!policy_updated) {
+        auto result = failure(
+            A32LibDlOpenTransactionError::PolicyUpdateFailed,
+            object_index);
+        result.policy_error = policy_updated.error;
+        result.root_added = root_added;
+        result.objects_appended =
+            link_map_.graph.objects.size() - initial_object_count;
+        result.retained_after_failure =
+            state.constructors ==
+            elf::Elf32LifecycleObjectStatus::Complete;
+        return result;
+    }
+    root_added = root_added || policy_updated.root_added;
+
     const std::uint32_t guest_handle = acquire_handle(*object_index);
     if (guest_handle == 0U) {
         auto result = failure(
@@ -451,6 +480,10 @@ const char* to_string(
         return "constructor_failed";
     case A32LibDlOpenTransactionError::CleanupFailed:
         return "cleanup_failed";
+    case A32LibDlOpenTransactionError::NotLoaded:
+        return "not_loaded";
+    case A32LibDlOpenTransactionError::PolicyUpdateFailed:
+        return "policy_update_failed";
     }
     return "unknown";
 }
