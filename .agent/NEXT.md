@@ -2,34 +2,32 @@
 
 The numbered 011-049 roadmap is COMPLETE.
 
-`post-roadmap-dynamic-dlopen-acquisition` is DONE at
-`40479ffebe61c22c90d7d523292fc9e787be635d`.
+`post-roadmap-targeted-dlclose-unload` is DONE at
+`742590cbc6740c9467e4b9d5f04884deeda16c1e`.
 
-`post-roadmap-targeted-dlclose-unload` is IMPLEMENTED on `bleeding`.
+`post-roadmap-aeabi-dso-binding-association` is IMPLEMENTED on `bleeding`.
 Exact-head required checks are its current acceptance gate.
 
-The final-close path now computes a clean post-root-release ownership plan,
-preserves shared roots/live handles, finalizes only newly unreachable objects
-in requester-before-dependency order, retries without replaying Complete
-teardown, physically releases/reclaims only after lifecycle success, and clears
-the final synthetic handle last.
+Constructor/destructor lifecycle calls now expose scoped stable-object
+provenance. `__aeabi_atexit` can learn bounded object-to-DSO associations from
+real guest registrations, dynamic-open constructors preserve that context,
+libdl close consumes learned bindings, and successful physical unload retires
+learned association state.
 
-After terminal success, address automatic dynamic object-to-DSO-handle
-association so provider-acquired objects can participate in registered
-`__aeabi_atexit` / `__cxa_finalize` teardown without caller-maintained static
-bindings.
+After terminal success, model libdl load-policy semantics explicitly:
+RTLD_LOCAL versus RTLD_GLOBAL visibility, RTLD_NODELETE retention, and a
+bounded resident RTLD_NOLOAD query. Keep the existing eager RTLD_NOW behavior;
+do not pretend RTLD_LAZY is implemented merely because the ABI flag is
+accepted.
 
-Do not guess a DSO handle from load bias or a possibly absent dynamic symbol.
-Prefer an explicit execution-context seam that can associate registrations made
-while a known persistent object constructor is executing, or another
-evidence-backed Android-compatible mechanism.
+The policy layer must compose with current persistent roots/global scope,
+synthetic-handle ownership, targeted final close, and tombstone reclamation.
+RTLD_NODELETE should block physical retirement without turning visibility into
+ownership accidentally; RTLD_GLOBAL promotion must be deterministic and
+persistent while the object remains Active.
 
-Keep RTLD_NODELETE/global-group policy, RTLD_GLOBAL/LOCAL expansion, RTLD_NEXT,
-lazy binding, pathname/APK policy, and tombstone compaction separate unless
-that binding work proves one must share the same contract.
-
-Other ready work remains broader pthread/TLS, concrete APK/ZIP acquisition, and
-higher-level public ELF/platform embedding.
+Keep RTLD_NEXT, concrete Android pathname/APK search policy, tombstone
+compaction, process-wide exit, and JNI/graphics/audio separate.
 
 If a later step materially needs the user's Linux machine, stop beforehand and
 provide exact commands and expected output.
