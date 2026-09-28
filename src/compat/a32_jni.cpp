@@ -207,21 +207,27 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         return runtime::A32HostServiceDisposition::Unhandled;
     }
     if (!installed_ ||
-        regs[0] != layout_.java_vm_address ||
-        regs[1] == 0U) {
+        regs[0] != layout_.java_vm_address) {
         return runtime::A32HostServiceDisposition::Failed;
     }
 
-    const bool supported =
-        is_a32_supported_jni_getenv_version(regs[2]);
-    const auto env_bytes = u32_bytes(
-        supported ? layout_.jni_env_address : 0U);
+    // Dalvik validates the version before touching *env. Preserve the caller's
+    // output slot on JNI_EVERSION.
+    if (!is_a32_supported_jni_getenv_version(regs[2])) {
+        regs[0] = jint_bits(kA32JniEversion);
+        return runtime::A32HostServiceDisposition::Handled;
+    }
+    if (regs[1] == 0U) {
+        return runtime::A32HostServiceDisposition::Failed;
+    }
+
+    const auto env_bytes =
+        u32_bytes(layout_.jni_env_address);
     if (!memory.write(regs[1], env_bytes)) {
         return runtime::A32HostServiceDisposition::Failed;
     }
 
-    regs[0] = jint_bits(
-        supported ? kA32JniOk : kA32JniEversion);
+    regs[0] = jint_bits(kA32JniOk);
     return runtime::A32HostServiceDisposition::Handled;
 }
 
