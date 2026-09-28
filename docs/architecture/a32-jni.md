@@ -25,9 +25,10 @@ loads `[vm]`, then `[table + 0x18]`, then performs an indirect `blx`.
 
 The initial JNIEnv native table intentionally publishes no callable methods.
 Its first five words are zero. The supplied MLA binary already proves the next
-real requirement: its `JNIEnv::RegisterNatives` wrapper loads byte offset
-`0x35c` (slot 215). That slot is reserved for the next JNI slice rather than
-being filled speculatively here.
+real requirements: its `JNIEnv::FindClass` wrapper loads native-table byte
+offset `0x18` (slot 6), while `JNIEnv::RegisterNatives` loads byte offset
+`0x35c` (slot 215). Those entries are reserved for the next JNI slice rather
+than being filled speculatively here.
 
 ## Installation ownership
 
