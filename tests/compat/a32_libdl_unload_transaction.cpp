@@ -461,9 +461,7 @@ int test_nodelete_final_close_survives_plain_reopen() {
     lifecycle.objects.resize(1U);
     lifecycle.objects[0].constructors =
         Elf32LifecycleObjectStatus::Complete;
-    std::array<A32LibDlHandle, 1> handles{{
-        {.guest_handle = 0x70000000U, .object_index = 0U, .refcount = 1U},
-    }};
+    std::array<A32LibDlHandle, 1> handles{};
     std::array<A32AeabiAtexitRecord, 1> records{};
     A32AeabiAtexitService registrations{std::span{records}};
     const std::array<A32HostServiceRegistryEntry, 0> service_entries{};
@@ -493,6 +491,11 @@ int test_nodelete_final_close_survives_plain_reopen() {
         &finalizer,
         nullptr,
         &unload,
+    };
+    handles[0] = A32LibDlHandle{
+        .guest_handle = 0x70000000U,
+        .object_index = 0U,
+        .refcount = 1U,
     };
 
     std::array<std::uint32_t, 16> regs{};
