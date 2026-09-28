@@ -932,3 +932,50 @@ unchanged, allowing a root such as
 Package-manager/AssetManager discovery, split-APK policy, APK signature
 verification, extraction caches, ZIP64/encrypted archive support, explicit-path
 dlopen, and general archive mutation remain out of scope.
+
+
+## L32-C034 — Caller-supplied APK runtime bootstrap
+
+`A32AndroidApkRuntimeBootstrap` composes the accepted APK source,
+requester-scoped Android application search, dependency-provider chain, and
+`A32LibDlOpenTransaction` into one persistent caller-owned application-runtime
+bootstrap. It does not add a second ELF loader.
+
+The caller supplies one exact APK path, one relative ABI directory, one finite
+complete application-local SONAME set, one existing platform dependency
+provider, caller-owned mapped memory/link-map/handle/lifecycle state, and all
+existing source/search/open-transaction resource options.
+
+The application-library count and each SONAME are caller bounded. SONAMEs must
+be non-empty, NUL-free, slash-free, backslash-free, and unique. The ABI
+directory must be bounded and relative, must not contain NUL, backslash, or
+`!`, and must not contain empty, dot, or dot-dot path components. Exact
+application identities are
+`<apk>!/<abi-directory>/<soname>` and must remain under both source and search
+path ceilings.
+
+The bootstrap owns one `A32ApkLibrarySource`, exact requester-root records for
+every declared application identity, one
+`A32AndroidLibrarySearchProvider`, one APK-local guard/root provider, an
+ordered provider chain, and one `A32LibDlOpenTransaction`.
+
+Provider order is requester-scoped application search, APK-local guard/root,
+then the caller-owned platform provider. Context-free lookup therefore reaches
+the guard/root provider for declared app-local dlopen/bootstrap. In
+requester-aware lookup, application search gets first chance. If a declared
+app-local SONAME is missing from the APK, the guard fails closed so the name
+cannot be silently substituted by the platform provider. Undeclared names may
+fall through to platform policy normally.
+
+`open_root` accepts only a declared application SONAME and delegates directly
+to the accepted open transaction. Persistent append, eager relocation, GNU
+RELRO, dependency-first constructors, synthetic handles, Global/NODELETE
+promotion, cleanup, and failure retention keep their existing semantics.
+
+The bootstrap object must outlive consumers of its provider/open-transaction
+composition. The same exposed open transaction remains usable for later
+app-local named dlopen.
+
+Package/manifest discovery, ABI auto-selection, split APK selection,
+AssetManager/package-manager access, JNI startup, graphics/audio, automatic app
+patching, and device deployment remain separate.
