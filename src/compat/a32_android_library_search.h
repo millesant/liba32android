@@ -48,6 +48,28 @@ struct A32ApkLibrarySourceOptions {
     std::uint32_t max_entry_name_bytes{};
 };
 
+struct A32ApkLibraryCatalogOptions {
+    std::uint32_t max_libraries{};
+    std::uint32_t max_soname_bytes{};
+    std::uint64_t max_total_soname_bytes{};
+    std::uint32_t max_abi_directory_bytes{};
+};
+
+enum class A32ApkLibraryCatalogError : std::uint8_t {
+    None = 0,
+    NotFound,
+    Failed,
+};
+
+struct A32ApkLibraryCatalogResult {
+    A32ApkLibraryCatalogError error{A32ApkLibraryCatalogError::None};
+    std::vector<std::string> sonames;
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return error == A32ApkLibraryCatalogError::None;
+    }
+};
+
 // Exact-entry source for ordinary single-disk ZIP32 APK paths expressed as
 // "<archive>!/<entry>". The source never extracts to disk and supports only
 // stored and raw-DEFLATE entries.
@@ -60,6 +82,11 @@ public:
     [[nodiscard]] A32AndroidLibrarySourceResult load(
         std::string_view virtual_path,
         std::uint64_t max_image_bytes) override;
+
+    [[nodiscard]] A32ApkLibraryCatalogResult catalog(
+        std::string_view apk_path,
+        std::string_view abi_directory,
+        A32ApkLibraryCatalogOptions options);
 
 private:
     A32ApkLibrarySourceOptions options_;
