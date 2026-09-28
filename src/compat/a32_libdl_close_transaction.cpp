@@ -285,6 +285,27 @@ A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
         return result;
     }
 
+    const elf::Elf32LinkMapRoot* exact_root = nullptr;
+    for (const auto& root : link_map_.roots) {
+        if (root.object_index != object_index) {
+            continue;
+        }
+        if (exact_root != nullptr) {
+            return failure(
+                A32LibDlCloseTransactionError::InvalidObject,
+                object_index);
+        }
+        exact_root = &root;
+    }
+    if (exact_root != nullptr && exact_root->nodelete) {
+        handle = {};
+        A32LibDlCloseTransactionResult result;
+        result.object_index = object_index;
+        result.outcome =
+            A32LibDlCloseTransactionOutcome::NodeleteRetained;
+        return result;
+    }
+
     auto result = finalize_object(
         memory,
         object_index,
