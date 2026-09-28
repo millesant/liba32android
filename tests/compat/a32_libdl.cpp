@@ -20,7 +20,13 @@ using liba32android::compat::kA32LibDlDlcloseSvcImmediate;
 using liba32android::compat::kA32LibDlDlerrorSvcImmediate;
 using liba32android::compat::kA32LibDlDlopenSvcImmediate;
 using liba32android::compat::kA32LibDlDlsymSvcImmediate;
+using liba32android::compat::kA32RtldDefault;
+using liba32android::compat::kA32RtldGlobal;
+using liba32android::compat::kA32RtldLazy;
+using liba32android::compat::kA32RtldNoLoad;
+using liba32android::compat::kA32RtldNodelete;
 using liba32android::compat::kA32RtldNow;
+using liba32android::compat::kA32RtldNext;
 using liba32android::elf::Elf32LinkMap;
 using liba32android::elf::Elf32LinkMapRoot;
 using liba32android::elf::Elf32LinkMapRootPolicy;
@@ -80,6 +86,107 @@ A32LibDlOptions options() {
     result.symbols.max_name_bytes = 64U;
     result.symbols.max_version_records = 64U;
     return result;
+}
+
+int test_arm32_policy_flags_and_resident_noload() {
+    if (kA32RtldNow != 0x00000U ||
+        kA32RtldLazy != 0x00001U ||
+        kA32RtldGlobal != 0x00002U ||
+        kA32RtldNoLoad != 0x00004U ||
+        kA32RtldNodelete != 0x01000U ||
+        kA32RtldDefault != 0xffffffffU ||
+        kA32RtldNext != 0xfffffffeU) {
+        return fail("ARM32 bionic libdl constants do not match LP32 ABI");
+    }
+
+    LinearGuestMemory memory{0x3000U};
+    Elf32LinkMap link_map;
+    link_map.graph.objects.resize(2U);
+    link_map.graph.objects[0].identity = "main";
+    link_map.graph.objects[1].identity = "resident-dependency";
+    link_map.graph.objects[1].linker_strings.soname = "libdep.so";
+    link_map.roots.push_back({
+        .object_index = 0U,
+        .policy = Elf32LinkMapRootPolicy::Local,
+    });
+    link_map.object_states.assign(
+        2U, liba32android::elf::Elf32LinkMapObjectState::Active);
+
+    constexpr std::array<std::uint8_t, 10> dep_name{{
+        'l','i','b','d','e','p','.','s','o',0U,
+    }};
+    constexpr std::array<std::uint8_t, 11> missing_name{{
+        'm','i','s','s','i','n','g','.','s','o',0U,
+    }};
+    if (!memory.write(0x100U, dep_name) ||
+        !memory.write(0x140U, missing_name)) {
+        return fail("could not stage policy guest names");
+    }
+
+    std::array<A32LibDlHandle, 2> handles{};
+    A32LibDlService service{link_map, std::span{handles}, options()};
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t cpsr{};
+
+    regs[0] = 0x100U;
+    regs[1] =
+        kA32RtldNoLoad | kA32RtldGlobal | kA32RtldNodelete;
+    if (service.handle(
+            memory, kA32LibDlDlopenSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0x70000000U ||
+        link_map.roots.size() != 2U ||
+        link_map.roots[1].object_index != 1U ||
+        link_map.roots[1].policy != Elf32LinkMapRootPolicy::Global ||
+        !link_map.roots[1].nodelete ||
+        link_map.global_scope_objects !=
+            std::vector<std::size_t>{1U}) {
+        return fail("resident NOLOAD did not add/promote exact root policy");
+    }
+    const std::uint32_t handle = regs[0];
+
+    regs = {};
+    regs[0] = 0x100U;
+    regs[1] = kA32RtldNow;
+    if (service.handle(
+            memory, kA32LibDlDlopenSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != handle ||
+        handles[0].refcount != 2U ||
+        link_map.roots[1].policy != Elf32LinkMapRootPolicy::Global ||
+        !link_map.roots[1].nodelete) {
+        return fail("local reopen demoted resident global/nodelete policy");
+    }
+
+    regs = {};
+    regs[0] = 0x140U;
+    regs[1] = kA32RtldNoLoad;
+    if (service.handle(
+            memory, kA32LibDlDlopenSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0U ||
+        link_map.roots.size() != 2U) {
+        return fail("missing resident NOLOAD unexpectedly acquired object");
+    }
+
+    regs = {};
+    regs[0] = kA32RtldNext;
+    if (service.handle(
+            memory, kA32LibDlDlsymSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("ARM32 RTLD_NEXT sentinel was not rejected");
+    }
+    regs = {};
+    if (service.handle(
+            memory, kA32LibDlDlerrorSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        read_c_string(memory, regs[0], 127U) !=
+            "dlsym: RTLD_NEXT unsupported") {
+        return fail("RTLD_NEXT rejection did not publish expected dlerror");
+    }
+
+    return 0;
 }
 
 int test_resident_open_close_error_and_dladdr() {
@@ -220,5 +327,9 @@ int test_resident_open_close_error_and_dladdr() {
 }  // namespace
 
 int main() {
+    if (const int status = test_arm32_policy_flags_and_resident_noload();
+        status != 0) {
+        return status;
+    }
     return test_resident_open_close_error_and_dladdr();
 }
