@@ -38,7 +38,7 @@ enum class A32LibDlUnloadTransactionOutcome : std::uint8_t {
     RefcountDecremented,
     RootReleased,
     ObjectsUnloaded,
-    NodeleteRetained,
+    LoadPolicyRetained,
 };
 
 struct A32LibDlUnloadTransactionResult {
