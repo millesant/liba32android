@@ -1,13 +1,23 @@
 # Documentation
 
-This directory separates current architecture/development guidance from research and historical evidence.
+This directory separates current architecture/development guidance from
+research and historical evidence.
+
+## Start here
+
+- [Public C API quick start](development/public-api-quickstart.md)
+- [Build and test](development/build-and-test.md)
+- [Repository layout](development/repository-layout.md)
+- [Architecture index](architecture/README.md)
+- [Project roadmap](../ROADMAP.md)
+- [Contributing](../CONTRIBUTING.md)
 
 ## Architecture
 
-- [Architecture index](architecture/README.md)
 - [CPU engine](architecture/cpu-engine.md)
 - [A32 host-service dispatch](architecture/a32-service-dispatch.md)
 - [Public C embedding API](architecture/public-embedding-api.md)
+- [ARM32 JNI compatibility](architecture/a32-jni.md)
 - [ARM32 resident libdl compatibility](architecture/a32-libdl.md)
 - [ARM32 shared libm compatibility](architecture/a32-libm.md)
 - [Android application library search](architecture/a32-android-library-search.md)
@@ -24,12 +34,23 @@ This directory separates current architecture/development guidance from research
 - [Real fixture execution](architecture/elf32-execution.md)
 - [GNU RELRO](architecture/elf32-relro.md)
 
+Additional compatibility architecture notes live alongside those documents under
+`architecture/` and cover libc/liblog/pthread/finalization/namespace surfaces.
+
 ## Development
 
+- [Public C API quick start](development/public-api-quickstart.md)
 - [Repository layout](development/repository-layout.md)
 - [Build and test](development/build-and-test.md)
 - [Diagnostics](diagnostics.md)
+- [Security policy](../SECURITY.md)
 
 ## Research and evidence
 
-`research/` contains research notes and environment-specific evidence. These records are useful context, but they do not replace accepted current contracts in `.agent/specs/` or exact-revision validation in `.agent/STATE.md`.
+`research/` contains research notes and environment-specific evidence. These
+records are useful context, but they do not replace accepted current contracts
+in `.agent/specs/` or exact-revision validation in `.agent/STATE.md`.
+
+Real third-party binaries used for compatibility research are evidence inputs;
+they are not checked into the repository unless redistribution rights explicitly
+permit it.

@@ -1,75 +1,80 @@
 # liba32android
 
-Experimental, game-agnostic AArch32 compatibility runtime for running 32-bit ARM Android native code inside an AArch64 Android process.
+[![CI](https://github.com/millesant/liba32android/actions/workflows/ci.yml/badge.svg?branch=bleeding)](https://github.com/millesant/liba32android/actions/workflows/ci.yml)
+[![Public C embedding API](https://github.com/millesant/liba32android/actions/workflows/public-embedding-api.yml/badge.svg?branch=bleeding)](https://github.com/millesant/liba32android/actions/workflows/public-embedding-api.yml)
 
-The project keeps CPU execution, guest memory, ELF loading, dynamic-linker semantics, relocation, post-relocation hardening, platform diagnostics, and future application compatibility layers separate. Game-specific behavior does not belong in the generic runtime.
+**liba32android** is an experimental AArch32 compatibility runtime for executing
+32-bit ARM Android native code inside a 64-bit Android process.
 
-## Current capabilities
+The project is building the low-level pieces deliberately: A32 CPU execution,
+logical 32-bit guest memory, ARM ELF32 loading/linking, Android compatibility
+services, and a bounded JNI layer. It is game-agnostic by design; application
+quirks do not belong in the generic runtime.
 
-The current C++20/CMake runtime provides:
+> **Maturity:** active research/engineering project. The public C embedding API
+> is versioned and tested, but the project is not yet a drop-in Android
+> compatibility layer and does not claim general APK/game compatibility.
 
-- a versioned installable C embedding API for opaque runtime lifetime, logical guest memory operations, bounded ARM/Thumb execution, exact SVC traps, and structured A32ERR diagnostics;
-- bounded ARM/Thumb execution with exact stop-PC termination, resumable SVC trap state, and game-agnostic bounded host-service dispatch;
-- A32 ARM/Thumb execution through an internal Dynarmic adapter;
-- an engine-independent `memory::GuestMemory` seam with deterministic and mapped backends;
-- logical 32-bit guest virtual addresses with optional high-base 4 GiB fastmem backing and callback fallback;
-- validated ARM ELF32 `ET_EXEC` / `ET_DYN` mapping, shared pre-mutation load planning, and bounded automatic `ET_DYN` placement;
-- structural `PT_DYNAMIC` parsing plus validated linker metadata, bounded string materialization, caller-bounded raw INIT_ARRAY/FINI_ARRAY decoding, dependency-first INIT_ARRAY planning, reverse-order FINI_ARRAY planning, and bounded ARM/Thumb constructor/destructor execution;
-- bounded provider-backed dependency acquisition, transactional recursive dependency-graph loading, and a persistent cross-root link map with DF_1_GLOBAL/global-root scope ordering;
-- SysV/GNU dynamic-symbol indexing and deterministic graph-local symbol lookup;
-- transactional main `DT_REL` relocation application for the implemented AArch32 relocation set;
-- eager PLT `R_ARM_JUMP_SLOT` relocation application;
-- explicit post-relocation GNU RELRO sealing with rollback-aware permission handling;
-- reproducible ARMv7 Android ELF fixtures and Android address-space/runtime diagnostic tools.
+## Why this exists
 
-Current accepted runtime and ELF behavior is defined by `.agent/specs/runtime.md` and `.agent/specs/elf32.md`. Historical feature packages under `specs/` are retained for reference and are not current contract authority.
+Modern Android devices are overwhelmingly 64-bit, while a large body of older
+Android native software still ships ARMv7/AArch32 code. liba32android explores a
+clean compatibility-runtime approach instead of baking one application's
+behavior into an emulator or loader fork.
 
-## Repository layout
+The engineering model is intentionally evidence-driven:
 
-```text
-include/
-  liba32android/       stable public C embedding API
+- real ARM32 Android ELF fixtures are generated with a pinned Android NDK;
+- loader, linker, relocation, lifecycle, and compatibility behavior is bounded
+  and regression-tested;
+- Android arm64-v8a builds and 16 KiB ELF/page-size requirements are validated
+  in CI;
+- real-world ARM32 libraries are used as compatibility evidence without being
+  checked into the repository.
 
-src/
-  public/              public C ABI implementation over private runtime seams
-  cpu/                 CPU abstraction and Dynarmic adapter
-  runtime/             game-agnostic execution/service orchestration
-  memory/              guest-memory contracts and mapped address space
-  elf/
-    loading/           load planning, placement, and mapping implementations
-    metadata/          structural dynamic/linker metadata implementations
-    linking/           dependency, symbol, and relocation implementations
-    hardening/         post-relocation hardening implementations
-    internal/          private ELF helpers
-    *.h                stable internal ELF interfaces
+## What works today
 
-tests/
-  cpu/                 CPU regressions
-  runtime/             runtime orchestration regressions
-  memory/              guest-memory regressions
-  elf/
-    unit/              synthetic ELF/linker tests
-    integration/       generated real ARM32 fixture tests
-    fixtures/          fixture source inputs
-    support/           ELF test support
+The current runtime includes:
 
-tools/
-  android/             Android probes and device/emulator validation harnesses
-  fixtures/            reproducible ARM32 fixture builders
+- a versioned installable **C API v1** for runtime lifetime, guest memory,
+  bounded ARM/Thumb execution, exact SVC trapping, and structured diagnostics;
+- A32 ARM/Thumb execution through a private Dynarmic adapter;
+- logical 32-bit guest virtual addresses with mapped and callback-backed memory
+  paths;
+- validated ARM ELF32 `ET_EXEC` / `ET_DYN` mapping and bounded dynamic
+  placement;
+- dynamic metadata, dependency loading, symbol lookup, SysV/GNU hashes,
+  symbol versioning, relocation, PLT `R_ARM_JUMP_SLOT`, and GNU RELRO sealing;
+- constructor/destructor lifecycle planning and bounded execution;
+- Android namespace/platform-library policy and requester-aware library search;
+- partial compatibility surfaces for libc, liblog, libdl, libm, pthread-style
+  synchronization, `__aeabi_atexit` / `__cxa_finalize`, and related services;
+- JNI VM/GetEnv/JNI_OnLoad bootstrap with ongoing work on class/native
+  registration and reverse native dispatch;
+- reproducible ARMv7 Android fixtures plus Android address-space/runtime probes.
 
-cmake/
-  tests/               domain-specific test registration
-docs/
-  architecture/        subsystem design and boundaries
-  development/         build, validation, and repository-maintenance guides
-  research/            research notes and captured evidence
-```
+The normal build registers dozens of host CTest regressions, with additional
+fixture/integration workflows in GitHub Actions.
 
-See [docs/development/repository-layout.md](docs/development/repository-layout.md) for ownership and dependency rules.
+## What is intentionally not claimed
 
-## Build and test
+This is not yet:
 
-A normal host validation build is:
+- a complete Java VM or Android Runtime replacement;
+- a complete JNI implementation;
+- a complete Bionic/libc/pthread/TLS implementation;
+- a complete Android linker/filesystem/APK model;
+- a graphics, audio, input, or framework compatibility stack;
+- a guarantee that an arbitrary legacy APK or game will run;
+- a production-stable ABI for the private C++ ELF/compatibility internals.
+
+The public C API is intentionally much smaller than the internal runtime while
+those layers are still evolving.
+
+## Quick start
+
+Host requirements used by CI are CMake 3.24+, Ninja, a C++20 compiler, Boost
+headers, binutils, and zlib development headers.
 
 ```sh
 cmake -S . -B build -G Ninja \
@@ -79,44 +84,108 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-The shared-library output is exactly `liba32android.so`. The public C header is
-`include/liba32android/liba32android.h`. A staged install can be produced with:
+The shared library is produced as:
+
+```text
+build/liba32android.so
+```
+
+The public header is:
+
+```text
+include/liba32android/liba32android.h
+```
+
+To stage an install:
 
 ```sh
 cmake --install build --prefix /tmp/liba32android-install
 ```
 
-GitHub Actions additionally builds reproducible ARM32 fixtures and validates Android `x86_64` address-space probing plus the Android `arm64-v8a` cross-build. See [docs/development/build-and-test.md](docs/development/build-and-test.md) for fixture options and CI scope.
+See [Public C API quick start](docs/development/public-api-quickstart.md) for an
+external-C-caller example and compile command.
 
-## Android validation
+## Architecture at a glance
 
-Android diagnostics live under `tools/android/`. The page-size validation paths are intentionally split:
+```text
+host embedding API
+       |
+       v
+runtime orchestration + host services
+       |
+       +----> logical GuestMemory
+       |
+       +----> A32 CPU adapter ----> Dynarmic
+       |
+       +----> ARM ELF32 loader/linker
+       |         |
+       |         +----> dependencies / symbols / relocations / RELRO
+       |
+       +----> Android compatibility services
+                 |
+                 +----> libc / liblog / libdl / libm / pthread / JNI
+```
 
-- `tools/android/run_android_16k_probe_validation.sh` validates the standalone address-space/JIT probe on x86_64 or AArch64 Android;
-- `tools/android/run_android_16k_validation.sh` is the stronger AArch64 runtime path and also exercises `liba32android.so` / Dynarmic runtime behavior.
+The layering rules matter: host pointers never become guest pointers, Dynarmic
+does not escape `src/cpu/`, and platform-specific behavior stays above generic
+CPU/memory/ELF contracts.
 
-See [docs/diagnostics.md](docs/diagnostics.md) for crash-marker, fastmem-fallback, emulator, and device procedures.
+Start with [docs/README.md](docs/README.md) and the
+[architecture index](docs/architecture/README.md).
 
-## Architecture documentation
+## Repository layout
 
-Start at [docs/README.md](docs/README.md). The ELF pipeline is documented as distinct layers: load planning/mapping, structural dynamic metadata, linker metadata/strings, dependency graph loading, symbol resolution, relocation, and RELRO hardening.
+```text
+include/liba32android/   stable public C embedding API
+src/public/              public API implementation
+src/cpu/                 A32 CPU abstraction and Dynarmic adapter
+src/runtime/             generic execution/service orchestration
+src/memory/              guest-memory implementations
+src/elf/                 ARM ELF32 loader/linker layers
+src/compat/              Android compatibility services/adapters
 
-The compatibility stack includes bounded Android namespace/platform-provider
-policy, partial libc/liblog/libdl/libm shims, and requester-scoped application
-native-library search. It deliberately does **not** yet claim the complete
-Android linker/filesystem/APK search model, concrete APK I/O, full
-preload/RTLD/unload semantics, complete pthread/TLS, full libc/JNI/graphics/
-audio compatibility, or general game compatibility. The version-1 public C API
-also keeps ELF/linker/compatibility orchestration private rather than freezing
-those internal policy objects into the ABI.
+tests/                   unit and integration regressions
+tools/fixtures/          reproducible ARM32 fixture builders
+tools/android/           Android diagnostic/validation harnesses
+docs/                    architecture, development, and research notes
+.agent/specs/            accepted current internal project contracts
+```
 
-## Project state and contribution workflow
+For ownership/dependency rules, see
+[docs/development/repository-layout.md](docs/development/repository-layout.md).
 
-- `AGENTS.md` contains repository-specific engineering invariants.
-- `.agent/project.toml` identifies the project.
-- `.agent/specs/` contains accepted current contracts.
-- `.agent/STATE.md` records observed implementation/validation state.
-- `.agent/NEXT.md` records dependency-ordered next work.
-- `.agent/changes/` records bounded substantial changes and evidence.
+## Roadmap
 
-Generic engineering-control rules are maintained externally in the private `Millesant/.gpt` control plane and are intentionally not vendored into this repository.
+The public roadmap is in [ROADMAP.md](ROADMAP.md). The immediate compatibility
+track is advancing JNI from VM/GetEnv/JNI_OnLoad into bounded class lookup,
+native registration, and reverse dispatch before broader object/reference,
+string/array, exception, method/field, and thread surfaces.
+
+## Contributing
+
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), which
+covers build/test requirements, scope boundaries, and what makes a useful bug
+report or compatibility contribution.
+
+Repository-specific engineering invariants for automated maintainers are in
+[AGENTS.md](AGENTS.md). Human contributors do **not** need access to the
+maintainer's external automation/control-plane repository.
+
+For security-sensitive reports, see [SECURITY.md](SECURITY.md). Community
+expectations are documented in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+## Project state
+
+Current accepted technical contracts live under `.agent/specs/`; observed
+implementation/validation state is summarized in `.agent/STATE.md`, and
+dependency-ordered next work is recorded in `.agent/NEXT.md`. Historical
+feature-era packages under `specs/` are retained as engineering history rather
+than current authority.
+
+## License status
+
+The project's own open-source license has **not yet been selected**. Dependency
+licenses are tracked separately. Until a project license is committed, no
+license grant should be inferred from the repository being public.
+
+Selecting and committing the project license is a release/OSS-readiness blocker.

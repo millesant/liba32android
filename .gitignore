@@ -1,5 +1,13 @@
 build/
 build-*/
+build-install/
+out/
+.cache/
 .idea/
 .vscode/
 .DS_Store
+compile_commands.json
+*.log
+
+__pycache__/
+*.py[cod]

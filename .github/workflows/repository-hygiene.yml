@@ -1,0 +1,19 @@
+name: Repository hygiene
+
+on:
+  push:
+    branches: [bleeding]
+  pull_request:
+    branches: [bleeding]
+
+permissions:
+  contents: read
+
+jobs:
+  repository-hygiene:
+    name: Public repository/docs validation
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate public repository surface and Markdown links
+        run: python3 tools/validate_repository.py

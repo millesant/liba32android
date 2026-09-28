@@ -1,0 +1,20 @@
+schema = 1
+change = "post-roadmap-oss-readiness"
+
+[[tasks]]
+id = "T001"
+status = "implemented"
+depends_on = []
+acceptance = "Audit the public repository surface, community files, documentation indexes, CI visibility, and OSS-readiness gaps."
+
+[[tasks]]
+id = "T002"
+status = "implemented"
+depends_on = ["T001"]
+acceptance = "Improve the landing page and add self-contained public contribution/security/conduct/roadmap plus GitHub collaboration templates."
+
+[[tasks]]
+id = "T003"
+status = "active"
+depends_on = ["T002"]
+acceptance = "Validate Markdown/repository consistency, run exact-head host build/tests, reconcile state, and persist the resulting revision."

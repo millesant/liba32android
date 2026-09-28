@@ -2,40 +2,38 @@
 
 The numbered 011-049 roadmap is COMPLETE.
 
-`post-roadmap-android-apk-native-catalog` is DONE at
-`eea5433f77049ed1cccddd5998213b6816194e63`.
+## Immediate repository gate
 
-`post-roadmap-a32-jni-onload-bootstrap` is IMPLEMENTED on `bleeding`.
-Exact-head required checks are its current acceptance gate.
+Finish `post-roadmap-oss-readiness`:
 
-The first JNI slice now installs a logical ARM32 JavaVM/JNIEnv ABI, publishes
-JavaVM::GetEnv at invoke-table slot 6, matches Dalvik GetEnv version/output
-ordering, and invokes exact-object JNI_OnLoad through the existing bounded A32
-service executor while preserving lifecycle object provenance.
+1. validate the public repository/docs hygiene checks;
+2. run the normal host build and CTest suite on the exact resulting revision;
+3. verify the pushed `bleeding` head and CI state;
+4. close the change only after observed validation supports it.
 
-A dedicated pinned-NDK fixture proves the real guest ABI: JNI_OnLoad performs an
-indirect GetEnv through JavaVM offset `0x18`, receives a non-null JNIEnv, and
-returns JNI 1.6.
+The remaining non-technical OSS-release blocker is the project license. The
+maintainer must explicitly select and commit a license before the repository
+should be presented as a formally licensed open-source release.
 
-After terminal success, continue with the next evidence-backed JNI seam rather
-than expanding unrelated loader policy:
+## Active JNI track
 
-1. expand the caller-addressed JNINativeInterface table far enough to publish
-   exact real slots;
-2. add a bounded caller-owned class registry and `JNIEnv::FindClass` at native
-   table slot 6 / offset `0x18`;
-3. add bounded `JNIEnv::RegisterNatives` at slot 215 / offset `0x35c`;
-4. represent registered methods as guest logical function pointers plus owned
-   class/name/signature metadata under explicit count/string ceilings;
-5. prove registration from a generated ARM32 JNI_OnLoad fixture before adding
-   actual Java-to-native method invocation.
+Continue `post-roadmap-a32-jni-register-natives` from the implementation already
+on `bleeding`.
 
-The supplied `libmla.so` machine code directly proves both table offsets above,
-so this is the smallest real-library-driven next step.
+The remaining slice work is:
 
-Keep Java object/reference semantics, strings/arrays/exceptions, method
-invocation, Attach/Detach, JNI_OnUnload, framework classes, graphics/audio,
-app patching, device deployment, and a general Java VM outside that next slice.
+1. extend the pinned-NDK ARM32 JNI fixture so `JNI_OnLoad` calls FindClass and
+   RegisterNatives through the real guest table slots;
+2. prove the registered class/name/signature/function association from that
+   fixture;
+3. invoke one registered guest native through the bounded reverse-dispatch path;
+4. converge accepted compatibility spec/architecture/state/evidence;
+5. run exact-head required validation before calling the slice complete.
 
-If a later step materially needs the user's Linux machine, stop beforehand and
-provide exact commands and expected output.
+After that, continue the continuous JNI roadmap with class/member identity,
+references, strings, arrays, exceptions, method/field calls, thread/VM surface,
+direct buffers/critical access/monitors, and remaining evidence-driven slots.
+
+Keep framework classes, graphics/audio/input, application patching, and a
+general Java VM outside the generic JNI ABI layer until real evidence requires
+those boundaries.

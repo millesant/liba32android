@@ -1,65 +1,129 @@
 # ARM32 JNI compatibility
 
-Status: JNI VM / GetEnv / JNI_OnLoad bootstrap implemented; exact-head validation pending
+Status: VM/GetEnv/JNI_OnLoad implemented; FindClass/RegisterNatives/reverse-dispatch slice in progress
 
 ## Goal
 
-Provide the smallest guest-visible JNI invocation ABI needed to enter real
-ARM32 Android native libraries through `JNI_OnLoad`, while keeping Java
-objects/classes and native-method registration outside this first slice.
+Provide a bounded guest-visible JNI ABI for real ARM32 Android native
+libraries without introducing host-pointer identity or pretending that a full
+Java VM already exists.
 
-The design reuses existing logical guest memory, ELF symbol lookup, A32 service
-dispatch, and lifecycle execution-context machinery. It does not introduce a
-host JVM or publish host pointers.
+The design reuses logical guest memory, exact-object ELF symbol lookup, bounded
+A32 service dispatch, and lifecycle execution context. Java-side state is added
+only when native binaries prove they need it.
 
 ## Guest JavaVM and JNIEnv
 
-`A32JniVmService` installs a caller-addressed JavaVM object, JNI invocation
-table, JNIEnv object, a minimal native-interface prefix, and an ARM GetEnv SVC
-stub.
+`A32JniVmService` installs caller-addressed JavaVM/JNIEnv objects and their
+function tables. All published pointers are logical 32-bit guest addresses; the
+caller owns mappings and permission changes.
 
-On ARM32 the JavaVM table entry for GetEnv is slot 6 / byte offset `0x18`.
-Only that invoke entry is non-null. The supplied `libmla.so` independently
-confirms the ABI in machine code: its `_JavaVM::GetEnv(void**, int)` wrapper
-loads `[vm]`, then `[table + 0x18]`, then performs an indirect `blx`.
+The JavaVM invocation table follows the Android ABI and publishes GetEnv at
+slot 6 / byte offset `0x18`.
 
-The initial JNIEnv native table intentionally publishes no callable methods.
-Its first five words are zero. The supplied MLA binary already proves the next
-real requirements: its `JNIEnv::FindClass` wrapper loads native-table byte
-offset `0x18` (slot 6), while `JNIEnv::RegisterNatives` loads byte offset
-`0x35c` (slot 215). Those entries are reserved for the next JNI slice rather
-than being filled speculatively here.
+The JNIEnv native table now spans slots 0 through 215 so the first two
+evidence-backed entries can be published at their real positions:
+
+- `FindClass` — slot 6 / byte offset `0x18`;
+- `RegisterNatives` — slot 215 / byte offset `0x35c`.
+
+Unsupported entries remain null.
+
+The supplied ARMv7 `libmla.so` independently proves both JNIEnv offsets in
+machine code, and also proves JavaVM::GetEnv at offset `0x18`.
 
 ## Installation ownership
 
-The caller owns all mappings and permission changes. Installation requires
-nonzero aligned non-overlapping guest ranges, snapshots current bytes, writes
-the VM/env tables and stub transactionally, and restores earlier writes if a
-later write fails.
+The caller owns guest mappings and permission changes. Installation requires
+nonzero aligned, non-overlapping ranges; snapshots current bytes; writes the
+VM/env tables and private ARM service stubs transactionally; and restores
+earlier writes if a later write fails.
 
-A typical mapped backend installs the stub while writable and then lets the
-caller seal its page RX. The compatibility layer itself never changes mapping
+A mapped backend can install stubs while writable and then seal the containing
+pages RX. The compatibility layer itself does not map, unmap, or broaden page
 permissions.
+
+## Private service stubs
+
+The current private guest/host service immediates are:
+
+- `0xD7` — JavaVM::GetEnv;
+- `0xD8` — JNIEnv::FindClass;
+- `0xD9` — JNIEnv::RegisterNatives.
+
+Each guest stub is a minimal ARM `svc; bx lr` sequence. Unknown SVC immediates
+remain unhandled.
 
 ## GetEnv behavior
 
-The private guest/host trap is SVC immediate `0xD7`.
-
-The service models the current guest execution context as attached. It requires
-the exact configured JavaVM pointer. Matching Dalvik, version validation occurs
-before the output pointer is touched: the inclusive numeric JNI 1.1 through 1.6
-range succeeds, while an out-of-range value returns JNI_EVERSION without
-modifying `*env`.
+GetEnv requires the exact configured JavaVM pointer. Matching Dalvik, version
+validation happens before `*env` is touched: the inclusive numeric JNI 1.1
+through 1.6 range succeeds, while an out-of-range value returns JNI_EVERSION
+without modifying the output slot.
 
 For an accepted version the output slot must be writable, receives the logical
 guest JNIEnv pointer, and the call returns JNI_OK.
+
+## Class registry and FindClass
+
+`A32JniClassRegistry` is caller-owned and borrowed by the VM service. It keeps
+explicit limits for class count, registered native count, per-registration
+method count, and guest string lengths.
+
+Classes are associated with caller-selected nonzero logical `jclass` handles.
+Class names and handles must be unique.
+
+FindClass:
+
+- requires the exact configured JNIEnv pointer;
+- copies a bounded NUL-terminated guest class name through `GuestMemory`;
+- returns the exact registered guest handle on a hit;
+- returns null on a semantic miss;
+- treats unreadable/unterminated guest strings as service failures.
+
+No host pointer is exposed as a `jclass`.
+
+## RegisterNatives
+
+RegisterNatives requires the exact configured JNIEnv pointer and a registered
+class handle. ARM32 `JNINativeMethod` records are decoded as three 32-bit
+little-endian words:
+
+```text
+name pointer
+signature pointer
+guest function pointer
+```
+
+The method count and all guest strings are bounded. The complete registration
+call is decoded and validated before registry mutation. Duplicate keys inside a
+single call are rejected, and a failed transaction does not partially update
+the registry.
+
+Accepted metadata owns copies of class/name/signature strings while preserving
+the native function as a logical 32-bit guest function pointer.
+
+## Reverse native dispatch
+
+`invoke_a32_registered_native_noargs` is the first deliberately narrow
+host-to-guest native dispatch transaction.
+
+It resolves one exact class/name/signature binding, currently accepts only
+zero-Java-argument signatures, supplies `JNIEnv*` in `r0` and the caller's
+receiver/class handle in `r1`, and executes through the existing bounded
+service-aware A32 executor.
+
+The caller provides stack top, stop PC, instruction budget, and service-call
+budget. The raw `r0` return bits are exposed to the caller.
+
+This is not yet general JNI argument marshalling.
 
 ## JNI_OnLoad transaction
 
 `invoke_a32_jni_on_load` resolves `JNI_OnLoad` from one exact loaded object,
 never from a dependency or global symbol scope. The function executes with
-`r0=JavaVM*`, `r1=null`, caller-owned stack/stop PC, and bounded instruction
-and service-call budgets.
+`r0=JavaVM*`, `r1=null`, caller-owned stack/stop PC, and bounded instruction and
+service-call budgets.
 
 The exact object index is optionally scoped through the existing ELF lifecycle
 execution context for the duration of the guest call. This preserves automatic
@@ -69,97 +133,93 @@ context after return.
 Dalvik/ART load semantics accept exactly JNI 1.2, 1.4, or 1.6 from JNI_OnLoad.
 The transaction mirrors that rule.
 
-## Validation
+## Validation state
 
-Focused host tests validate pointer-table bytes, transactional installation,
-Dalvik GetEnv ordering/range, invalid guest pointers, exact-object symbol
-isolation, OnLoad version checks, and resource options.
+Host regressions cover:
 
-The dedicated pinned-NDK integration builds a dependency-free ARM32 shared
-library whose JNI_OnLoad performs an indirect `JavaVM::GetEnv` call through
-the guest table and returns JNI 1.6 only after receiving a non-null JNIEnv.
-The host harness installs/seals the guest VM stub, proves lifecycle object
-context is present during the SVC, and executes the fixture through the normal
-A32 service dispatcher.
+- VM/env table and service-stub bytes;
+- invalid/overlapping layout and transactional rollback;
+- GetEnv version/output ordering and pointer validation;
+- FindClass hit/miss/wrong-env behavior;
+- bounded RegisterNatives parsing and transactional rejection;
+- exact registered-native lookup;
+- one zero-argument reverse-dispatch execution;
+- exact-object JNI_OnLoad isolation and return-version validation.
+
+The existing pinned-NDK integration fixture still proves only the first
+bootstrap: JNI_OnLoad performs an indirect JavaVM::GetEnv and returns JNI 1.6
+after receiving a non-null JNIEnv.
+
+The remaining acceptance work for the registration slice is to extend that real
+ARM32 fixture so JNI_OnLoad performs FindClass + RegisterNatives and the host
+then invokes one registered guest native. That integration evidence is not yet
+claimed.
 
 ## Limits
 
-This slice does not implement FindClass, RegisterNatives, Java class/reference
-state, strings/arrays/exceptions, native-method dispatch, attach/detach,
-JNI_OnUnload, Android framework services, graphics, or audio.
-
+The current slice does not provide general Java object/reference lifetime,
+member IDs, strings/arrays, pending exceptions, Java method/field calls,
+general native argument marshalling, thread attach/detach, JNI_OnUnload,
+framework classes, graphics, or audio.
 
 ## Continuous JNI roadmap
 
-JNI is now one continuous compatibility track rather than a one-off bootstrap
-feature. Each bounded slice keeps the guest ARM32 ABI stable, reuses the
-service-aware executor, and adds only the Java-side state real native libraries
-prove they need.
+JNI is one continuous compatibility track. Each bounded slice keeps the guest
+ARM32 ABI stable, reuses the service-aware executor, and adds only Java-side
+state that real native libraries prove they need.
 
-Planned order:
+Planned order after the current registration slice:
 
-1. **RegisterNatives + reverse native dispatch**
-   - expand the JNIEnv table through real slot 215;
-   - add FindClass at slot 6 because supplied libmla uses it with
-     RegisterNatives;
-   - parse bounded ARM32 JNINativeMethod arrays;
-   - retain class/name/signature/function associations;
-   - invoke one registered guest native through a bounded reverse-dispatch
-     transaction.
-
-2. **Class/member identity substrate**
-   - bounded class registry;
+1. **Class/member identity substrate**
    - GetObjectClass and IsInstanceOf;
-   - deterministic guest jclass/jmethodID/jfieldID handles;
+   - deterministic guest `jclass` / `jmethodID` / `jfieldID` handles;
    - GetMethodID/GetStaticMethodID/GetFieldID/GetStaticFieldID.
 
-3. **Reference model**
+2. **Reference model**
    - local/global/weak references;
    - local frames/capacity;
    - IsSameObject and reference-type queries;
    - explicit lifetime/count ceilings.
 
-4. **Strings**
+3. **Strings**
    - NewString/NewStringUTF;
    - UTF-16 and modified-UTF-8 length/access/release paths;
    - region APIs with bounded copies.
 
-5. **Arrays**
+4. **Arrays**
    - primitive/object array creation and length;
    - element/region access and release behavior;
    - object-array element references.
 
-6. **Exceptions**
+5. **Exceptions**
    - Throw/ThrowNew;
    - ExceptionOccurred/Check/Clear/Describe;
    - bounded pending-exception state per guest execution context.
 
-7. **Object construction and method calls**
+6. **Object construction and method calls**
    - NewObject[A/V];
    - Call<type>Method[A/V], nonvirtual, and static families;
-   - normalize ARM32 varargs to one internal jvalue-array path.
+   - normalize ARM32 varargs to one internal `jvalue[]` path.
 
-8. **Fields**
+7. **Fields**
    - Get/Set<type>Field;
    - static-field families;
    - deterministic backing storage for compatibility-model classes.
 
-9. **Thread/VM invocation surface**
+8. **Thread/VM invocation surface**
    - AttachCurrentThread / DetachCurrentThread;
    - GetEnv detached behavior;
    - daemon attach and DestroyJavaVM only if real evidence requires them.
 
-10. **Direct buffers, critical access, monitors**
-    - NewDirectByteBuffer / address / capacity;
-    - primitive/string critical APIs;
-    - MonitorEnter / MonitorExit.
+9. **Direct buffers, critical access, monitors**
+   - NewDirectByteBuffer / address / capacity;
+   - primitive/string critical APIs;
+   - MonitorEnter / MonitorExit.
 
-11. **Compatibility completion**
+10. **Compatibility completion**
     - inspect VLC/MLA/FMOD and later APK evidence after every slice;
     - fill remaining JNI table slots only when real binaries require them;
     - keep Android framework-class behavior distinct from generic JNI ABI
       plumbing.
 
 The goal is broad native-facing JNI compatibility, not reimplementation of ART.
-The compatibility runtime may model only the Java classes/objects required by
-native libraries until a future real-Java-runtime bridge proves useful.

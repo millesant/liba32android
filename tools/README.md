@@ -20,7 +20,8 @@ See `docs/diagnostics.md` before interpreting probe or runtime-smoke output.
 - `build_arm32_loader_fixture.sh`
 - `build_arm32_jump_slot_fixture.sh`
 - `build_arm32_versioned_fixture.sh`
-- `build_arm32_android_log_shim_fixture.sh`\n- `build_arm32_libc_memory_string_fixture.sh`
+- `build_arm32_android_log_shim_fixture.sh`
+- `build_arm32_libc_memory_string_fixture.sh`
 
 They resolve fixture sources from the repository tree relative to the script
 location. The Android-log and partial-libc shim builders consume sources under

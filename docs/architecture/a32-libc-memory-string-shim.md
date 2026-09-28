@@ -20,7 +20,13 @@ The freestanding ARM-mode shim has SONAME `libc.so` and exports:
 - `memchr` -> SVC `0xA4`
 - `strlen` -> SVC `0xA5`
 - `strcmp` -> SVC `0xA6`
-- `strncmp` -> SVC `0xA7`\n- `memmem` -> SVC `0xA8`\n- `strcpy` -> SVC `0xA9`\n- `strncpy` -> SVC `0xAA`\n- `atoi` -> SVC `0xAB`\n- `strtol` -> SVC `0xAC`\n- `__errno` -> SVC `0xAD`
+- `strncmp` -> SVC `0xA7`
+- `memmem` -> SVC `0xA8`
+- `strcpy` -> SVC `0xA9`
+- `strncpy` -> SVC `0xAA`
+- `atoi` -> SVC `0xAB`
+- `strtol` -> SVC `0xAC`
+- `__errno` -> SVC `0xAD`
 
 Each function consists only of its shared feature-030 SVC followed by
 `bx lr`. The guest and host consume the same preprocessor-safe service-ID
