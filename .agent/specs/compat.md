@@ -979,3 +979,41 @@ app-local named dlopen.
 Package/manifest discovery, ABI auto-selection, split APK selection,
 AssetManager/package-manager access, JNI startup, graphics/audio, automatic app
 patching, and device deployment remain separate.
+
+
+## L32-C035 — Bounded APK native-library catalog
+
+`A32ApkLibrarySource::catalog` discovers finite application-local native
+library membership for one caller-selected APK and relative ABI directory.
+
+The catalog and exact-entry `load` operation share one private ZIP32
+archive-open and central-directory parser. Single-disk structure, ZIP64
+sentinels, archive bytes, ZIP entry count, central-directory bytes, and entry
+name bytes therefore use one validation path rather than parallel parsers.
+
+Catalog options require non-zero ceilings for discovered library count,
+per-SONAME bytes, total published SONAME bytes, and ABI-directory bytes. The ABI
+directory must be relative, bounded, NUL/backslash/! free, have no
+leading/trailing slash, and contain no empty, dot, or dot-dot components.
+
+Only direct children below `<abi-directory>/` qualify. Nested entries and
+non-`.so` entries are ignored. A qualifying basename must be non-empty, bare,
+NUL-free, slash-free, backslash-free, and end exactly in `.so`.
+
+A qualifying SONAME that exceeds a catalog storage ceiling fails the operation.
+Duplicate qualifying SONAMEs are ambiguous and fail. Successful output owns its
+strings and is sorted lexicographically.
+
+A missing APK returns NotFound. Invalid policy/options or malformed, truncated,
+multi-disk, ZIP64-sentinel, or resource-invalid central-directory state returns
+Failed through the shared parser.
+
+Catalog enumeration does not decompress entry payloads or inspect ELF
+`DT_SONAME`; ZIP entry basenames define membership for the caller-selected ABI
+directory. The resulting owned strings can supply the accepted
+`A32AndroidApkRuntimeBootstrap` application SONAME set. The initial root
+SONAME remains an explicit caller choice.
+
+ABI auto-detection, manifest/root selection, split-APK merging,
+package-manager/AssetManager discovery, signatures, JNI startup, graphics/audio,
+patching, and device deployment remain separate.
