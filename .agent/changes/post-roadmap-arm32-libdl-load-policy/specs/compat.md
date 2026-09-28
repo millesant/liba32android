@@ -22,10 +22,13 @@ the default absence of Global. Root visibility is monotonic: Global promotion
 is deterministic and a later Local open never demotes it.
 
 NODELETE is a separate monotonic root property. Once set by any successful
-open, later opens without NODELETE do not clear it. Final synthetic-handle
-release for a NODELETE root clears only the handle; exact-object teardown,
-registered finalization, root release, tombstoning, unmapping, and learned-DSO
-binding retirement are skipped.
+open, later opens without NODELETE do not clear it.
+
+Matching bionic's linked-object can_unload rule, final synthetic-handle release
+for either a Global root or a NODELETE root clears only the handle;
+exact-object teardown, registered finalization, root release, tombstoning,
+unmapping, and learned-DSO binding retirement are skipped. Global retention does
+not make a Local NODELETE root globally visible.
 
 NOLOAD is a resident query. It may acquire, Global-promote, and/or NODELETE-pin
 an already-Active matching object, including an Active dependency that did not
