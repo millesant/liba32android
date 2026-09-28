@@ -458,10 +458,8 @@ A32AndroidLibrarySourceResult A32ApkLibrarySource::load(
     }
 
     std::vector<std::uint8_t> compressed;
-    std::vector<std::uint8_t> image;
     try {
         compressed.resize(entry.compressed_size);
-        image.resize(entry.uncompressed_size);
     } catch (const std::bad_alloc&) {
         return source_failure(A32AndroidLibrarySourceError::Failed);
     }
@@ -469,12 +467,18 @@ A32AndroidLibrarySourceResult A32ApkLibrarySource::load(
         return source_failure(A32AndroidLibrarySourceError::Failed);
     }
 
+    std::vector<std::uint8_t> image;
     if (entry.method == kZipMethodStored) {
         if (entry.compressed_size != entry.uncompressed_size) {
             return source_failure(A32AndroidLibrarySourceError::Failed);
         }
         image = std::move(compressed);
     } else {
+        try {
+            image.resize(entry.uncompressed_size);
+        } catch (const std::bad_alloc&) {
+            return source_failure(A32AndroidLibrarySourceError::Failed);
+        }
         if (compressed.empty() ||
             compressed.size() >
                 static_cast<std::size_t>(
