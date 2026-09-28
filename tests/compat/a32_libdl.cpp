@@ -119,8 +119,12 @@ int test_arm32_policy_flags_and_resident_noload() {
     constexpr std::array<std::uint8_t, 11> missing_name{{
         'm','i','s','s','i','n','g','.','s','o',0U,
     }};
+    constexpr std::array<std::uint8_t, 5> missing_symbol{{
+        'n','o','p','e',0U,
+    }};
     if (!memory.write(0x100U, dep_name) ||
-        !memory.write(0x140U, missing_name)) {
+        !memory.write(0x140U, missing_name) ||
+        !memory.write(0x180U, missing_symbol)) {
         return fail("could not stage policy guest names");
     }
 
@@ -168,6 +172,24 @@ int test_arm32_policy_flags_and_resident_noload() {
         regs[0] != 0U ||
         link_map.roots.size() != 2U) {
         return fail("missing resident NOLOAD unexpectedly acquired object");
+    }
+
+    regs = {};
+    regs[0] = kA32RtldDefault;
+    regs[1] = 0x180U;
+    if (service.handle(
+            memory, kA32LibDlDlsymSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("ARM32 RTLD_DEFAULT sentinel was not accepted");
+    }
+    regs = {};
+    if (service.handle(
+            memory, kA32LibDlDlerrorSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        read_c_string(memory, regs[0], 127U) !=
+            "dlsym: symbol not found") {
+        return fail("RTLD_DEFAULT miss was treated as invalid handle");
     }
 
     regs = {};
