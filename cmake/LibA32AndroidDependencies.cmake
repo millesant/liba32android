@@ -1,5 +1,11 @@
-# Use platform/NDK zlib for bounded APK DEFLATE support.
-find_package(ZLIB REQUIRED)
+# Use host zlib on desktop builds and the NDK/system libz when
+# cross-compiling Android.
+if(ANDROID)
+    set(LIBA32ANDROID_ZLIB_TARGET z)
+else()
+    find_package(ZLIB REQUIRED)
+    set(LIBA32ANDROID_ZLIB_TARGET ZLIB::ZLIB)
+endif()
 
 # Keep Dynarmic narrowly scoped to the A32 frontend needed by this runtime.
 set(DYNARMIC_FRONTENDS "A32" CACHE STRING "" FORCE)
