@@ -28,3 +28,19 @@ The evidence does not imply that every Android APK uses only method 8 or that
 ZIP64 can never occur. The implemented source deliberately accepts ordinary
 ZIP32 stored + DEFLATE entries and rejects ZIP64 rather than claiming a general
 archive implementation.
+
+
+## Direct ARMv7 native-library catalog
+
+Applying the bounded direct-child catalog rule to
+`lib/armeabi-v7a/` yields exactly four SONAME basenames in deterministic
+lexicographic order:
+
+1. `libc++_shared.so`
+2. `libmla.so`
+3. `libvlc.so`
+4. `libvlcjni.so`
+
+No nested entry is required to produce this catalog. This is the finite
+application-local membership set that the caller-supplied APK bootstrap can
+consume while leaving the initial root choice explicit.
