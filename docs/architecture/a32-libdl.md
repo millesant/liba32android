@@ -79,10 +79,13 @@ never demote it.
 NOLOAD performs only Active resident lookup. It can acquire/promote/pin a
 resident target but cannot invoke the dependency provider or map a missing one.
 
-NODELETE is a monotonic retention bit independent of Global visibility. Final
-handle release for a pinned root clears only the synthetic handle and skips
-FINI_ARRAY, registered finalization, DT_FINI, root release, tombstoning, unmap,
-and learned-DSO binding retirement. A later ordinary reopen inherits the pin.
+NODELETE is a monotonic retention bit independent of Global visibility.
+Current bionic also treats a linked RTLD_GLOBAL object as non-unloadable. The
+compatibility close paths mirror that rule: final handle release for either a
+Global or NODELETE root clears only the synthetic handle and skips FINI_ARRAY,
+registered finalization, DT_FINI, root release, tombstoning, unmap, and
+learned-DSO binding retirement. A Local NODELETE root stays local; a later
+ordinary reopen inherits the persistent retention policy.
 
 Handle acquisition precedes policy publication. If policy mutation fails before
 the new handle is exposed, that reference is rolled back.
