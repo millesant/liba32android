@@ -1,6 +1,6 @@
 # ARM EABI __aeabi_atexit registration
 
-Status: registration and registered-destructor finalization accepted; exact-head validation PASSed
+Status: registration/finalization accepted; lifecycle-scoped DSO association implemented
 
 ## Boundary
 
@@ -16,6 +16,28 @@ r1 destructor function value, and r2 DSO handle as opaque logical guest values.
 `A32AeabiAtexitService` borrows finite caller-owned record storage.
 Successful calls append in order and return guest r0 = 0. Capacity exhaustion
 returns guest r0 = -1 without changing existing records.
+
+## Lifecycle-scoped object association
+
+The registration service can optionally borrow finite caller-owned
+object-to-DSO binding slots plus an ELF lifecycle execution context.
+
+Lifecycle guest calls scope that context to the stable object index currently
+executing. A non-zero DSO registration made in that scope therefore provides
+direct ABI evidence for the association instead of requiring a guessed
+`__dso_handle` symbol or load-bias rule.
+
+Identical object/DSO registrations reuse one slot. Conflicting associations or
+binding-capacity exhaustion return guest -1 atomically without appending the
+registration. Calls outside a known lifecycle context remain normal
+registrations but do not learn ownership.
+
+The libdl close transaction can consume learned associations directly or use
+the existing explicit binding table as fallback. Disagreement is rejected.
+
+Learned slots are forgotten only after successful physical retirement of the
+owning link-map object, allowing finite binding capacity to follow active
+ownership while preserving bindings across failed-unload retries.
 
 ## Partial libc path
 
@@ -47,7 +69,7 @@ registered-finalizer regressions.
 
 ## Deliberate limits
 
-Guest `__cxa_finalize`, association of DSO handles with link-map objects,
-ordering registered callbacks against FINI_ARRAY/DT_FINI during dlclose/process
-exit, shared-object reference-count ownership, mapping reclamation, and actual
-unload remain follow-up lifecycle work.
+Association is learned only when a registration runs under known lifecycle
+object provenance. Objects that never register `__aeabi_atexit`, arbitrary
+runtime registrations outside lifecycle execution, and process-wide exit
+ownership remain separate policy surfaces.
