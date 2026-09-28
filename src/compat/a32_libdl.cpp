@@ -12,6 +12,7 @@
 #include "compat/a32_libdl_close_transaction.h"
 #include "compat/a32_libdl_open_transaction.h"
 #include "compat/a32_libdl_unload_transaction.h"
+#include "elf/elf32_dependency_loader.h"
 #include "elf/elf32_linker_strings.h"
 #include "memory/guest_memory.h"
 
@@ -84,6 +85,7 @@ bool A32LibDlService::configuration_valid() const noexcept {
         static_cast<std::uint64_t>(options_.handle_base) +
         (handles_.size() - 1U) * 4ULL;
     return last_handle <= std::numeric_limits<std::uint32_t>::max() &&
+           last_handle != kA32RtldDefault &&
            last_handle != kA32RtldNext &&
            (open_transaction_ == nullptr ||
             (open_transaction_->handle_base() == options_.handle_base &&
@@ -198,6 +200,7 @@ std::uint32_t A32LibDlService::acquire_handle(
             index * 4ULL;
         if (value == 0U ||
             value > std::numeric_limits<std::uint32_t>::max() ||
+            value == kA32RtldDefault ||
             value == kA32RtldNext) {
             return 0U;
         }
@@ -457,14 +460,21 @@ runtime::A32HostServiceDisposition A32LibDlService::handle(
 
     if (svc_immediate == kA32LibDlDlopenSvcImmediate) {
         const std::uint32_t mode = regs[1];
-        const bool lazy = (mode & kA32RtldLazy) != 0U;
-        const bool now = (mode & kA32RtldNow) != 0U;
-        if (lazy == now ||
-            (mode & ~(kA32RtldLazy | kA32RtldNow)) != 0U) {
+        constexpr std::uint32_t supported_flags =
+            kA32RtldLazy |
+            kA32RtldGlobal |
+            kA32RtldNoLoad |
+            kA32RtldNodelete;
+        if ((mode & ~supported_flags) != 0U) {
             set_error("dlopen: unsupported flags");
             regs[0] = 0U;
             return A32HostServiceDisposition::Handled;
         }
+        const A32LibDlOpenPolicy policy{
+            .global = (mode & kA32RtldGlobal) != 0U,
+            .nodelete = (mode & kA32RtldNodelete) != 0U,
+            .no_load = (mode & kA32RtldNoLoad) != 0U,
+        };
 
         if (regs[0] == 0U) {
             if (link_map_.roots.empty()) {
@@ -476,6 +486,19 @@ runtime::A32HostServiceDisposition A32LibDlService::handle(
                 link_map_.roots.front().object_index;
             if (!link_map_.object_active(object_index)) {
                 return A32HostServiceDisposition::Failed;
+            }
+            const auto policy_updated =
+                elf::update_elf32_link_map_root_policy(
+                    link_map_,
+                    object_index,
+                    policy.global
+                        ? elf::Elf32LinkMapRootPolicy::Global
+                        : elf::Elf32LinkMapRootPolicy::Local,
+                    policy.nodelete);
+            if (!policy_updated) {
+                set_error("dlopen: root policy update failed");
+                regs[0] = 0U;
+                return A32HostServiceDisposition::Handled;
             }
             regs[0] = acquire_handle(object_index);
             if (regs[0] == 0U) {
@@ -490,7 +513,8 @@ runtime::A32HostServiceDisposition A32LibDlService::handle(
         }
 
         if (open_transaction_ != nullptr) {
-            const auto opened = open_transaction_->open(name, regs[13]);
+            const auto opened =
+                open_transaction_->open(name, regs[13], policy);
             if (!opened) {
                 set_error(
                     std::string{"dlopen: acquisition failed: "} +
@@ -510,7 +534,24 @@ runtime::A32HostServiceDisposition A32LibDlService::handle(
             return A32HostServiceDisposition::Handled;
         }
         if (!object_index.has_value()) {
-            set_error("dlopen: object not resident");
+            set_error(
+                policy.no_load
+                    ? "dlopen: object not loaded"
+                    : "dlopen: object not resident");
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+
+        const auto policy_updated =
+            elf::update_elf32_link_map_root_policy(
+                link_map_,
+                *object_index,
+                policy.global
+                    ? elf::Elf32LinkMapRootPolicy::Global
+                    : elf::Elf32LinkMapRootPolicy::Local,
+                policy.nodelete);
+        if (!policy_updated) {
+            set_error("dlopen: root policy update failed");
             regs[0] = 0U;
             return A32HostServiceDisposition::Handled;
         }
