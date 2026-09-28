@@ -262,5 +262,6 @@ rejected before mutation.
 
 This primitive represents persistent ownership/visibility policy only. It does
 not acquire a synthetic libdl handle, execute lifecycle callbacks, interpret
-RTLD_NOLOAD, perform relocation, or enforce NODELETE during generic
-root-release/reclamation. Those are higher libdl ownership responsibilities.
+RTLD_NOLOAD, perform relocation, or decide whether a Global/NODELETE root may
+be released. Those bionic-facing retention rules are enforced by higher libdl
+ownership transactions before generic root-release/reclamation is invoked.
