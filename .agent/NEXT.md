@@ -2,35 +2,36 @@
 
 The numbered 011-049 roadmap is COMPLETE.
 
-`post-roadmap-android-apk-library-source` is DONE at
-`4c3cca6e8bd9b04c4995e82b83c5976f9be52763`.
+`post-roadmap-android-apk-runtime-bootstrap` is DONE at
+`268d151bb8c93473c27abdefb9b9644b51ff3c96`.
 
-`post-roadmap-android-apk-runtime-bootstrap` is IMPLEMENTED on `bleeding`.
+`post-roadmap-android-apk-native-catalog` is IMPLEMENTED on `bleeding`.
 Exact-head required checks are its current acceptance gate.
 
-The bootstrap now accepts a caller-supplied APK path, exact ABI directory,
-finite complete app-local SONAME set, platform provider, and persistent runtime
-state. It owns the APK/search/provider composition and delegates initial root
-load plus later named app-local dlopen to the accepted
-`A32LibDlOpenTransaction`.
+The APK source now shares one bounded ZIP32 central-directory parser between
+exact-entry loading and native catalog enumeration. For a caller-selected ABI
+directory, direct `.so` basenames are discovered under independent
+library/per-name/total-name ceilings, duplicate names fail, output is
+lexicographically deterministic, and the real ARM32 bootstrap consumes the
+discovered set instead of a manually typed membership list.
 
-The real ARM32 workflow places both fixture DSOs in one deterministic DEFLATED
-APK, starts with an empty link map, bootstraps the root from archive bytes,
-loads the child transitively, executes the relocated call, and obtains a later
-child handle through the same transaction.
+The supplied VLC APK produces the expected four-member ARMv7 catalog:
+`libc++_shared.so`, `libmla.so`, `libvlc.so`, and `libvlcjni.so`.
+The caller still chooses the APK, ABI directory, and initial root SONAME.
 
-After terminal success, remove the next major piece of manual configuration:
-add a bounded APK native-library catalog operation for one caller-selected ABI
-directory. It should enumerate exact direct `*.so` entries under
-`<apk>!/<abi>/`, enforce caller entry/name/central-directory/catalog ceilings,
-reject ambiguous duplicate SONAMEs, and produce the finite SONAME set consumed
-by the bootstrap. Reuse the existing ZIP32 parser structures rather than adding
-a second archive parser.
+After terminal success, stop deepening linker/archive policy and open the first
+JNI compatibility slice. Start with the smallest guest-visible ARM32 JNI VM
+bootstrap needed to call a library's `JNI_OnLoad`: bounded JavaVM/JNIEnv
+pointer-table representation, explicit supported JNI version negotiation,
+`JavaVM::GetEnv` service dispatch, and lifecycle-safe guest invocation of an
+exported `JNI_OnLoad(JavaVM*, void*)` through the existing ARM32 executor.
+Use real library evidence to decide which additional JNI functions are required;
+do not pre-build a speculative Java object model.
 
-Keep ABI auto-detection, manifest/root-library selection, split APKs,
-package-manager/AssetManager discovery, signatures, JNI/graphics/audio,
-automatic app patching, and device deployment separate. The caller should still
-select the APK, ABI directory, and initial root SONAME after catalog discovery.
+Keep FindClass/RegisterNatives/native-method dispatch, Java object/string/array
+semantics, Android framework classes, graphics/audio, ABI auto-detection,
+manifest/root selection, split APKs, package discovery, app patching, and
+device deployment separate until JNI_OnLoad bootstrap proves the next seam.
 
 If a later step materially needs the user's Linux machine, stop beforehand and
 provide exact commands and expected output.
