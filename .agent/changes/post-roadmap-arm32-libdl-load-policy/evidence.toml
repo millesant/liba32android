@@ -25,7 +25,7 @@ kind = "test"
 status = "not_run"
 claim = "Focused ELF coverage proves exact Active dependency root creation, Local-to-Global promotion, monotonic NODELETE retention, deterministic global membership, and retired-object rejection."
 source = "tests/elf/unit/elf32_dependency_loader.cpp"
-result = "Integrated but exact-head execution has not yet been observed."
+result = "Integrated focused coverage is present; exact-head execution has not yet been observed."
 limitations = ""
 
 [[evidence]]
@@ -34,7 +34,7 @@ kind = "test"
 status = "not_run"
 claim = "Focused resident libdl coverage proves LP32 constants, NOLOAD resident acquisition/promotion, Local non-demotion, missing NOLOAD behavior, and RTLD_DEFAULT/RTLD_NEXT sentinel handling."
 source = "tests/compat/a32_libdl.cpp"
-result = "Integrated but exact-head execution has not yet been observed."
+result = "Integrated focused coverage is present; exact-head execution has not yet been observed."
 limitations = "RTLD_NEXT lookup itself remains intentionally unsupported."
 
 [[evidence]]
@@ -43,7 +43,7 @@ kind = "test"
 status = "not_run"
 claim = "Focused dynamic-open coverage proves NOLOAD provider suppression, resident NOLOAD root creation/promotion, and Global promotion of newly acquired roots while retaining eager relocation."
 source = "tests/compat/a32_libdl_open_transaction.cpp"
-result = "Integrated but exact-head execution has not yet been observed."
+result = "Integrated focused coverage is present; exact-head execution has not yet been observed."
 limitations = "RTLD_LAZY is accepted as an ABI flag but no lazy relocation machinery is claimed."
 
 [[evidence]]
@@ -52,7 +52,7 @@ kind = "test"
 status = "not_run"
 claim = "Exact-object and physical-unload close regressions prove Global and NODELETE final close clear only the synthetic handle and skip lifecycle/reclamation; NODELETE survives a plain reopen and retained roots remain mapped/Active."
 source = "tests/compat/a32_libdl_close_transaction.cpp and tests/compat/a32_libdl_unload_transaction.cpp"
-result = "Integrated but exact-head execution has not yet been observed."
+result = "Integrated focused coverage is present; exact-head execution has not yet been observed."
 limitations = "NODELETE process-exit teardown remains separate."
 
 [[evidence]]
@@ -61,5 +61,5 @@ kind = "validation"
 status = "not_run"
 claim = "The ARM32 libdl load-policy follow-up passes required exact-head checks before closure."
 source = "GitHub commit checks on the eventual integration revision"
-result = ""
-limitations = "The change remains active until terminal exact-head success is observed."
+result = "Implementation, focused regressions, bionic ABI/unload evidence, accepted ELF/compat contracts, and architecture documentation are integrated; exact-head validation is pending."
+limitations = "The change remains implemented rather than done until terminal exact-head success is observed."
