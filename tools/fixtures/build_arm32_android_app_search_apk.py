@@ -3,23 +3,25 @@ import pathlib
 import sys
 import zipfile
 
-ENTRY = "lib/armeabi-v7a/libfixture_app_child.so"
+ROOT_ENTRY = "lib/armeabi-v7a/libfixture_app_root.so"
+CHILD_ENTRY = "lib/armeabi-v7a/libfixture_app_child.so"
 
-if len(sys.argv) != 3:
-    raise SystemExit(f"usage: {sys.argv[0]} <child-so> <output-apk>")
+if len(sys.argv) != 4:
+    raise SystemExit(
+        f"usage: {sys.argv[0]} <root-so> <child-so> <output-apk>"
+    )
 
-child = pathlib.Path(sys.argv[1])
-output = pathlib.Path(sys.argv[2])
-data = child.read_bytes()
-if not data:
-    raise SystemExit("child DSO is empty")
+root = pathlib.Path(sys.argv[1])
+child = pathlib.Path(sys.argv[2])
+output = pathlib.Path(sys.argv[3])
+entries = (
+    (ROOT_ENTRY, root.read_bytes()),
+    (CHILD_ENTRY, child.read_bytes()),
+)
+if any(not data for _, data in entries):
+    raise SystemExit("root or child DSO is empty")
 
 output.parent.mkdir(parents=True, exist_ok=True)
-info = zipfile.ZipInfo(ENTRY, date_time=(1980, 1, 1, 0, 0, 0))
-info.create_system = 3
-info.external_attr = 0o100644 << 16
-info.compress_type = zipfile.ZIP_DEFLATED
-
 with zipfile.ZipFile(
     output,
     mode="w",
@@ -27,19 +29,34 @@ with zipfile.ZipFile(
     compresslevel=9,
     strict_timestamps=True,
 ) as archive:
-    archive.writestr(
-        info,
-        data,
-        compress_type=zipfile.ZIP_DEFLATED,
-        compresslevel=9,
-    )
+    for name, data in entries:
+        info = zipfile.ZipInfo(
+            name, date_time=(1980, 1, 1, 0, 0, 0)
+        )
+        info.create_system = 3
+        info.external_attr = 0o100644 << 16
+        info.compress_type = zipfile.ZIP_DEFLATED
+        archive.writestr(
+            info,
+            data,
+            compress_type=zipfile.ZIP_DEFLATED,
+            compresslevel=9,
+        )
 
 with zipfile.ZipFile(output, mode="r") as archive:
-    entries = archive.infolist()
-    if len(entries) != 1:
-        raise SystemExit("fixture APK did not contain exactly one entry")
-    entry = entries[0]
-    if entry.filename != ENTRY or entry.compress_type != zipfile.ZIP_DEFLATED:
-        raise SystemExit("fixture APK entry metadata was not deterministic DEFLATE")
-    if archive.read(ENTRY) != data:
-        raise SystemExit("fixture APK entry bytes did not round-trip")
+    infos = archive.infolist()
+    if [entry.filename for entry in infos] != [
+        ROOT_ENTRY,
+        CHILD_ENTRY,
+    ]:
+        raise SystemExit("fixture APK entry order was not deterministic")
+    for name, data in entries:
+        entry = archive.getinfo(name)
+        if entry.compress_type != zipfile.ZIP_DEFLATED:
+            raise SystemExit(
+                f"fixture APK entry was not DEFLATE: {name}"
+            )
+        if archive.read(name) != data:
+            raise SystemExit(
+                f"fixture APK entry bytes did not round-trip: {name}"
+            )
