@@ -238,3 +238,29 @@ The context is advisory provenance for synchronous host services. It does not
 change guest registers, memory, lifecycle ordering, instruction/service
 ceilings, or persistent once/failure state. A null context preserves all prior
 behavior.
+
+
+## L32-E023 — Monotonic persistent root load policy
+
+A persistent link-map root additionally carries a monotonic `nodelete`
+retention bit. Root `policy` continues to describe Local versus Global symbol
+visibility; `nodelete` is independent ownership metadata and does not itself
+add global visibility.
+
+A bounded root-policy mutation may target one exact Active object without
+mapping or relocating it. The operation validates persistent root uniqueness and
+the exact deterministic global-scope representation before mutation.
+
+If the object has no root, the operation adds exactly one root with the
+requested Local/Global visibility and NODELETE value. If a root already exists,
+Local never demotes Global and false NODELETE never clears true NODELETE.
+Global promotion inserts the exact object index into persistent global scope in
+stable ascending object-index order without duplicates.
+
+Retired or out-of-range objects are rejected. Malformed root/global state is
+rejected before mutation.
+
+This primitive represents persistent ownership/visibility policy only. It does
+not acquire a synthetic libdl handle, execute lifecycle callbacks, interpret
+RTLD_NOLOAD, perform relocation, or enforce NODELETE during generic
+root-release/reclamation. Those are higher libdl ownership responsibilities.
