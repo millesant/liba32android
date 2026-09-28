@@ -621,6 +621,132 @@ Elf32DependencyLoadResult append_elf32_link_map_root(
     return result;
 }
 
+Elf32LinkMapRootUpdateResult update_elf32_link_map_root_policy(
+    Elf32LinkMap& link_map,
+    std::size_t object_index,
+    Elf32LinkMapRootPolicy policy,
+    bool nodelete) {
+    Elf32LinkMapRootUpdateResult result;
+    if (policy != Elf32LinkMapRootPolicy::Local &&
+        policy != Elf32LinkMapRootPolicy::Global) {
+        result.error = Elf32LinkMapRootUpdateError::InvalidLinkMap;
+        return result;
+    }
+
+    const std::size_t object_count = link_map.graph.objects.size();
+    if (object_index >= object_count ||
+        !link_map.object_active(object_index)) {
+        result.error = Elf32LinkMapRootUpdateError::InvalidObject;
+        return result;
+    }
+    if (!link_map.object_states.empty() &&
+        link_map.object_states.size() != object_count) {
+        result.error = Elf32LinkMapRootUpdateError::InvalidLinkMap;
+        return result;
+    }
+
+    std::vector<std::uint8_t> root_seen(object_count, 0U);
+    std::vector<std::uint8_t> required_global(object_count, 0U);
+    for (std::size_t index = 0; index < object_count; ++index) {
+        if (link_map.object_active(index) &&
+            link_map.graph.objects[index].linker_metadata.global) {
+            required_global[index] = 1U;
+        }
+    }
+
+    std::optional<std::size_t> selected_root;
+    for (std::size_t index = 0; index < link_map.roots.size(); ++index) {
+        const auto& root = link_map.roots[index];
+        if (root.object_index >= object_count ||
+            !link_map.object_active(root.object_index) ||
+            root_seen[root.object_index] != 0U ||
+            (root.policy != Elf32LinkMapRootPolicy::Local &&
+             root.policy != Elf32LinkMapRootPolicy::Global)) {
+            result.error = Elf32LinkMapRootUpdateError::InvalidLinkMap;
+            return result;
+        }
+        root_seen[root.object_index] = 1U;
+        if (root.policy == Elf32LinkMapRootPolicy::Global) {
+            required_global[root.object_index] = 1U;
+        }
+        if (root.object_index == object_index) {
+            selected_root = index;
+        }
+    }
+
+    std::vector<std::uint8_t> global_seen(object_count, 0U);
+    bool has_previous = false;
+    std::size_t previous = 0U;
+    for (const std::size_t global_object : link_map.global_scope_objects) {
+        if (global_object >= object_count ||
+            !link_map.object_active(global_object) ||
+            global_seen[global_object] != 0U ||
+            required_global[global_object] == 0U ||
+            (has_previous && global_object <= previous)) {
+            result.error = Elf32LinkMapRootUpdateError::InvalidLinkMap;
+            return result;
+        }
+        global_seen[global_object] = 1U;
+        previous = global_object;
+        has_previous = true;
+    }
+    for (std::size_t index = 0; index < object_count; ++index) {
+        if (required_global[index] != global_seen[index]) {
+            result.error = Elf32LinkMapRootUpdateError::InvalidLinkMap;
+            return result;
+        }
+    }
+
+    if (!selected_root.has_value()) {
+        link_map.roots.push_back(Elf32LinkMapRoot{
+            .object_index = object_index,
+            .policy = policy,
+            .nodelete = nodelete,
+        });
+        result.root_added = true;
+    } else {
+        auto& root = link_map.roots[*selected_root];
+        if (policy == Elf32LinkMapRootPolicy::Global &&
+            root.policy == Elf32LinkMapRootPolicy::Local) {
+            root.policy = Elf32LinkMapRootPolicy::Global;
+            result.promoted_global = true;
+        }
+        if (nodelete && !root.nodelete) {
+            root.nodelete = true;
+            result.nodelete_set = true;
+        }
+    }
+
+    if (policy == Elf32LinkMapRootPolicy::Global &&
+        std::find(
+            link_map.global_scope_objects.begin(),
+            link_map.global_scope_objects.end(),
+            object_index) == link_map.global_scope_objects.end()) {
+        const auto position = std::lower_bound(
+            link_map.global_scope_objects.begin(),
+            link_map.global_scope_objects.end(),
+            object_index);
+        link_map.global_scope_objects.insert(position, object_index);
+        result.promoted_global = true;
+    }
+    if (result.root_added && nodelete) {
+        result.nodelete_set = true;
+    }
+    return result;
+}
+
+const char* to_string(Elf32LinkMapRootUpdateError error) noexcept {
+    switch (error) {
+    case Elf32LinkMapRootUpdateError::None:
+        return "none";
+    case Elf32LinkMapRootUpdateError::InvalidObject:
+        return "invalid_object";
+    case Elf32LinkMapRootUpdateError::InvalidLinkMap:
+        return "invalid_link_map";
+    }
+    return "unknown";
+}
+
 [[nodiscard]] static Elf32LinkMapReclamationResult
 plan_elf32_link_map_reclamation_impl(
     const Elf32LinkMap& link_map,
