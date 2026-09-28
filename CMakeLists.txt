@@ -53,6 +53,8 @@ set(LIBA32ANDROID_ARM32_APP_SEARCH_ROOT_PATH "" CACHE FILEPATH
     "Legacy optional raw ARM32 app-root fixture path retained for compatibility")
 set(LIBA32ANDROID_ARM32_APP_SEARCH_APK_PATH "" CACHE FILEPATH
     "Optional deterministic APK containing ARM32 app-root/child DSOs for bootstrap integration")
+set(LIBA32ANDROID_ARM32_JNI_ONLOAD_FIXTURE_PATH "" CACHE FILEPATH
+    "Optional generated ARM32 JNI_OnLoad/GetEnv fixture DSO")
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibA32AndroidDependencies.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibA32AndroidRuntime.cmake)
