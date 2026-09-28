@@ -1,0 +1,26 @@
+schema = 1
+change = "post-roadmap-arm32-libdl-load-policy"
+
+[[tasks]]
+id = "T001"
+status = "active"
+depends_on = []
+acceptance = "Correct ARM32 bionic libdl constants and add persistent root policy/nodelete mutation."
+
+[[tasks]]
+id = "T002"
+status = "pending"
+depends_on = ["T001"]
+acceptance = "Wire GLOBAL/LOCAL/NOLOAD/NODELETE through resident/dynamic dlopen and targeted final close."
+
+[[tasks]]
+id = "T003"
+status = "pending"
+depends_on = ["T002"]
+acceptance = "Add focused regressions and converge accepted specs/architecture documentation."
+
+[[tasks]]
+id = "T004"
+status = "pending"
+depends_on = ["T003"]
+acceptance = "Run exact-head required checks and reconcile closure evidence/state."
