@@ -106,6 +106,36 @@ struct Elf32DependencyLoadResult {
     const Elf32DependencyLoadOptions& options,
     Elf32LinkMapRootPolicy root_policy);
 
+enum class Elf32LinkMapRootUpdateError : std::uint8_t {
+    None = 0,
+    InvalidObject,
+    InvalidLinkMap,
+};
+
+struct Elf32LinkMapRootUpdateResult {
+    Elf32LinkMapRootUpdateError error{Elf32LinkMapRootUpdateError::None};
+    bool root_added{};
+    bool promoted_global{};
+    bool nodelete_set{};
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return error == Elf32LinkMapRootUpdateError::None;
+    }
+};
+
+// Add or monotonically promote ownership policy for one already-Active object.
+// Local never demotes Global and nodelete never clears once set. Global scope is
+// maintained in deterministic ascending object-index order.
+[[nodiscard]] Elf32LinkMapRootUpdateResult
+update_elf32_link_map_root_policy(
+    Elf32LinkMap& link_map,
+    std::size_t object_index,
+    Elf32LinkMapRootPolicy policy,
+    bool nodelete);
+
+[[nodiscard]] const char* to_string(
+    Elf32LinkMapRootUpdateError error) noexcept;
+
 [[nodiscard]] const char* to_string(Elf32DependencyLoadError error) noexcept;
 
 }  // namespace liba32android::elf
