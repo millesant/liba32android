@@ -11,6 +11,15 @@ result = "Current bionic main defines RTLD_NOLOAD=0x00004 and RTLD_NODELETE=0x01
 limitations = "The source defines ABI constants and Android behavior; LibA32Android's bounded ownership model remains repository-specific."
 
 [[evidence]]
+id = "bionic-global-nodelete-retention"
+kind = "external"
+status = "observed"
+claim = "Current bionic linked-object unload policy retains roots whose rtld flags include RTLD_NODELETE or RTLD_GLOBAL."
+source = "https://android.googlesource.com/platform/bionic/+/master/linker/linker_soinfo.cpp"
+result = "soinfo::can_unload returns false for linked objects when get_rtld_flags contains either RTLD_NODELETE or RTLD_GLOBAL; linker unload checks can_unload before teardown."
+limitations = "DF_1_GLOBAL-to-retention modeling outside explicit libdl root policy remains a separate ELF ownership question."
+
+[[evidence]]
 id = "root-policy-regression"
 kind = "test"
 status = "not_run"
@@ -41,7 +50,7 @@ limitations = "RTLD_LAZY is accepted as an ABI flag but no lazy relocation machi
 id = "nodelete-close-regressions"
 kind = "test"
 status = "not_run"
-claim = "Exact-object and physical-unload close regressions prove NODELETE final close clears only the synthetic handle, skips lifecycle/reclamation, survives a plain reopen, and remains mapped/Active."
+claim = "Exact-object and physical-unload close regressions prove Global and NODELETE final close clear only the synthetic handle and skip lifecycle/reclamation; NODELETE survives a plain reopen and retained roots remain mapped/Active."
 source = "tests/compat/a32_libdl_close_transaction.cpp and tests/compat/a32_libdl_unload_transaction.cpp"
 result = "Integrated but exact-head execution has not yet been observed."
 limitations = "NODELETE process-exit teardown remains separate."
