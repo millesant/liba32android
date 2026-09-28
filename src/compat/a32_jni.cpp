@@ -213,7 +213,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
     }
 
     const bool supported =
-        is_a32_supported_jni_version(regs[2]);
+        is_a32_supported_jni_getenv_version(regs[2]);
     const auto env_bytes = u32_bytes(
         supported ? layout_.jni_env_address : 0U);
     if (!memory.write(regs[1], env_bytes)) {
@@ -349,7 +349,7 @@ A32JniOnLoadResult invoke_a32_jni_on_load(
     }
 
     result.returned_version = execution.regs[0];
-    if (!is_a32_supported_jni_version(
+    if (!is_a32_supported_jni_onload_version(
             result.returned_version)) {
         result.error =
             A32JniOnLoadError::UnsupportedVersion;
