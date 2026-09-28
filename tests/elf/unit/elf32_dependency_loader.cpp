@@ -40,6 +40,7 @@ using liba32android::elf::Elf32DependencySource;
 using liba32android::elf::Elf32DynamicError;
 using liba32android::elf::append_elf32_link_map_root;
 using liba32android::elf::load_elf32_dependency_graph;
+using liba32android::elf::update_elf32_link_map_root_policy;
 using liba32android::memory::MappedGuestMemory;
 using liba32android::memory::MemoryPermission;
 
@@ -534,6 +535,78 @@ int test_persistent_link_map_promotion_preserves_discovery_order() {
     if (malformed.error != Elf32DependencyLoadError::InvalidLinkMap ||
         link_map.graph.objects.size() != 2 || no_provider.calls != 0) {
         return fail("out-of-order persistent global scope was not rejected");
+    }
+    return 0;
+}
+
+int test_persistent_root_policy_update_is_monotonic() {
+    Elf32LinkMap link_map;
+    link_map.graph.objects.resize(2U);
+    link_map.graph.objects[0].identity = "root";
+    link_map.graph.objects[1].identity = "dependency";
+    link_map.roots.push_back({
+        .object_index = 0U,
+        .policy = Elf32LinkMapRootPolicy::Local,
+    });
+    link_map.object_states.assign(
+        2U, Elf32LinkMapObjectState::Active);
+
+    const auto add_dependency_root =
+        update_elf32_link_map_root_policy(
+            link_map,
+            1U,
+            Elf32LinkMapRootPolicy::Local,
+            false);
+    if (!add_dependency_root ||
+        !add_dependency_root.root_added ||
+        link_map.roots.size() != 2U ||
+        link_map.roots[1].object_index != 1U ||
+        link_map.roots[1].policy != Elf32LinkMapRootPolicy::Local ||
+        link_map.roots[1].nodelete ||
+        !link_map.global_scope_objects.empty()) {
+        return fail("active dependency was not added as exact local root");
+    }
+
+    const auto promote = update_elf32_link_map_root_policy(
+        link_map,
+        1U,
+        Elf32LinkMapRootPolicy::Global,
+        true);
+    if (!promote ||
+        promote.root_added ||
+        !promote.promoted_global ||
+        !promote.nodelete_set ||
+        link_map.roots[1].policy != Elf32LinkMapRootPolicy::Global ||
+        !link_map.roots[1].nodelete ||
+        link_map.global_scope_objects !=
+            std::vector<std::size_t>{1U}) {
+        return fail("root policy promotion did not publish global/nodelete");
+    }
+
+    const auto local_repeat = update_elf32_link_map_root_policy(
+        link_map,
+        1U,
+        Elf32LinkMapRootPolicy::Local,
+        false);
+    if (!local_repeat ||
+        local_repeat.promoted_global ||
+        local_repeat.nodelete_set ||
+        link_map.roots[1].policy != Elf32LinkMapRootPolicy::Global ||
+        !link_map.roots[1].nodelete ||
+        link_map.global_scope_objects !=
+            std::vector<std::size_t>{1U}) {
+        return fail("local reopen demoted persistent root policy");
+    }
+
+    link_map.object_states[1] = Elf32LinkMapObjectState::Retired;
+    const auto retired = update_elf32_link_map_root_policy(
+        link_map,
+        1U,
+        Elf32LinkMapRootPolicy::Global,
+        true);
+    if (retired.error !=
+        liba32android::elf::Elf32LinkMapRootUpdateError::InvalidObject) {
+        return fail("retired object accepted root policy mutation");
     }
     return 0;
 }
@@ -1902,6 +1975,7 @@ int test_recursive_occurrence_and_image_budgets() {
 
 int main() {
     if (const int status = test_persistent_link_map_root_reuse(); status != 0) return status;
+    if (const int status = test_persistent_root_policy_update_is_monotonic(); status != 0) return status;
     if (const int status = test_persistent_link_map_dependency_reuse(); status != 0) return status;
     if (const int status = test_persistent_link_map_global_membership_order(); status != 0) return status;
     if (const int status = test_persistent_link_map_promotion_preserves_discovery_order(); status != 0) return status;
