@@ -3,24 +3,24 @@ change = "post-roadmap-android-apk-runtime-bootstrap"
 
 [[tasks]]
 id = "T001"
-status = "active"
+status = "implemented"
 depends_on = []
 acceptance = "Add bounded persistent APK application-provider/bootstrap composition over existing source/search/provider-chain/open-transaction primitives."
 
 [[tasks]]
 id = "T002"
-status = "pending"
+status = "implemented"
 depends_on = ["T001"]
 acceptance = "Add focused host regressions for validation, context-free app roots, exact requester search, platform fallback, and later app-local dlopen composition."
 
 [[tasks]]
 id = "T003"
-status = "pending"
+status = "implemented"
 depends_on = ["T002"]
 acceptance = "Update real ARM32 app-search integration so both root and child live in one deterministic DEFLATED mini-APK and root initialization uses the bootstrap."
 
 [[tasks]]
 id = "T004"
-status = "pending"
+status = "active"
 depends_on = ["T003"]
 acceptance = "Converge accepted specs/architecture/evidence and run exact-head required checks."
