@@ -213,7 +213,9 @@ int main(int argc, char** argv) {
         .invoke_table_address = *data_page + 0x20U,
         .jni_env_address = *data_page + 0x60U,
         .native_table_address = *data_page + 0x80U,
-        .get_env_stub_address = *stub_page,
+        .get_env_stub_address = *stub_page + 0x00U,
+        .find_class_stub_address = *stub_page + 0x20U,
+        .register_natives_stub_address = *stub_page + 0x40U,
     };
     A32JniVmService vm{vm_layout};
     const auto installed = vm.install(memory);
