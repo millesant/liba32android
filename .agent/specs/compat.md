@@ -846,3 +846,45 @@ their Complete/Failed historical state and are not compacted.
 Objects that never register `__aeabi_atexit`, registrations made outside a
 known lifecycle object context, and process-wide exit ownership may still
 require caller policy or explicit bindings.
+
+
+## L32-C032 — ARM32 bionic libdl load policy
+
+The ARM32 libdl ABI follows bionic's historical LP32 dlfcn values:
+`RTLD_LOCAL=0`, `RTLD_NOW=0`, `RTLD_LAZY=1`, `RTLD_GLOBAL=2`,
+`RTLD_NOLOAD=4`, `RTLD_NODELETE=0x1000`,
+`RTLD_DEFAULT=0xffffffff`, and `RTLD_NEXT=0xfffffffe`.
+
+`RTLD_LAZY` is accepted only for ABI compatibility. Android does not provide
+lazy binding and LibA32Android continues to execute the accepted eager
+relocation transaction before returning from a newly acquired dlopen.
+
+Every successful named dlopen has one exact persistent Active root. This
+includes opening an object already loaded as another root's dependency. Local
+is the absence of Global. Global promotion is monotonic and deterministically
+adds the root object to persistent global scope; a later Local open never
+demotes it.
+
+NODELETE is a separate monotonic root property. Once any successful open sets
+NODELETE, later opens without the flag do not clear it. Final synthetic-handle
+release for such a root clears the handle reference but skips exact-object
+teardown, registered finalization, root release, tombstoning, physical unmap,
+and learned-DSO binding retirement. This rule applies to both the exact-object
+close transaction and the targeted physical-unload transaction.
+
+NOLOAD is resident-only. It may acquire and policy-promote an already-Active
+matching object but never invokes the dependency provider or maps a missing
+object. A miss returns null.
+
+Policy publication follows synthetic-handle acquisition. If a root-policy
+mutation fails before the handle is exposed to the guest, the acquired handle
+reference is rolled back. Existing constructor-side-effect retention rules
+continue to govern failures after guest initialization has begun.
+
+Generated synthetic handles may not collide with either LP32 dlsym sentinel.
+`RTLD_DEFAULT` retains the accepted first-root then Global-root lookup.
+`RTLD_NEXT` is recognized at its ARM32 sentinel value but caller-relative
+lookup remains explicitly unsupported.
+
+NODELETE process-exit teardown, true lazy binding, RTLD_NEXT lookup, and
+Android pathname/namespace search policy remain separate.
