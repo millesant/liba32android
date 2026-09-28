@@ -558,6 +558,17 @@ int test_apk_source_rejects_malformed_entries() {
     if (!expect_failed(ordinary, true)) {
         return fail("APK source accepted ZIP64 EOCD sentinel");
     }
+
+    auto truncated = make_zip_fixture(ordinary);
+    truncated.pop_back();
+    if (!write_fixture_file(apk_path, truncated)) {
+        return fail("could not write truncated APK fixture");
+    }
+    A32ApkLibrarySource source{apk_options()};
+    if (source.load(virtual_path, image.size()).error !=
+        A32AndroidLibrarySourceError::Failed) {
+        return fail("APK source accepted truncated archive");
+    }
     return 0;
 }
 
