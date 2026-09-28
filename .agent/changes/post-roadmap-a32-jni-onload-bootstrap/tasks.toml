@@ -3,24 +3,24 @@ change = "post-roadmap-a32-jni-onload-bootstrap"
 
 [[tasks]]
 id = "T001"
-status = "active"
+status = "implemented"
 depends_on = []
 acceptance = "Implement guest JavaVM/JNIEnv table installation plus bounded JavaVM::GetEnv host service."
 
 [[tasks]]
 id = "T002"
-status = "pending"
+status = "implemented"
 depends_on = ["T001"]
 acceptance = "Implement exact-object service-aware JNI_OnLoad invocation and supported-version validation."
 
 [[tasks]]
 id = "T003"
-status = "pending"
+status = "implemented"
 depends_on = ["T002"]
 acceptance = "Add focused host regressions and real generated ARM32 JNI_OnLoad/GetEnv fixture integration."
 
 [[tasks]]
 id = "T004"
-status = "pending"
+status = "active"
 depends_on = ["T003"]
 acceptance = "Record supplied-library JNI evidence, converge accepted specs/architecture/state, and run exact-head required checks."
