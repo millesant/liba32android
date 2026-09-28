@@ -405,6 +405,34 @@ A32LibDlOpenTransactionResult A32LibDlOpenTransaction::open(
         }
     }
 
+    const std::uint32_t guest_handle = acquire_handle(*object_index);
+    if (guest_handle == 0U) {
+        auto result = failure(
+            A32LibDlOpenTransactionError::HandleTableExhausted,
+            object_index);
+        result.root_added = root_added;
+        result.objects_appended =
+            link_map_.graph.objects.size() - initial_object_count;
+        result.retained_after_failure = true;
+        return result;
+    }
+
+    const auto rollback_unpublished_handle = [&]() {
+        for (auto& handle : handles_) {
+            if (handle.refcount == 0U ||
+                handle.guest_handle != guest_handle ||
+                handle.object_index != *object_index) {
+                continue;
+            }
+            if (handle.refcount > 1U) {
+                --handle.refcount;
+            } else {
+                handle = {};
+            }
+            return;
+        }
+    };
+
     const auto policy_updated = elf::update_elf32_link_map_root_policy(
         link_map_,
         *object_index,
@@ -413,6 +441,7 @@ A32LibDlOpenTransactionResult A32LibDlOpenTransaction::open(
             : elf::Elf32LinkMapRootPolicy::Local,
         policy.nodelete);
     if (!policy_updated) {
+        rollback_unpublished_handle();
         auto result = failure(
             A32LibDlOpenTransactionError::PolicyUpdateFailed,
             object_index);
@@ -426,18 +455,6 @@ A32LibDlOpenTransactionResult A32LibDlOpenTransaction::open(
         return result;
     }
     root_added = root_added || policy_updated.root_added;
-
-    const std::uint32_t guest_handle = acquire_handle(*object_index);
-    if (guest_handle == 0U) {
-        auto result = failure(
-            A32LibDlOpenTransactionError::HandleTableExhausted,
-            object_index);
-        result.root_added = root_added;
-        result.objects_appended =
-            link_map_.graph.objects.size() - initial_object_count;
-        result.retained_after_failure = true;
-        return result;
-    }
 
     A32LibDlOpenTransactionResult result;
     result.guest_handle = guest_handle;
