@@ -13,19 +13,28 @@
 
 namespace {
 
+using liba32android::compat::A32JniClassRegistry;
+using liba32android::compat::A32JniNativeInvokeError;
+using liba32android::compat::A32JniNativeInvokeOptions;
 using liba32android::compat::A32JniOnLoadError;
 using liba32android::compat::A32JniOnLoadOptions;
+using liba32android::compat::A32JniRegistryError;
+using liba32android::compat::A32JniRegistryLimits;
 using liba32android::compat::A32JniVmInstallError;
 using liba32android::compat::A32JniVmLayout;
 using liba32android::compat::A32JniVmService;
 using liba32android::compat::kA32JniEversion;
+using liba32android::compat::kA32JniErr;
+using liba32android::compat::kA32JniFindClassSvcImmediate;
 using liba32android::compat::kA32JniGetEnvSvcImmediate;
 using liba32android::compat::kA32JniOk;
+using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
 using liba32android::compat::kA32JniVersion12;
 using liba32android::compat::kA32JniVersion14;
 using liba32android::compat::kA32JniVersion16;
 using liba32android::compat::invoke_a32_jni_on_load;
+using liba32android::compat::invoke_a32_registered_native_noargs;
 using liba32android::elf::Elf32DependencyEdge;
 using liba32android::elf::Elf32DependencyGraph;
 using liba32android::elf::Elf32HashTableMetadata;
@@ -58,6 +67,19 @@ bool write_u32(
     return memory.write(address, bytes);
 }
 
+bool write_c_string(
+    GuestMemory& memory,
+    std::uint32_t address,
+    std::string_view value) {
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(value.size() + 1U);
+    for (const char ch : value) {
+        bytes.push_back(static_cast<std::uint8_t>(ch));
+    }
+    bytes.push_back(0U);
+    return memory.write(address, bytes);
+}
+
 std::uint32_t read_u32(
     const GuestMemory& memory,
     std::uint32_t address) {
@@ -77,7 +99,9 @@ A32JniVmLayout layout() {
         .invoke_table_address = 0x1120U,
         .jni_env_address = 0x1160U,
         .native_table_address = 0x1180U,
-        .get_env_stub_address = 0x11c0U,
+        .get_env_stub_address = 0x1500U,
+        .find_class_stub_address = 0x1520U,
+        .register_natives_stub_address = 0x1540U,
     };
 }
 
@@ -124,7 +148,11 @@ int test_vm_install_and_getenv() {
         read_u32(memory, configured.invoke_table_address + 6U * 4U) !=
             configured.get_env_stub_address ||
         read_u32(memory, configured.jni_env_address) !=
-            configured.native_table_address) {
+            configured.native_table_address ||
+        read_u32(memory, configured.native_table_address + 6U * 4U) !=
+            configured.find_class_stub_address ||
+        read_u32(memory, configured.native_table_address + 215U * 4U) !=
+            configured.register_natives_stub_address) {
         return fail("JNI VM pointer tables contain wrong guest pointers");
     }
 
@@ -138,7 +166,10 @@ int test_vm_install_and_getenv() {
             return fail("unsupported JavaVM invoke slot was non-null");
         }
     }
-    for (std::uint32_t index = 0U; index < 5U; ++index) {
+    for (std::uint32_t index = 0U; index < 216U; ++index) {
+        if (index == 6U || index == 215U) {
+            continue;
+        }
         if (read_u32(
                 memory,
                 configured.native_table_address + index * 4U) != 0U) {
@@ -146,16 +177,25 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::uint8_t, 8> expected_stub{{
-        0xD7U, 0x00U, 0x00U, 0xEFU,
-        0x1EU, 0xFFU, 0x2FU, 0xE1U,
+    constexpr std::array<std::array<std::uint8_t, 8>, 3> expected_stubs{{
+        {{0xD7U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xD8U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xD9U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    std::array<std::uint8_t, 8> observed_stub{};
-    if (!memory.read(
-            configured.get_env_stub_address,
-            observed_stub) ||
-        observed_stub != expected_stub) {
-        return fail("JNI GetEnv ARM SVC stub bytes are wrong");
+    const std::array<std::uint32_t, 3> stub_addresses{{
+        configured.get_env_stub_address,
+        configured.find_class_stub_address,
+        configured.register_natives_stub_address,
+    }};
+    for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
+        std::array<std::uint8_t, 8> observed_stub{};
+        if (!memory.read(stub_addresses[index], observed_stub) ||
+            observed_stub != expected_stubs[index]) {
+            return fail("JNI ARM SVC stub bytes are wrong");
+        }
     }
 
     std::uint32_t cpsr{};
@@ -273,10 +313,215 @@ int test_vm_install_and_getenv() {
     regs = {};
     if (service.handle(
             memory,
-            kA32JniGetEnvSvcImmediate + 1U,
+            kA32JniRegisterNativesSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
+    }
+    return 0;
+}
+
+int test_find_class_register_natives_and_reverse_dispatch() {
+    LinearGuestMemory memory{0x1000U, 0x1000U};
+    const A32JniRegistryLimits limits{
+        .max_classes = 2U,
+        .max_registered_methods = 2U,
+        .max_methods_per_registration = 2U,
+        .max_class_name_bytes = 32U,
+        .max_method_name_bytes = 32U,
+        .max_signature_bytes = 32U,
+    };
+    A32JniClassRegistry registry{limits};
+    constexpr std::uint32_t kClassHandle = 0x44550000U;
+    if (!registry.valid() ||
+        registry.add_class(
+            kClassHandle,
+            "org/videolan/Fixture") !=
+            A32JniRegistryError::None ||
+        registry.class_count() != 1U) {
+        return fail("could not seed bounded JNI class registry");
+    }
+    if (registry.add_class(
+            kClassHandle,
+            "org/videolan/Other") !=
+            A32JniRegistryError::DuplicateClassHandle ||
+        registry.add_class(
+            0x44550004U,
+            "org/videolan/Fixture") !=
+            A32JniRegistryError::DuplicateClassName) {
+        return fail("JNI class registry accepted duplicate identity");
+    }
+
+    const auto configured = layout();
+    A32JniVmService service{configured, &registry};
+    if (!service.install(memory)) {
+        return fail("JNI registry service did not install");
+    }
+
+    constexpr std::uint32_t kClassName = 0x1600U;
+    constexpr std::uint32_t kMissingName = 0x1640U;
+    constexpr std::uint32_t kMethodName = 0x1680U;
+    constexpr std::uint32_t kMethodSignature = 0x16a0U;
+    constexpr std::uint32_t kMethods = 0x16c0U;
+    constexpr std::uint32_t kNativeFunction = 0x1800U;
+    if (!write_c_string(
+            memory, kClassName, "org/videolan/Fixture") ||
+        !write_c_string(
+            memory, kMissingName, "org/videolan/Missing") ||
+        !write_c_string(
+            memory, kMethodName, "nativePing") ||
+        !write_c_string(
+            memory, kMethodSignature, "()I")) {
+        return fail("could not stage JNI registry guest strings");
+    }
+
+    std::uint32_t cpsr{};
+    std::array<std::uint32_t, 16> regs{};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClassName;
+    if (service.handle(
+            memory,
+            kA32JniFindClassSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != kClassHandle) {
+        return fail("JNI FindClass did not return exact registered handle");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kMissingName;
+    if (service.handle(
+            memory,
+            kA32JniFindClassSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI FindClass miss did not return null");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address + 4U;
+    regs[1] = kClassName;
+    if (service.handle(
+            memory,
+            kA32JniFindClassSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI FindClass accepted wrong JNIEnv pointer");
+    }
+
+    if (!write_u32(memory, kMethods + 0U, kMethodName) ||
+        !write_u32(memory, kMethods + 4U, kMethodSignature) ||
+        !write_u32(memory, kMethods + 8U, kNativeFunction)) {
+        return fail("could not stage ARM32 JNINativeMethod");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClassHandle;
+    regs[2] = kMethods;
+    regs[3] = 1U;
+    if (service.handle(
+            memory,
+            kA32JniRegisterNativesSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniOk) ||
+        registry.registered_native_count() != 1U) {
+        return fail("JNI RegisterNatives rejected valid ARM32 method");
+    }
+
+    const auto* registered = registry.find_native(
+        kClassHandle, "nativePing", "()I");
+    if (registered == nullptr ||
+        registered->class_name != "org/videolan/Fixture" ||
+        registered->function != kNativeFunction) {
+        return fail("JNI RegisterNatives retained wrong owned metadata");
+    }
+
+    // Duplicate keys in one call must reject the complete transaction. The
+    // already-registered function must remain unchanged.
+    if (!write_u32(memory, kMethods + 8U, 0x1810U) ||
+        !write_u32(memory, kMethods + 12U, kMethodName) ||
+        !write_u32(memory, kMethods + 16U, kMethodSignature) ||
+        !write_u32(memory, kMethods + 20U, 0x1820U)) {
+        return fail("could not stage duplicate JNINativeMethod transaction");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClassHandle;
+    regs[2] = kMethods;
+    regs[3] = 2U;
+    if (service.handle(
+            memory,
+            kA32JniRegisterNativesSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniErr) ||
+        registry.registered_native_count() != 1U ||
+        registry.find_native(
+            kClassHandle, "nativePing", "()I")->function !=
+            kNativeFunction) {
+        return fail("failed JNI registration partially mutated registry");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = 0x99887766U;
+    regs[2] = kMethods;
+    regs[3] = 1U;
+    if (service.handle(
+            memory,
+            kA32JniRegisterNativesSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniErr)) {
+        return fail("JNI RegisterNatives accepted unknown class handle");
+    }
+
+    const std::array<std::uint8_t, 8> code{{
+        0x2AU, 0x00U, 0xA0U, 0xE3U,  // mov r0, #42
+        0x1EU, 0xFFU, 0x2FU, 0xE1U,  // bx lr
+    }};
+    if (!memory.write(kNativeFunction, code)) {
+        return fail("could not stage registered native code");
+    }
+    const A32JniNativeInvokeOptions invoke_options{
+        .stack_top = 0x1ff8U,
+        .return_pc = 0x1f00U,
+        .max_instructions = 16U,
+        .max_service_calls = 1U,
+    };
+    const auto invoked = invoke_a32_registered_native_noargs(
+        memory,
+        registry,
+        kClassHandle,
+        "nativePing",
+        "()I",
+        configured.jni_env_address,
+        kClassHandle,
+        service,
+        invoke_options);
+    if (!invoked ||
+        invoked.function != kNativeFunction ||
+        invoked.returned_value != 42U ||
+        !invoked.execution.has_value() ||
+        !invoked.execution->stop_pc_reached ||
+        invoked.execution->services_handled != 0U) {
+        return fail("registered JNI native reverse dispatch failed");
+    }
+    if (invoke_a32_registered_native_noargs(
+            memory,
+            registry,
+            kClassHandle,
+            "missing",
+            "()I",
+            configured.jni_env_address,
+            kClassHandle,
+            service,
+            invoke_options).error !=
+        A32JniNativeInvokeError::NativeNotFound) {
+        return fail("registered JNI native lookup escaped exact identity");
     }
     return 0;
 }
@@ -539,6 +784,11 @@ int test_exact_object_onload_and_version_validation() {
 
 int main() {
     if (const int status = test_vm_install_and_getenv();
+        status != 0) {
+        return status;
+    }
+    if (const int status =
+            test_find_class_register_natives_and_reverse_dispatch();
         status != 0) {
         return status;
     }

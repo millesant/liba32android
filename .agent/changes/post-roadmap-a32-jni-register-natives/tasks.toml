@@ -1,0 +1,26 @@
+schema = 1
+change = "post-roadmap-a32-jni-register-natives"
+
+[[tasks]]
+id = "T001"
+status = "active"
+depends_on = []
+acceptance = "Add bounded caller-owned class/native registry plus JNIEnv FindClass and RegisterNatives table/service behavior."
+
+[[tasks]]
+id = "T002"
+status = "pending"
+depends_on = ["T001"]
+acceptance = "Add exact no-Java-argument registered-native reverse dispatch through the bounded A32 service executor."
+
+[[tasks]]
+id = "T003"
+status = "pending"
+depends_on = ["T001", "T002"]
+acceptance = "Extend focused host regressions and generated ARM32 JNI fixture to prove registration and reverse dispatch."
+
+[[tasks]]
+id = "T004"
+status = "pending"
+depends_on = ["T003"]
+acceptance = "Converge accepted spec/architecture/state/evidence and run required exact-head validation."
