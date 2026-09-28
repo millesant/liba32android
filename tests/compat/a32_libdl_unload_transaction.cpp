@@ -31,6 +31,8 @@ using liba32android::compat::A32LibDlUnloadTransactionError;
 using liba32android::compat::A32LibDlUnloadTransactionOptions;
 using liba32android::compat::A32LibDlUnloadTransactionOutcome;
 using liba32android::compat::kA32LibDlDlcloseSvcImmediate;
+using liba32android::compat::kA32LibDlDlopenSvcImmediate;
+using liba32android::compat::kA32RtldNow;
 using liba32android::elf::Elf32DependencyEdge;
 using liba32android::elf::Elf32LifecycleObjectStatus;
 using liba32android::elf::Elf32LifecycleState;
@@ -428,6 +430,126 @@ int test_preexisting_unowned_object_blocks_targeted_close() {
     return 0;
 }
 
+int test_nodelete_final_close_survives_plain_reopen() {
+    MappedGuestMemory memory;
+    Elf32LinkMap link_map;
+    if (!stage_object(memory, link_map, "nodelete-root", 0x2A000U)) {
+        return fail("could not map nodelete unload fixture");
+    }
+    link_map.graph.objects[0].linker_strings.soname = "libnodelete.so";
+    link_map.roots = {
+        Elf32LinkMapRoot{
+            .object_index = 0U,
+            .policy = Elf32LinkMapRootPolicy::Local,
+            .nodelete = true,
+        },
+    };
+    link_map.object_states = {Elf32LinkMapObjectState::Active};
+
+    const auto rw = MemoryPermission::Read | MemoryPermission::Write;
+    if (!memory.map(0x90000U, memory.page_size(), rw)) {
+        return fail("could not map nodelete guest-name page");
+    }
+    constexpr std::array<std::uint8_t, 17> name{{
+        'l','i','b','n','o','d','e','l','e','t','e','.','s','o',0U,0U,0U,
+    }};
+    if (!memory.write(0x90000U, name)) {
+        return fail("could not stage nodelete guest name");
+    }
+
+    Elf32LifecycleState lifecycle;
+    lifecycle.objects.resize(1U);
+    lifecycle.objects[0].constructors =
+        Elf32LifecycleObjectStatus::Complete;
+    std::array<A32LibDlHandle, 1> handles{{
+        {.guest_handle = 0x70000000U, .object_index = 0U, .refcount = 1U},
+    }};
+    std::array<A32AeabiAtexitRecord, 1> records{};
+    A32AeabiAtexitService registrations{std::span{records}};
+    const std::array<A32HostServiceRegistryEntry, 0> service_entries{};
+    A32HostServiceRegistry registry{std::span{service_entries}};
+    const std::array<A32LibDlObjectLifecycleBinding, 1> bindings{{
+        {.object_index = 0U, .dso_handle = 0x15000U},
+    }};
+    A32LibDlCloseTransaction finalizer{
+        link_map,
+        std::span{handles},
+        lifecycle,
+        registrations,
+        std::span{bindings},
+        close_options(registry),
+    };
+    A32LibDlUnloadTransaction unload{
+        link_map,
+        std::span{handles},
+        lifecycle,
+        finalizer,
+        unload_options(),
+    };
+    A32LibDlService service{
+        link_map,
+        std::span{handles},
+        service_options(),
+        &finalizer,
+        nullptr,
+        &unload,
+    };
+
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t cpsr{};
+    regs[0] = 0x70000000U;
+    regs[13] = 0x8ff8U;
+    if (service.handle(
+            memory,
+            kA32LibDlDlcloseSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U ||
+        handles[0].refcount != 0U ||
+        link_map.roots.size() != 1U ||
+        !link_map.roots[0].nodelete ||
+        link_map.object_states[0] != Elf32LinkMapObjectState::Active ||
+        lifecycle.objects[0].destructors !=
+            Elf32LifecycleObjectStatus::Pending ||
+        !mapped(memory, link_map, 0U)) {
+        return fail("NODELETE final close mutated lifecycle or mappings");
+    }
+
+    regs = {};
+    regs[0] = 0x90000U;
+    regs[1] = kA32RtldNow;
+    regs[13] = 0x8ff8U;
+    if (service.handle(
+            memory,
+            kA32LibDlDlopenSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0x70000000U ||
+        handles[0].refcount != 1U ||
+        !link_map.roots[0].nodelete) {
+        return fail("plain reopen lost persistent NODELETE policy");
+    }
+
+    regs = {};
+    regs[0] = 0x70000000U;
+    regs[13] = 0x8ff8U;
+    if (service.handle(
+            memory,
+            kA32LibDlDlcloseSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U ||
+        handles[0].refcount != 0U ||
+        !link_map.roots[0].nodelete ||
+        link_map.object_states[0] != Elf32LinkMapObjectState::Active ||
+        lifecycle.objects[0].destructors !=
+            Elf32LifecycleObjectStatus::Pending ||
+        !mapped(memory, link_map, 0U)) {
+        return fail("plain reopen allowed NODELETE root reclamation");
+    }
+    return 0;
+}
+
 int test_nonfinal_reference_only_decrements() {
     MappedGuestMemory memory;
     Elf32LinkMap link_map;
@@ -502,6 +624,11 @@ int main() {
     }
     if (const int status =
             test_preexisting_unowned_object_blocks_targeted_close();
+        status != 0) {
+        return status;
+    }
+    if (const int status =
+            test_nodelete_final_close_survives_plain_reopen();
         status != 0) {
         return status;
     }
