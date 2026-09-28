@@ -634,14 +634,14 @@ Elf32LinkMapRootUpdateResult update_elf32_link_map_root_policy(
     }
 
     const std::size_t object_count = link_map.graph.objects.size();
-    if (object_index >= object_count ||
-        !link_map.object_active(object_index)) {
-        result.error = Elf32LinkMapRootUpdateError::InvalidObject;
-        return result;
-    }
     if (!link_map.object_states.empty() &&
         link_map.object_states.size() != object_count) {
         result.error = Elf32LinkMapRootUpdateError::InvalidLinkMap;
+        return result;
+    }
+    if (object_index >= object_count ||
+        !link_map.object_active(object_index)) {
+        result.error = Elf32LinkMapRootUpdateError::InvalidObject;
         return result;
     }
 
