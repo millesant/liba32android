@@ -866,11 +866,14 @@ adds the root object to persistent global scope; a later Local open never
 demotes it.
 
 NODELETE is a separate monotonic root property. Once any successful open sets
-NODELETE, later opens without the flag do not clear it. Final synthetic-handle
-release for such a root clears the handle reference but skips exact-object
-teardown, registered finalization, root release, tombstoning, physical unmap,
-and learned-DSO binding retirement. This rule applies to both the exact-object
-close transaction and the targeted physical-unload transaction.
+NODELETE, later opens without the flag do not clear it.
+
+Matching bionic's linked-object unload policy, final synthetic-handle release
+for either a Global root or a NODELETE root clears the handle reference but
+skips exact-object teardown, registered finalization, root release, tombstoning,
+physical unmap, and learned-DSO binding retirement. This rule applies to both
+the exact-object close transaction and the targeted physical-unload
+transaction. A Local NODELETE root remains non-global despite being retained.
 
 NOLOAD is resident-only. It may acquire and policy-promote an already-Active
 matching object but never invokes the dependency provider or maps a missing
