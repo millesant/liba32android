@@ -1,6 +1,6 @@
 # Requester-scoped Android application library search
 
-Status: feature 048 accepted; post-roadmap filesystem source accepted; exact-head validation PASSed
+Status: feature 048 and filesystem source accepted; bounded APK source implemented, exact-head validation pending
 
 ## Goal
 
@@ -38,6 +38,32 @@ observed by `fstat`.
 Successful identity is the exact path string used for the read. There is no
 canonicalization, basename substitution, package-manager lookup, symlink policy,
 or APK/ZIP interpretation in this source.
+
+## Concrete APK source
+
+The current follow-up adds `A32ApkLibrarySource` for exact virtual paths of
+the form `<archive>!/<entry>`.
+
+The implementation opens only the archive file and never extracts content to
+disk. Caller options bound the complete virtual path, archive bytes, ZIP entry
+count, central-directory bytes, and entry-name bytes; the existing source call
+also supplies the exact output-image ceiling.
+
+The parser deliberately implements a small ordinary ZIP32 subset. It locates
+single-disk EOCD within the standard comment window, scans bounded central
+records by exact byte name, validates the selected local header, and rejects
+ZIP64 sentinels, encryption, unsupported compression, duplicates, malformed
+records, truncation, or integrity mismatches.
+
+Stored entries are copied directly. Method-8 entries are inflated with
+platform/NDK zlib using raw DEFLATE framing. The full compressed stream must be
+consumed, output must equal the declared uncompressed size, and CRC32 must match
+before the source publishes owned bytes.
+
+The supplied VLC 3.7.2 Beta 2 APK provides real target evidence: it is an
+ordinary ~67.3 MB ZIP32 archive with 2,617 entries, and each of its four
+`lib/armeabi-v7a/*.so` entries uses DEFLATE. That makes DEFLATE support a
+production requirement rather than speculative archive breadth.
 
 ## Search roots
 
@@ -77,21 +103,27 @@ The pinned-NDK fixture builds:
 - `libfixture_app_root.so`, which needs `libfixture_app_child.so`;
 - `libfixture_app_child.so`, which returns a known value.
 
-The exact-head accepted integration supplies only the root image directly. The
-child is acquired through `A32FilesystemLibrarySource` from the
-caller-provided fixture directory. The generic dependency loader propagates the
-root identity, constructs the exact candidate path, reads the child under the
-image ceiling, forms a two-object graph, relocates the root's one JUMP_SLOT,
-and executes the root wrapper to the child value.
+The accepted filesystem integration established the same path using an extracted
+child DSO. The current APK follow-up keeps the root image direct but packages
+the generated child into a deterministic one-entry DEFLATED mini-APK with fixed
+ZIP metadata.
 
-The focused policy regression retains the original synthetic APK-style virtual
-root case so archive-like path construction remains covered independently of
-concrete filesystem I/O.
+The requester search root is the APK virtual directory
+`fixture-app.apk!/lib/armeabi-v7a`. `A32ApkLibrarySource` reads and inflates
+the child, after which the unchanged generic dependency loader forms the
+two-object graph, applies the root's one JUMP_SLOT, and executes the root wrapper
+through the archive-loaded child.
+
+Focused host coverage independently exercises stored entries plus malformed,
+resource, duplicate, ZIP64, encryption, compression, local-header, CRC, and
+truncation failure cases.
 
 ## Limits
 
-No concrete APK/ZIP reader, AssetManager bridge, package-manager discovery,
+No AssetManager bridge, package-manager discovery, split-APK selection,
+signature verification, extraction cache, ZIP64/encrypted archive support,
 explicit slash-containing dlopen path, RUNPATH/RPATH, LD_LIBRARY_PATH,
-namespace permitted-path enforcement, transitive namespace traversal, platform
-allowlist, dynamic missing-object dlopen transaction, or unload policy is
-introduced.
+namespace permitted-path enforcement, transitive namespace traversal, or
+platform allowlist is introduced. Dynamic missing-object dlopen and unload
+policy exist in their separate accepted ownership layers and are not changed by
+this source.
