@@ -8,6 +8,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "compat/a32_android_apk_runtime.h"
 #include "cpu/a32_cpu.h"
@@ -19,6 +20,8 @@ namespace {
 
 using liba32android::compat::A32AndroidApkRuntimeBootstrap;
 using liba32android::compat::A32AndroidApkRuntimeBootstrapOptions;
+using liba32android::compat::A32ApkLibraryCatalogOptions;
+using liba32android::compat::A32ApkLibrarySource;
 using liba32android::compat::A32ApkLibrarySourceOptions;
 using liba32android::compat::A32LibDlHandle;
 using liba32android::cpu::ExecutionRequest;
@@ -189,14 +192,36 @@ int main(int argc, char** argv) {
     const std::uint32_t stack_top =
         static_cast<std::uint32_t>(stack_top64) & ~7U;
 
+    auto options = bootstrap_options(stack_top, *stop);
+    A32ApkLibrarySource catalog_source{options.source};
+    const auto catalog = catalog_source.catalog(
+        apk_path.string(),
+        kAbiDirectory,
+        A32ApkLibraryCatalogOptions{
+            .max_libraries = 4U,
+            .max_soname_bytes = kMaxNameBytes,
+            .max_total_soname_bytes = 4U * kMaxNameBytes,
+            .max_abi_directory_bytes = 64U,
+        });
+    if (!catalog ||
+        catalog.sonames !=
+            std::vector<std::string>{
+                std::string{kChildSoname},
+                std::string{kRootSoname},
+            }) {
+        return fail("Android APK native catalog did not discover fixture DSOs");
+    }
+
+    std::vector<std::string_view> application_sonames;
+    application_sonames.reserve(catalog.sonames.size());
+    for (const std::string& soname : catalog.sonames) {
+        application_sonames.push_back(soname);
+    }
+
     Elf32LinkMap link_map;
     Elf32LifecycleState lifecycle;
     std::array<A32LibDlHandle, 4> handles{};
     NotFoundPlatformProvider platform;
-    const std::array<std::string_view, 2> application_sonames{{
-        kRootSoname,
-        kChildSoname,
-    }};
 
     A32AndroidApkRuntimeBootstrap bootstrap{
         memory,
@@ -206,8 +231,8 @@ int main(int argc, char** argv) {
         lifecycle,
         apk_path.string(),
         std::string{kAbiDirectory},
-        std::span{application_sonames},
-        bootstrap_options(stack_top, *stop),
+        std::span<const std::string_view>{application_sonames},
+        options,
     };
     if (!bootstrap.configuration_valid()) {
         return fail("Android APK bootstrap configuration was invalid");
@@ -308,6 +333,8 @@ int main(int argc, char** argv) {
     }
 
     std::cout
+        << "fixture.android_search.catalog_count="
+        << catalog.sonames.size() << '\n'
         << "fixture.android_search.object_count="
         << link_map.graph.objects.size() << '\n'
         << "fixture.android_search.requester=" << root.identity << '\n'
