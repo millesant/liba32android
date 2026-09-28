@@ -5,31 +5,28 @@ The numbered 011-049 roadmap is COMPLETE.
 `post-roadmap-arm32-libdl-load-policy` is DONE at
 `431904d7b0b0880691b503d76d69c24a18b90960`.
 
-Start `post-roadmap-android-apk-library-source`.
+`post-roadmap-android-apk-library-source` is IMPLEMENTED on `bleeding`.
+Exact-head required checks are its current acceptance gate.
 
-Feature 048 already constructs exact requester-scoped virtual candidates such as
-`/path/base.apk!/lib/armeabi-v7a/libvlc.so`. The accepted
-`A32FilesystemLibrarySource` covers extracted regular-file roots. Add the
-smallest bounded archive-aware `A32AndroidLibrarySource` implementation that
-opens the archive path before `!/`, finds the exact ZIP entry after it, and
-returns owned native-library bytes under the existing source contract.
+The new `A32ApkLibrarySource` performs bounded exact-entry ZIP32 reads for
+stored and DEFLATE entries, validates selected local/central metadata and CRC,
+and composes unchanged with requester-scoped Android library search. The real
+ARM32 app-search integration now loads its dependency from a deterministic
+DEFLATED mini-APK before relocation/execution.
 
-The supplied VLC APK proves the required archive subset: about 67.3 MB, 2,617
-entries, and all four ARMv7 native libraries use ZIP method 8 / DEFLATE. Support
-stored entries too for ordinary APK compatibility, but reject encryption,
-multi-disk archives, ZIP64 sentinels, unsupported compression, malformed
-central/local headers, duplicate exact names, CRC mismatch, and every
-caller-selected resource ceiling before publishing bytes.
+The supplied VLC APK directly motivates the supported subset: all four ARMv7
+native libraries use method-8 DEFLATE in an ordinary single-disk ZIP32 archive.
 
-Prefer system/NDK zlib for raw DEFLATE. Do not add package-manager/AssetManager
-discovery, extraction-to-disk, archive rewriting, signature verification,
-split-APK policy, or a generic ZIP framework.
+After terminal success, move one layer upward instead of expanding ZIP breadth:
+add caller-supplied APK/ABI bootstrap composition that can acquire an initial
+application DSO from `<apk>!/lib/armeabi-v7a`, construct the requester-scoped
+application-native provider plus accepted platform-provider chain, and feed the
+existing persistent link-map / dynamic-dlopen machinery. This is the shortest
+path toward running a real APK dependency closure without manual extraction.
 
-Focused validation should cover stored + deflated success, exact missing entry,
-malformed virtual path, entry/central-directory/archive/image ceilings,
-unsupported/encrypted entries, CRC failure, and composition with the existing
-requester-scoped Android search provider. Add one supplied-VLC APK evidence
-probe if it can remain deterministic without checking the APK into the repo.
+Keep package-manager/AssetManager discovery, split-APK selection, signatures,
+ZIP64/encrypted archives, automatic app patching, JNI/graphics/audio, and device
+deployment separate until the caller-supplied APK bootstrap is proven.
 
 If a later step materially needs the user's Linux machine, stop beforehand and
 provide exact commands and expected output.
