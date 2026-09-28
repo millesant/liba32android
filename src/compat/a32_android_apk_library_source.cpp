@@ -41,6 +41,13 @@ constexpr std::uint16_t kZipMethodDeflate = 8U;
     return result;
 }
 
+[[nodiscard]] A32ApkLibraryCatalogResult catalog_failure(
+    A32ApkLibraryCatalogError error) {
+    A32ApkLibraryCatalogResult result;
+    result.error = error;
+    return result;
+}
+
 [[nodiscard]] bool contains_nul(std::string_view value) noexcept {
     return value.find('\0') != std::string_view::npos;
 }
@@ -61,19 +68,38 @@ constexpr std::uint16_t kZipMethodDeflate = 8U;
 
 class ScopedFileDescriptor {
 public:
+    ScopedFileDescriptor() noexcept = default;
     explicit ScopedFileDescriptor(int fd) noexcept : fd_(fd) {}
+
     ~ScopedFileDescriptor() {
-        if (fd_ >= 0) {
-            static_cast<void>(::close(fd_));
-        }
+        reset();
     }
 
     ScopedFileDescriptor(const ScopedFileDescriptor&) = delete;
     ScopedFileDescriptor& operator=(const ScopedFileDescriptor&) = delete;
 
+    ScopedFileDescriptor(ScopedFileDescriptor&& other) noexcept
+        : fd_(std::exchange(other.fd_, -1)) {}
+
+    ScopedFileDescriptor& operator=(
+        ScopedFileDescriptor&& other) noexcept {
+        if (this != &other) {
+            reset();
+            fd_ = std::exchange(other.fd_, -1);
+        }
+        return *this;
+    }
+
     [[nodiscard]] int get() const noexcept { return fd_; }
 
 private:
+    void reset() noexcept {
+        if (fd_ >= 0) {
+            static_cast<void>(::close(fd_));
+            fd_ = -1;
+        }
+    }
+
     int fd_{-1};
 };
 
@@ -131,6 +157,18 @@ struct ZipEntry {
     std::string name;
 };
 
+struct ZipDirectory {
+    A32AndroidLibrarySourceError error{
+        A32AndroidLibrarySourceError::None};
+    ScopedFileDescriptor fd;
+    std::uint32_t central_offset{};
+    std::vector<ZipEntry> entries;
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return error == A32AndroidLibrarySourceError::None;
+    }
+};
+
 [[nodiscard]] bool options_valid(
     const A32ApkLibrarySourceOptions& options) noexcept {
     return options.max_virtual_path_bytes != 0U &&
@@ -138,6 +176,14 @@ struct ZipEntry {
            options.max_entries != 0U &&
            options.max_central_directory_bytes != 0U &&
            options.max_entry_name_bytes != 0U;
+}
+
+[[nodiscard]] bool catalog_options_valid(
+    const A32ApkLibraryCatalogOptions& options) noexcept {
+    return options.max_libraries != 0U &&
+           options.max_soname_bytes != 0U &&
+           options.max_total_soname_bytes != 0U &&
+           options.max_abi_directory_bytes != 0U;
 }
 
 [[nodiscard]] bool checked_add(
@@ -149,6 +195,50 @@ struct ZipEntry {
     }
     result = left + right;
     return true;
+}
+
+[[nodiscard]] bool valid_abi_directory(
+    std::string_view value,
+    std::uint32_t max_bytes) noexcept {
+    if (value.empty() ||
+        value.size() > max_bytes ||
+        contains_nul(value) ||
+        value.front() == '/' ||
+        value.back() == '/' ||
+        value.find('\\') != std::string_view::npos ||
+        value.find('!') != std::string_view::npos) {
+        return false;
+    }
+
+    std::size_t cursor = 0U;
+    while (cursor < value.size()) {
+        const std::size_t separator = value.find('/', cursor);
+        const std::size_t end =
+            separator == std::string_view::npos
+                ? value.size()
+                : separator;
+        const std::string_view component =
+            value.substr(cursor, end - cursor);
+        if (component.empty() ||
+            component == "." ||
+            component == "..") {
+            return false;
+        }
+        if (separator == std::string_view::npos) {
+            break;
+        }
+        cursor = separator + 1U;
+    }
+    return true;
+}
+
+[[nodiscard]] bool bare_shared_object_name(
+    std::string_view value) noexcept {
+    return value.size() > 3U &&
+           value.ends_with(".so") &&
+           !contains_nul(value) &&
+           value.find('/') == std::string_view::npos &&
+           value.find('\\') == std::string_view::npos;
 }
 
 [[nodiscard]] bool verify_crc(
@@ -165,6 +255,222 @@ struct ZipEntry {
         reinterpret_cast<const Bytef*>(image.data()),
         static_cast<uInt>(image.size()));
     return static_cast<std::uint32_t>(crc) == expected_crc;
+}
+
+[[nodiscard]] ZipDirectory read_zip_directory(
+    std::string_view archive_view,
+    const A32ApkLibrarySourceOptions& options) {
+    ZipDirectory result;
+    if (!options_valid(options) ||
+        archive_view.empty() ||
+        contains_nul(archive_view) ||
+        archive_view.size() > options.max_virtual_path_bytes) {
+        result.error = A32AndroidLibrarySourceError::Failed;
+        return result;
+    }
+
+    std::string archive_path;
+    try {
+        archive_path.assign(archive_view.data(), archive_view.size());
+    } catch (const std::bad_alloc&) {
+        result.error = A32AndroidLibrarySourceError::Failed;
+        return result;
+    }
+
+    const int raw_fd =
+        ::open(archive_path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (raw_fd < 0) {
+        result.error =
+            (errno == ENOENT || errno == ENOTDIR)
+                ? A32AndroidLibrarySourceError::NotFound
+                : A32AndroidLibrarySourceError::Failed;
+        return result;
+    }
+    ScopedFileDescriptor fd{raw_fd};
+
+    struct stat status {};
+    if (::fstat(fd.get(), &status) != 0 ||
+        !S_ISREG(status.st_mode) ||
+        status.st_size <= 0) {
+        result.error = A32AndroidLibrarySourceError::Failed;
+        return result;
+    }
+    const std::uint64_t archive_size =
+        static_cast<std::uint64_t>(status.st_size);
+    if (archive_size > options.max_archive_bytes ||
+        archive_size < kZipEocdBytes) {
+        result.error = A32AndroidLibrarySourceError::Failed;
+        return result;
+    }
+
+    const std::uint64_t tail_limit =
+        kZipEocdBytes + kZipMaxCommentBytes;
+    const std::size_t tail_size = static_cast<std::size_t>(
+        std::min(archive_size, tail_limit));
+    std::vector<std::uint8_t> tail;
+    try {
+        tail.resize(tail_size);
+    } catch (const std::bad_alloc&) {
+        result.error = A32AndroidLibrarySourceError::Failed;
+        return result;
+    }
+    const std::uint64_t tail_offset = archive_size - tail_size;
+    if (!pread_exact(fd.get(), tail_offset, tail)) {
+        result.error = A32AndroidLibrarySourceError::Failed;
+        return result;
+    }
+
+    std::optional<std::size_t> eocd_tail_offset;
+    for (std::size_t position = tail.size() - kZipEocdBytes;; --position) {
+        if (read_u32(tail.data() + position) == kZipEocdSignature) {
+            const std::uint16_t comment_bytes =
+                read_u16(tail.data() + position + 20U);
+            const std::uint64_t record_end =
+                static_cast<std::uint64_t>(position) +
+                kZipEocdBytes + comment_bytes;
+            if (record_end == tail.size()) {
+                eocd_tail_offset = position;
+                break;
+            }
+        }
+        if (position == 0U) {
+            break;
+        }
+    }
+    if (!eocd_tail_offset.has_value()) {
+        result.error = A32AndroidLibrarySourceError::Failed;
+        return result;
+    }
+
+    const std::uint8_t* eocd =
+        tail.data() + *eocd_tail_offset;
+    const std::uint16_t disk_number = read_u16(eocd + 4U);
+    const std::uint16_t central_disk = read_u16(eocd + 6U);
+    const std::uint16_t entries_on_disk = read_u16(eocd + 8U);
+    const std::uint16_t entry_count = read_u16(eocd + 10U);
+    const std::uint32_t central_bytes = read_u32(eocd + 12U);
+    const std::uint32_t central_offset = read_u32(eocd + 16U);
+
+    if (disk_number != 0U ||
+        central_disk != 0U ||
+        entries_on_disk != entry_count ||
+        entry_count == 0xffffU ||
+        central_bytes == 0xffffffffU ||
+        central_offset == 0xffffffffU ||
+        entry_count > options.max_entries ||
+        central_bytes > options.max_central_directory_bytes) {
+        result.error = A32AndroidLibrarySourceError::Failed;
+        return result;
+    }
+
+    const std::uint64_t eocd_absolute =
+        tail_offset + *eocd_tail_offset;
+    std::uint64_t central_end = 0U;
+    if (!checked_add(central_offset, central_bytes, central_end) ||
+        central_end != eocd_absolute ||
+        central_end > archive_size) {
+        result.error = A32AndroidLibrarySourceError::Failed;
+        return result;
+    }
+
+    try {
+        result.entries.reserve(entry_count);
+    } catch (const std::bad_alloc&) {
+        result.error = A32AndroidLibrarySourceError::Failed;
+        return result;
+    }
+
+    std::uint64_t cursor = central_offset;
+    for (std::uint32_t index = 0U;
+         index < entry_count;
+         ++index) {
+        std::uint64_t fixed_end = 0U;
+        if (!checked_add(cursor, kZipCentralHeaderBytes, fixed_end) ||
+            fixed_end > central_end) {
+            result.error = A32AndroidLibrarySourceError::Failed;
+            return result;
+        }
+
+        std::array<std::uint8_t, kZipCentralHeaderBytes> header{};
+        if (!pread_exact(fd.get(), cursor, header) ||
+            read_u32(header.data()) != kZipCentralHeaderSignature) {
+            result.error = A32AndroidLibrarySourceError::Failed;
+            return result;
+        }
+
+        const std::uint16_t flags = read_u16(header.data() + 8U);
+        const std::uint16_t method = read_u16(header.data() + 10U);
+        const std::uint32_t expected_crc = read_u32(header.data() + 16U);
+        const std::uint32_t compressed_size =
+            read_u32(header.data() + 20U);
+        const std::uint32_t uncompressed_size =
+            read_u32(header.data() + 24U);
+        const std::uint16_t name_bytes = read_u16(header.data() + 28U);
+        const std::uint16_t extra_bytes = read_u16(header.data() + 30U);
+        const std::uint16_t comment_bytes = read_u16(header.data() + 32U);
+        const std::uint16_t disk_start = read_u16(header.data() + 34U);
+        const std::uint32_t local_offset =
+            read_u32(header.data() + 42U);
+
+        if (disk_start != 0U ||
+            compressed_size == 0xffffffffU ||
+            uncompressed_size == 0xffffffffU ||
+            local_offset == 0xffffffffU ||
+            name_bytes == 0U ||
+            name_bytes > options.max_entry_name_bytes) {
+            result.error = A32AndroidLibrarySourceError::Failed;
+            return result;
+        }
+
+        std::uint64_t record_end = fixed_end;
+        if (!checked_add(record_end, name_bytes, record_end) ||
+            !checked_add(record_end, extra_bytes, record_end) ||
+            !checked_add(record_end, comment_bytes, record_end) ||
+            record_end > central_end) {
+            result.error = A32AndroidLibrarySourceError::Failed;
+            return result;
+        }
+
+        ZipEntry entry{
+            .flags = flags,
+            .method = method,
+            .crc32 = expected_crc,
+            .compressed_size = compressed_size,
+            .uncompressed_size = uncompressed_size,
+            .local_header_offset = local_offset,
+        };
+        try {
+            entry.name.resize(name_bytes);
+        } catch (const std::bad_alloc&) {
+            result.error = A32AndroidLibrarySourceError::Failed;
+            return result;
+        }
+        if (!pread_exact(
+                fd.get(),
+                cursor + kZipCentralHeaderBytes,
+                std::span<std::uint8_t>{
+                    reinterpret_cast<std::uint8_t*>(entry.name.data()),
+                    entry.name.size()})) {
+            result.error = A32AndroidLibrarySourceError::Failed;
+            return result;
+        }
+        try {
+            result.entries.push_back(std::move(entry));
+        } catch (const std::bad_alloc&) {
+            result.error = A32AndroidLibrarySourceError::Failed;
+            return result;
+        }
+        cursor = record_end;
+    }
+
+    if (cursor != central_end) {
+        result.error = A32AndroidLibrarySourceError::Failed;
+        return result;
+    }
+
+    result.fd = std::move(fd);
+    result.central_offset = central_offset;
+    return result;
 }
 
 }  // namespace
@@ -191,192 +497,29 @@ A32AndroidLibrarySourceResult A32ApkLibrarySource::load(
         virtual_path.substr(0U, delimiter);
     const std::string_view entry_view =
         virtual_path.substr(delimiter + 2U);
-    if (archive_view.empty() ||
-        entry_view.empty() ||
+    if (entry_view.empty() ||
         entry_view.size() > options_.max_entry_name_bytes ||
-        contains_nul(archive_view) ||
         contains_nul(entry_view)) {
         return source_failure(A32AndroidLibrarySourceError::Failed);
     }
 
-    std::string archive_path;
-    try {
-        archive_path.assign(archive_view.data(), archive_view.size());
-    } catch (const std::bad_alloc&) {
-        return source_failure(A32AndroidLibrarySourceError::Failed);
+    ZipDirectory directory =
+        read_zip_directory(archive_view, options_);
+    if (!directory) {
+        return source_failure(directory.error);
     }
 
-    const int raw_fd =
-        ::open(archive_path.c_str(), O_RDONLY | O_CLOEXEC);
-    if (raw_fd < 0) {
-        if (errno == ENOENT || errno == ENOTDIR) {
-            return source_failure(A32AndroidLibrarySourceError::NotFound);
+    const ZipEntry* selected = nullptr;
+    for (const ZipEntry& entry : directory.entries) {
+        if (entry.name != entry_view) {
+            continue;
         }
-        return source_failure(A32AndroidLibrarySourceError::Failed);
-    }
-    ScopedFileDescriptor fd{raw_fd};
-
-    struct stat status {};
-    if (::fstat(fd.get(), &status) != 0 ||
-        !S_ISREG(status.st_mode) ||
-        status.st_size <= 0) {
-        return source_failure(A32AndroidLibrarySourceError::Failed);
-    }
-    const std::uint64_t archive_size =
-        static_cast<std::uint64_t>(status.st_size);
-    if (archive_size > options_.max_archive_bytes ||
-        archive_size < kZipEocdBytes) {
-        return source_failure(A32AndroidLibrarySourceError::Failed);
-    }
-
-    const std::uint64_t tail_limit =
-        kZipEocdBytes + kZipMaxCommentBytes;
-    const std::size_t tail_size = static_cast<std::size_t>(
-        std::min(archive_size, tail_limit));
-    std::vector<std::uint8_t> tail;
-    try {
-        tail.resize(tail_size);
-    } catch (const std::bad_alloc&) {
-        return source_failure(A32AndroidLibrarySourceError::Failed);
-    }
-    const std::uint64_t tail_offset = archive_size - tail_size;
-    if (!pread_exact(fd.get(), tail_offset, tail)) {
-        return source_failure(A32AndroidLibrarySourceError::Failed);
-    }
-
-    std::optional<std::size_t> eocd_tail_offset;
-    for (std::size_t position = tail.size() - kZipEocdBytes;; --position) {
-        if (read_u32(tail.data() + position) == kZipEocdSignature) {
-            const std::uint16_t comment_bytes =
-                read_u16(tail.data() + position + 20U);
-            const std::uint64_t record_end =
-                static_cast<std::uint64_t>(position) +
-                kZipEocdBytes + comment_bytes;
-            if (record_end == tail.size()) {
-                eocd_tail_offset = position;
-                break;
-            }
-        }
-        if (position == 0U) {
-            break;
-        }
-    }
-    if (!eocd_tail_offset.has_value()) {
-        return source_failure(A32AndroidLibrarySourceError::Failed);
-    }
-
-    const std::uint8_t* eocd =
-        tail.data() + *eocd_tail_offset;
-    const std::uint16_t disk_number = read_u16(eocd + 4U);
-    const std::uint16_t central_disk = read_u16(eocd + 6U);
-    const std::uint16_t entries_on_disk = read_u16(eocd + 8U);
-    const std::uint16_t entry_count = read_u16(eocd + 10U);
-    const std::uint32_t central_bytes = read_u32(eocd + 12U);
-    const std::uint32_t central_offset = read_u32(eocd + 16U);
-
-    if (disk_number != 0U ||
-        central_disk != 0U ||
-        entries_on_disk != entry_count ||
-        entry_count == 0xffffU ||
-        central_bytes == 0xffffffffU ||
-        central_offset == 0xffffffffU ||
-        entry_count > options_.max_entries ||
-        central_bytes > options_.max_central_directory_bytes) {
-        return source_failure(A32AndroidLibrarySourceError::Failed);
-    }
-
-    const std::uint64_t eocd_absolute =
-        tail_offset + *eocd_tail_offset;
-    std::uint64_t central_end = 0U;
-    if (!checked_add(central_offset, central_bytes, central_end) ||
-        central_end != eocd_absolute ||
-        central_end > archive_size) {
-        return source_failure(A32AndroidLibrarySourceError::Failed);
-    }
-
-    std::optional<ZipEntry> selected;
-    std::uint64_t cursor = central_offset;
-    for (std::uint32_t index = 0U;
-         index < entry_count;
-         ++index) {
-        std::uint64_t fixed_end = 0U;
-        if (!checked_add(cursor, kZipCentralHeaderBytes, fixed_end) ||
-            fixed_end > central_end) {
+        if (selected != nullptr) {
             return source_failure(A32AndroidLibrarySourceError::Failed);
         }
-
-        std::array<std::uint8_t, kZipCentralHeaderBytes> header{};
-        if (!pread_exact(fd.get(), cursor, header) ||
-            read_u32(header.data()) != kZipCentralHeaderSignature) {
-            return source_failure(A32AndroidLibrarySourceError::Failed);
-        }
-
-        const std::uint16_t flags = read_u16(header.data() + 8U);
-        const std::uint16_t method = read_u16(header.data() + 10U);
-        const std::uint32_t expected_crc = read_u32(header.data() + 16U);
-        const std::uint32_t compressed_size =
-            read_u32(header.data() + 20U);
-        const std::uint32_t uncompressed_size =
-            read_u32(header.data() + 24U);
-        const std::uint16_t name_bytes = read_u16(header.data() + 28U);
-        const std::uint16_t extra_bytes = read_u16(header.data() + 30U);
-        const std::uint16_t comment_bytes = read_u16(header.data() + 32U);
-        const std::uint16_t disk_start = read_u16(header.data() + 34U);
-        const std::uint32_t local_offset =
-            read_u32(header.data() + 42U);
-
-        if (disk_start != 0U ||
-            compressed_size == 0xffffffffU ||
-            uncompressed_size == 0xffffffffU ||
-            local_offset == 0xffffffffU ||
-            name_bytes == 0U ||
-            name_bytes > options_.max_entry_name_bytes) {
-            return source_failure(A32AndroidLibrarySourceError::Failed);
-        }
-
-        std::uint64_t record_end = fixed_end;
-        if (!checked_add(record_end, name_bytes, record_end) ||
-            !checked_add(record_end, extra_bytes, record_end) ||
-            !checked_add(record_end, comment_bytes, record_end) ||
-            record_end > central_end) {
-            return source_failure(A32AndroidLibrarySourceError::Failed);
-        }
-
-        std::string name;
-        try {
-            name.resize(name_bytes);
-        } catch (const std::bad_alloc&) {
-            return source_failure(A32AndroidLibrarySourceError::Failed);
-        }
-        if (!pread_exact(
-                fd.get(),
-                cursor + kZipCentralHeaderBytes,
-                std::span<std::uint8_t>{
-                    reinterpret_cast<std::uint8_t*>(name.data()),
-                    name.size()})) {
-            return source_failure(A32AndroidLibrarySourceError::Failed);
-        }
-
-        if (name == entry_view) {
-            if (selected.has_value()) {
-                return source_failure(A32AndroidLibrarySourceError::Failed);
-            }
-            selected = ZipEntry{
-                .flags = flags,
-                .method = method,
-                .crc32 = expected_crc,
-                .compressed_size = compressed_size,
-                .uncompressed_size = uncompressed_size,
-                .local_header_offset = local_offset,
-                .name = std::move(name),
-            };
-        }
-        cursor = record_end;
+        selected = &entry;
     }
-    if (cursor != central_end) {
-        return source_failure(A32AndroidLibrarySourceError::Failed);
-    }
-    if (!selected.has_value()) {
+    if (selected == nullptr) {
         return source_failure(A32AndroidLibrarySourceError::NotFound);
     }
 
@@ -398,12 +541,15 @@ A32AndroidLibrarySourceResult A32ApkLibrarySource::load(
             entry.local_header_offset,
             kZipLocalHeaderBytes,
             local_fixed_end) ||
-        local_fixed_end > central_offset) {
+        local_fixed_end > directory.central_offset) {
         return source_failure(A32AndroidLibrarySourceError::Failed);
     }
 
     std::array<std::uint8_t, kZipLocalHeaderBytes> local{};
-    if (!pread_exact(fd.get(), entry.local_header_offset, local) ||
+    if (!pread_exact(
+            directory.fd.get(),
+            entry.local_header_offset,
+            local) ||
         read_u32(local.data()) != kZipLocalHeaderSignature) {
         return source_failure(A32AndroidLibrarySourceError::Failed);
     }
@@ -437,7 +583,7 @@ A32AndroidLibrarySourceResult A32ApkLibrarySource::load(
         return source_failure(A32AndroidLibrarySourceError::Failed);
     }
     if (!pread_exact(
-            fd.get(),
+            directory.fd.get(),
             entry.local_header_offset + kZipLocalHeaderBytes,
             std::span<std::uint8_t>{
                 reinterpret_cast<std::uint8_t*>(local_name.data()),
@@ -453,7 +599,7 @@ A32AndroidLibrarySourceResult A32ApkLibrarySource::load(
     }
     std::uint64_t data_end = 0U;
     if (!checked_add(data_offset, entry.compressed_size, data_end) ||
-        data_end > central_offset) {
+        data_end > directory.central_offset) {
         return source_failure(A32AndroidLibrarySourceError::Failed);
     }
 
@@ -463,7 +609,7 @@ A32AndroidLibrarySourceResult A32ApkLibrarySource::load(
     } catch (const std::bad_alloc&) {
         return source_failure(A32AndroidLibrarySourceError::Failed);
     }
-    if (!pread_exact(fd.get(), data_offset, compressed)) {
+    if (!pread_exact(directory.fd.get(), data_offset, compressed)) {
         return source_failure(A32AndroidLibrarySourceError::Failed);
     }
 
@@ -521,6 +667,92 @@ A32AndroidLibrarySourceResult A32ApkLibrarySource::load(
         return source_failure(A32AndroidLibrarySourceError::Failed);
     }
     result.image = std::move(image);
+    return result;
+}
+
+A32ApkLibraryCatalogResult A32ApkLibrarySource::catalog(
+    std::string_view apk_path,
+    std::string_view abi_directory,
+    A32ApkLibraryCatalogOptions options) {
+    if (!options_valid(options_) ||
+        !catalog_options_valid(options) ||
+        apk_path.empty() ||
+        contains_nul(apk_path) ||
+        apk_path.find("!/") != std::string_view::npos ||
+        apk_path.size() > options_.max_virtual_path_bytes ||
+        !valid_abi_directory(
+            abi_directory, options.max_abi_directory_bytes)) {
+        return catalog_failure(A32ApkLibraryCatalogError::Failed);
+    }
+
+    if (abi_directory.size() >
+        options_.max_entry_name_bytes - 1U) {
+        return catalog_failure(A32ApkLibraryCatalogError::Failed);
+    }
+
+    ZipDirectory directory =
+        read_zip_directory(apk_path, options_);
+    if (!directory) {
+        return catalog_failure(
+            directory.error == A32AndroidLibrarySourceError::NotFound
+                ? A32ApkLibraryCatalogError::NotFound
+                : A32ApkLibraryCatalogError::Failed);
+    }
+
+    std::string prefix;
+    try {
+        prefix.reserve(abi_directory.size() + 1U);
+        prefix.append(abi_directory.data(), abi_directory.size());
+        prefix.push_back('/');
+    } catch (const std::bad_alloc&) {
+        return catalog_failure(A32ApkLibraryCatalogError::Failed);
+    }
+
+    A32ApkLibraryCatalogResult result;
+    std::uint64_t total_soname_bytes = 0U;
+    for (const ZipEntry& entry : directory.entries) {
+        if (!entry.name.starts_with(prefix)) {
+            continue;
+        }
+        const std::string_view remainder{
+            entry.name.data() + prefix.size(),
+            entry.name.size() - prefix.size()};
+        if (!bare_shared_object_name(remainder)) {
+            continue;
+        }
+        if (remainder.size() > options.max_soname_bytes) {
+            return catalog_failure(A32ApkLibraryCatalogError::Failed);
+        }
+
+        std::uint64_t next_total = 0U;
+        if (!checked_add(
+                total_soname_bytes,
+                remainder.size(),
+                next_total) ||
+            next_total > options.max_total_soname_bytes ||
+            result.sonames.size() >= options.max_libraries) {
+            return catalog_failure(A32ApkLibraryCatalogError::Failed);
+        }
+
+        const bool duplicate = std::any_of(
+            result.sonames.begin(),
+            result.sonames.end(),
+            [&](const std::string& existing) {
+                return existing == remainder;
+            });
+        if (duplicate) {
+            return catalog_failure(A32ApkLibraryCatalogError::Failed);
+        }
+
+        try {
+            result.sonames.emplace_back(remainder);
+        } catch (const std::bad_alloc&) {
+            return catalog_failure(A32ApkLibraryCatalogError::Failed);
+        }
+        total_soname_bytes = next_total;
+    }
+
+    std::sort(result.sonames.begin(), result.sonames.end());
     return result;
 }
 
