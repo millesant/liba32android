@@ -1,6 +1,6 @@
 # ARM32 libdl compatibility
 
-Status: resident/dynamic acquisition and targeted unload accepted; automatic DSO association implemented
+Status: resident/dynamic acquisition, targeted unload, and automatic DSO association accepted; ARM32 load policy implemented
 
 ## Goal
 
@@ -29,8 +29,9 @@ published.
 
 The service borrows a persistent `Elf32LinkMap` plus a finite caller-owned
 handle table. Null filename acquires the first root. Without an open
-transaction, named `dlopen(name, RTLD_LAZY|RTLD_NOW)` retains the accepted
-resident-only exact SONAME/identity behavior.
+transaction, named `dlopen` retains the accepted resident-only exact
+SONAME/identity behavior while applying the same ARM32 load-policy flags to
+already-Active objects.
 
 When an `A32LibDlOpenTransaction` is supplied, named dlopen first considers
 Active resident objects only. Retired tombstones are ignored. Missing names are
@@ -55,6 +56,36 @@ non-Pending destructor state are not reopenable.
 The accepted close transaction may finalize one exact resident object on final
 handle release. Recursive final-close teardown/reclamation of dependency
 closures remains a separate higher ownership transaction.
+
+## ARM32 bionic load policy
+
+The compatibility surface uses bionic's historical LP32 values, not the generic
+LP64 layout: `RTLD_NOW=0`, `RTLD_LAZY=1`, `RTLD_GLOBAL=2`,
+`RTLD_NOLOAD=4`, `RTLD_NODELETE=0x1000`,
+`RTLD_DEFAULT=0xffffffff`, and `RTLD_NEXT=0xfffffffe`.
+`RTLD_LOCAL` is also zero.
+
+Android documents RTLD_LAZY as unsupported and uses eager resolution. The
+compatibility layer therefore accepts the flag value for ABI compatibility but
+does not introduce a lazy relocation path; newly acquired objects still finish
+the existing eager main+PLT relocation transaction before initialization.
+
+Every successful named open owns an exact persistent root, even when the target
+was already loaded only as another root's dependency. Local opens do not add
+global visibility. A Global open monotonically promotes that root and publishes
+the exact object in deterministic persistent global scope; later Local opens
+never demote it.
+
+NOLOAD performs only Active resident lookup. It can acquire/promote/pin a
+resident target but cannot invoke the dependency provider or map a missing one.
+
+NODELETE is a monotonic retention bit independent of Global visibility. Final
+handle release for a pinned root clears only the synthetic handle and skips
+FINI_ARRAY, registered finalization, DT_FINI, root release, tombstoning, unmap,
+and learned-DSO binding retirement. A later ordinary reopen inherits the pin.
+
+Handle acquisition precedes policy publication. If policy mutation fails before
+the new handle is exposed, that reference is rolled back.
 
 ## Symbol and address lookup
 
@@ -139,5 +170,6 @@ later reloads to reuse finite binding capacity.
 
 Objects that never register `__aeabi_atexit` or register only outside known
 lifecycle object context may still need explicit DSO association policy.
-RTLD_GLOBAL/NOLOAD/NODELETE policy, RTLD_NEXT, lazy binding, concrete Android
-search paths/APK extraction, and pathname accessibility remain separate work.
+Caller-relative RTLD_NEXT lookup, true lazy binding, NODELETE process-exit
+teardown, concrete Android search paths/APK extraction, and pathname
+accessibility remain separate work.
