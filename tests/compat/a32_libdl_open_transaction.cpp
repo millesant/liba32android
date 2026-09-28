@@ -23,6 +23,7 @@ using liba32android::compat::A32AeabiAtexitService;
 using liba32android::compat::A32AeabiObjectDsoBinding;
 using liba32android::compat::A32LibDlHandle;
 using liba32android::compat::kA32AeabiAtexitSvcImmediate;
+using liba32android::compat::A32LibDlOpenPolicy;
 using liba32android::compat::A32LibDlOpenTransaction;
 using liba32android::compat::A32LibDlOpenTransactionError;
 using liba32android::compat::A32LibDlOpenTransactionOptions;
@@ -53,6 +54,22 @@ int fail(const char* message) {
     std::cerr << message << '\n';
     return 1;
 }
+
+class CountingNotFoundProvider final
+    : public liba32android::elf::Elf32DependencyProvider {
+public:
+    liba32android::elf::Elf32DependencyProviderResult resolve(
+        std::string_view,
+        std::uint64_t) override {
+        ++calls;
+        liba32android::elf::Elf32DependencyProviderResult result;
+        result.error =
+            liba32android::elf::Elf32DependencyProviderError::NotFound;
+        return result;
+    }
+
+    std::size_t calls{};
+};
 
 void write_u16(
     std::vector<std::uint8_t>& image,
@@ -451,6 +468,82 @@ int test_open_constructor_learns_dso_binding() {
     return 0;
 }
 
+int test_noload_never_calls_provider_and_promotes_resident() {
+    {
+        MappedGuestMemory memory;
+        CountingNotFoundProvider provider;
+        Elf32LinkMap link_map;
+        Elf32LifecycleState lifecycle;
+        std::array<A32LibDlHandle, 1> handles{};
+        A32LibDlOpenTransaction transaction{
+            memory,
+            link_map,
+            provider,
+            std::span{handles},
+            lifecycle,
+            transaction_options(),
+        };
+
+        const auto missing = transaction.open(
+            "missing.so",
+            0x8ff8U,
+            A32LibDlOpenPolicy{.no_load = true});
+        if (missing.error != A32LibDlOpenTransactionError::NotLoaded ||
+            provider.calls != 0U ||
+            !link_map.graph.objects.empty() ||
+            !link_map.roots.empty() ||
+            handles[0].refcount != 0U) {
+            return fail("NOLOAD miss invoked provider or mutated state");
+        }
+    }
+
+    {
+        MappedGuestMemory memory;
+        CountingNotFoundProvider provider;
+        Elf32LinkMap link_map;
+        link_map.graph.objects.emplace_back();
+        link_map.graph.objects[0].identity = "resident-no-load";
+        link_map.object_states = {Elf32LinkMapObjectState::Active};
+
+        Elf32LifecycleState lifecycle;
+        lifecycle.objects.resize(1U);
+        lifecycle.objects[0].constructors =
+            Elf32LifecycleObjectStatus::Complete;
+        std::array<A32LibDlHandle, 1> handles{};
+        A32LibDlOpenTransaction transaction{
+            memory,
+            link_map,
+            provider,
+            std::span{handles},
+            lifecycle,
+            transaction_options(),
+        };
+
+        const auto opened = transaction.open(
+            "resident-no-load",
+            0x8ff8U,
+            A32LibDlOpenPolicy{
+                .global = true,
+                .nodelete = true,
+                .no_load = true,
+            });
+        if (!opened ||
+            opened.guest_handle != 0x70000000U ||
+            !opened.root_added ||
+            provider.calls != 0U ||
+            link_map.roots.size() != 1U ||
+            link_map.roots[0].object_index != 0U ||
+            link_map.roots[0].policy !=
+                liba32android::elf::Elf32LinkMapRootPolicy::Global ||
+            !link_map.roots[0].nodelete ||
+            link_map.global_scope_objects !=
+                std::vector<std::size_t>{0U}) {
+            return fail("NOLOAD resident hit did not create/promote root");
+        }
+    }
+    return 0;
+}
+
 int test_constructor_failure_remains_resident_and_latched() {
     MappedGuestMemory memory;
     const std::array<Elf32DependencyCatalogEntry, 0> entries{};
@@ -510,6 +603,11 @@ int main() {
         return status;
     }
     if (const int status = test_open_constructor_learns_dso_binding();
+        status != 0) {
+        return status;
+    }
+    if (const int status =
+            test_noload_never_calls_provider_and_promotes_resident();
         status != 0) {
         return status;
     }
