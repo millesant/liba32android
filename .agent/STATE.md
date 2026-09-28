@@ -74,6 +74,13 @@ The GitHub repository description and topics now reflect the actual AArch32,
 Android, ELF, JNI, compatibility-layer, and binary-translation scope. The unused
 wiki is disabled so maintained documentation remains in Git.
 
+The public landing page and documentation index now expose English and
+Português (Brasil) entry points. The repository's integration/default branch is
+`main`; current badges, security guidance, project/agent metadata, and all nine
+workflow branch filters were reconciled to that rename. Exact-head validation at
+`ba778a9bb81c3776f568f5f67a9a7e863ef204fb` reported all 11 check-runs
+successful, including repository/docs validation.
+
 The stale pre-v7 root `specs/` tree was retired from the working tree at
 `9c63837aab2f0c1e1fe869c3eac9bae2a98dfcff`. It contained 45 Markdown files
 across feature packages 000-014; the exact historical tree remains recoverable

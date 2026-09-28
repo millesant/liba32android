@@ -3,18 +3,18 @@ change = "post-roadmap-bilingual-public-docs"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Add English / Português (Brasil) selectors plus Portuguese public README and documentation index."
 
 [[tasks]]
 id = "T002"
-status = "active"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Reconcile current branch metadata, badges, security/agent guidance, workflow filters, and repository hygiene with main."
 
 [[tasks]]
 id = "T003"
-status = "pending"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Verify exact-head CI and converge state/evidence."
