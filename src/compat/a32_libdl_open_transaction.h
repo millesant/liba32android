@@ -18,6 +18,12 @@
 
 namespace liba32android::compat {
 
+struct A32LibDlOpenPolicy {
+    bool global{};
+    bool nodelete{};
+    bool no_load{};
+};
+
 struct A32LibDlOpenTransactionOptions {
     std::uint32_t handle_base{};
     elf::Elf32DependencyLoadOptions load;
@@ -43,6 +49,8 @@ enum class A32LibDlOpenTransactionError : std::uint8_t {
     RelroFailed,
     ConstructorFailed,
     CleanupFailed,
+    NotLoaded,
+    PolicyUpdateFailed,
 };
 
 struct A32LibDlOpenTransactionResult {
@@ -65,6 +73,8 @@ struct A32LibDlOpenTransactionResult {
         elf::Elf32PersistentLifecycleError::None};
     elf::Elf32LinkMapReleaseError cleanup_error{
         elf::Elf32LinkMapReleaseError::None};
+    elf::Elf32LinkMapRootUpdateError policy_error{
+        elf::Elf32LinkMapRootUpdateError::None};
     std::optional<std::size_t> failing_object;
 
     [[nodiscard]] explicit operator bool() const noexcept {
@@ -93,7 +103,8 @@ public:
 
     [[nodiscard]] A32LibDlOpenTransactionResult open(
         std::string_view requested_name,
-        std::optional<std::uint32_t> nested_stack_top = std::nullopt);
+        std::optional<std::uint32_t> nested_stack_top = std::nullopt,
+        A32LibDlOpenPolicy policy = {});
 
     [[nodiscard]] std::uint32_t handle_base() const noexcept {
         return options_.handle_base;
