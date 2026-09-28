@@ -1,0 +1,93 @@
+name: ARM32 JNI_OnLoad bootstrap
+
+on:
+  push:
+    branches: [bleeding]
+  pull_request:
+    branches: [bleeding]
+
+permissions:
+  contents: read
+
+jobs:
+  arm32-jni-onload:
+    name: ARM32 JNI_OnLoad/GetEnv integration
+    runs-on: ubuntu-24.04
+    env:
+      NDK_VERSION: 27.3.13750724
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libboost-dev binutils zlib1g-dev
+
+      - name: Ensure pinned NDK
+        run: |
+          set -euxo pipefail
+          if [ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION"
+          fi
+          test -x "$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi26-clang"
+
+      - name: Build reproducible ARM32 JNI_OnLoad fixture
+        run: |
+          set -euxo pipefail
+          bash -n tools/fixtures/build_arm32_jni_onload_fixture.sh
+          rm -rf build-fixtures/jni build-fixtures/jni-second
+          mkdir -p build-fixtures/jni build-fixtures/jni-second
+          bash tools/fixtures/build_arm32_jni_onload_fixture.sh             "$ANDROID_HOME/ndk/$NDK_VERSION"             build-fixtures/jni/libfixture_jni_onload.so
+          bash tools/fixtures/build_arm32_jni_onload_fixture.sh             "$ANDROID_HOME/ndk/$NDK_VERSION"             build-fixtures/jni-second/libfixture_jni_onload.so
+          cmp             build-fixtures/jni/libfixture_jni_onload.so             build-fixtures/jni-second/libfixture_jni_onload.so
+
+          readelf -hW build-fixtures/jni/libfixture_jni_onload.so |
+            tee build-fixtures/jni-header.txt
+          readelf -dW build-fixtures/jni/libfixture_jni_onload.so |
+            tee build-fixtures/jni-dynamic.txt
+          readelf -sW build-fixtures/jni/libfixture_jni_onload.so |
+            tee build-fixtures/jni-symbols.txt
+          readelf -rW build-fixtures/jni/libfixture_jni_onload.so |
+            tee build-fixtures/jni-relocations.txt
+
+          grep -F 'Machine:' build-fixtures/jni-header.txt | grep -F 'ARM'
+          grep -F 'Library soname: [libfixture_jni_onload.so]' build-fixtures/jni-dynamic.txt
+          grep -F 'JNI_OnLoad' build-fixtures/jni-symbols.txt
+          if grep -F 'Shared library:' build-fixtures/jni-dynamic.txt; then
+            echo "JNI fixture unexpectedly gained DT_NEEDED dependencies" >&2
+            exit 1
+          fi
+          sha256sum             build-fixtures/jni/libfixture_jni_onload.so             build-fixtures/jni-second/libfixture_jni_onload.so
+
+      - name: Configure integration
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DLIBA32ANDROID_BUILD_TESTS=ON             -DLIBA32ANDROID_ARM32_JNI_ONLOAD_FIXTURE_PATH="$GITHUB_WORKSPACE/build-fixtures/jni/libfixture_jni_onload.so"
+
+      - name: Build integration
+        run: |
+          cmake --build build             --target compat_jni_test compat_jni_onload_integration_test             --parallel 2
+
+      - name: Test JNI bootstrap
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build --output-on-failure             -R '^a32_jni_(vm_bootstrap|onload_integration)$'
+          build/compat_jni_onload_integration_test             build-fixtures/jni/libfixture_jni_onload.so |
+            tee build-fixtures/jni-integration-evidence.txt
+
+          grep -F 'fixture.jni.object_count=1' build-fixtures/jni-integration-evidence.txt
+          grep -F 'fixture.jni.service_calls=1' build-fixtures/jni-integration-evidence.txt
+          grep -F 'fixture.jni.version=0x10006' build-fixtures/jni-integration-evidence.txt
+          grep -F 'fixture.jni.status=PASS' build-fixtures/jni-integration-evidence.txt
+
+      - name: Upload JNI bootstrap evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm32-jni-onload
+          path: |
+            build-fixtures/jni/libfixture_jni_onload.so
+            build-fixtures/jni-header.txt
+            build-fixtures/jni-dynamic.txt
+            build-fixtures/jni-symbols.txt
+            build-fixtures/jni-relocations.txt
+            build-fixtures/jni-integration-evidence.txt
+          if-no-files-found: error
+          retention-days: 14
