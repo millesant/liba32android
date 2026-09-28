@@ -61,7 +61,7 @@ the root from the APK, resolves/initializes the child transitively, executes the
 relocated root call, and then acquires the resident child through the same
 persistent open transaction.
 
-Exact-head validation: NOT RUN.
+Exact-head validation: the first attempt at `b72ef8e6234288d6fdd75ed0c52362d4cdba9aea` had one operator-reported CI failure. Static audit found and corrected an impossible child-handle expectation: slot 1 is `0x70000004`, not `0x70000001`. Corrected exact-head validation is pending.
 
 ## Deferred / partial
 
