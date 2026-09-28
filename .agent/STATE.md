@@ -74,6 +74,12 @@ The GitHub repository description and topics now reflect the actual AArch32,
 Android, ELF, JNI, compatibility-layer, and binary-translation scope. The unused
 wiki is disabled so maintained documentation remains in Git.
 
+The stale pre-v7 root `specs/` tree was retired from the working tree at
+`9c63837aab2f0c1e1fe869c3eac9bae2a98dfcff`. It contained 45 Markdown files
+across feature packages 000-014; the exact historical tree remains recoverable
+from `56a438e426408465ec23bac6c09960a792be090b`, while `.agent/specs/` remains
+the sole accepted current specification surface.
+
 Local exact-head validation at `d8564a7a465f1099e8c8b415997f0d1812e2998e` built successfully, passed the
 locally configured 61-test suite including the pinned-NDK JNI integration, and
 passed the external C11 public-API consumer. GitHub Actions then reported all

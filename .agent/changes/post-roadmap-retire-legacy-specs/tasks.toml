@@ -3,12 +3,12 @@ change = "post-roadmap-retire-legacy-specs"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Audit the historical root specs tree, retire it from the current tree, and update current navigation/authority documentation."
 
 [[tasks]]
 id = "T002"
-status = "active"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Validate repository hygiene and exact-head CI, then converge durable state/evidence."
