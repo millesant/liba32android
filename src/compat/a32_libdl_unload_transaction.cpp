@@ -94,6 +94,32 @@ A32LibDlUnloadTransactionResult A32LibDlUnloadTransaction::close(
         return result;
     }
 
+    const elf::Elf32LinkMapRoot* exact_root = nullptr;
+    for (const auto& root : link_map_.roots) {
+        if (root.object_index != object_index) {
+            continue;
+        }
+        if (exact_root != nullptr) {
+            return failure(
+                A32LibDlUnloadTransactionError::InvalidOwnershipState,
+                object_index);
+        }
+        exact_root = &root;
+    }
+    if (exact_root == nullptr) {
+        return failure(
+            A32LibDlUnloadTransactionError::InvalidOwnershipState,
+            object_index);
+    }
+    if (exact_root->nodelete) {
+        handle = {};
+        A32LibDlUnloadTransactionResult result;
+        result.object_index = object_index;
+        result.outcome =
+            A32LibDlUnloadTransactionOutcome::NodeleteRetained;
+        return result;
+    }
+
     std::vector<std::size_t> live_anchors;
     std::optional<std::size_t> failing_anchor;
     if (!collect_other_live_anchors(
