@@ -24,8 +24,8 @@ namespace {
 using liba32android::compat::A32AndroidLibrarySearchOptions;
 using liba32android::compat::A32AndroidLibrarySearchProvider;
 using liba32android::compat::A32AndroidLibrarySearchRoot;
-using liba32android::compat::A32FilesystemLibrarySource;
-using liba32android::compat::A32FilesystemLibrarySourceOptions;
+using liba32android::compat::A32ApkLibrarySource;
+using liba32android::compat::A32ApkLibrarySourceOptions;
 using liba32android::cpu::ExecutionRequest;
 using liba32android::cpu::execute;
 using liba32android::cpu::InstructionSet;
@@ -115,7 +115,7 @@ std::optional<std::uint32_t> find_unmapped_region(
 
 int main(int argc, char** argv) {
     if (argc != 3) {
-        return fail("expected ARM32 app-search root and child fixture paths");
+        return fail("expected ARM32 app-search root and APK fixture paths");
     }
 
     const std::vector<std::uint8_t> root_image =
@@ -124,15 +124,23 @@ int main(int argc, char** argv) {
         return fail("generated Android app-search root fixture is missing or empty");
     }
 
-    const std::filesystem::path child_path{argv[2]};
-    const std::string search_root = child_path.parent_path().string();
-    const std::string child_identity = child_path.string();
-    if (search_root.empty() || child_identity.empty()) {
-        return fail("generated Android app-search child path has no filesystem root");
+    const std::filesystem::path apk_path{argv[2]};
+    const std::string search_root =
+        apk_path.string() + "!/lib/armeabi-v7a";
+    const std::string child_identity =
+        search_root + "/libfixture_app_child.so";
+    if (apk_path.empty() || search_root.empty() || child_identity.empty()) {
+        return fail("generated Android app-search APK path is invalid");
     }
 
-    A32FilesystemLibrarySource source{
-        A32FilesystemLibrarySourceOptions{.max_path_bytes = 4096U}};
+    A32ApkLibrarySource source{
+        A32ApkLibrarySourceOptions{
+            .max_virtual_path_bytes = 4096U,
+            .max_archive_bytes = 8U << 20,
+            .max_entries = 16U,
+            .max_central_directory_bytes = 64U << 10,
+            .max_entry_name_bytes = 256U,
+        }};
     const std::array<A32AndroidLibrarySearchRoot, 1> roots{{
         {kRootIdentity, search_root},
     }};
@@ -162,7 +170,7 @@ int main(int argc, char** argv) {
         provider,
         load_options);
     if (!loaded || loaded.graph.objects.size() != 2U) {
-        return fail("Android filesystem search did not form two-object graph");
+        return fail("Android APK search did not form two-object graph");
     }
 
     const auto& root = loaded.graph.objects[0];
@@ -171,7 +179,7 @@ int main(int argc, char** argv) {
         root.dependencies[0].requested_name != kChildSoname ||
         root.dependencies[0].target_object != 1U ||
         child.identity != child_identity) {
-        return fail("Android filesystem requester/path metadata was incorrect");
+        return fail("Android APK requester/path metadata was incorrect");
     }
 
     const auto call = lookup_elf32_graph_symbol(
@@ -186,7 +194,7 @@ int main(int argc, char** argv) {
     }
     if (call.symbol.object_index != 0U ||
         child_value.symbol.object_index != 1U) {
-        return fail("Android filesystem fixture symbols resolved from wrong objects");
+        return fail("Android APK fixture symbols resolved from wrong objects");
     }
 
     const auto relocated = apply_elf32_combined_relocations(
@@ -195,18 +203,18 @@ int main(int argc, char** argv) {
         relocated.application.writes.size() != 1U ||
         relocated.application.writes[0].final_word !=
             child_value.symbol.symbol.guest_value) {
-        return fail("Android filesystem root JUMP_SLOT relocation failed");
+        return fail("Android APK root JUMP_SLOT relocation failed");
     }
 
     const auto stack = find_unmapped_region(
         memory, 0x71000000U, kStackPages);
     const auto stop = find_unmapped_region(memory, 0x72000000U, 1U);
     if (!stack.has_value() || !stop.has_value()) {
-        return fail("could not reserve Android filesystem execution harness");
+        return fail("could not reserve Android APK execution harness");
     }
     const auto rw = MemoryPermission::Read | MemoryPermission::Write;
     if (!memory.map(*stack, memory.page_size() * kStackPages, rw)) {
-        return fail("could not map Android filesystem stack");
+        return fail("could not map Android APK stack");
     }
 
     const auto& symbol = call.symbol.symbol;
@@ -215,7 +223,7 @@ int main(int argc, char** argv) {
         static_cast<std::uint64_t>(*stack) +
         memory.page_size() * kStackPages - 16U;
     if (stack_top64 > std::numeric_limits<std::uint32_t>::max()) {
-        return fail("Android filesystem stack top overflowed");
+        return fail("Android APK stack top overflowed");
     }
 
     ExecutionRequest request{};
@@ -233,7 +241,7 @@ int main(int argc, char** argv) {
         execution.memory_fault ||
         !execution.stop_pc_reached ||
         execution.regs[0] != 123U) {
-        return fail("Android filesystem dependency did not execute");
+        return fail("Android APK dependency did not execute");
     }
 
     std::cout
@@ -241,7 +249,7 @@ int main(int argc, char** argv) {
         << loaded.graph.objects.size() << '\n'
         << "fixture.android_search.requester=" << kRootIdentity << '\n'
         << "fixture.android_search.requested=" << kChildSoname << '\n'
-        << "fixture.android_search.source=filesystem\n"
+        << "fixture.android_search.source=apk\n"
         << "fixture.android_search.search_root=" << search_root << '\n'
         << "fixture.android_search.child_identity=" << child.identity << '\n'
         << "fixture.android_search.relocation_count="
