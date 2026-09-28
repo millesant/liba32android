@@ -9,7 +9,7 @@ base_revision = "bf195e3443f4ca3056ee7a948f5affd16b420a06"
 acceptance = [
   "one bounded ARM32 JNI VM bootstrap installs guest-visible JavaVM/JNIEnv objects and pointer tables at caller-selected logical guest addresses without exposing host pointers",
   "the JavaVM invoke table follows Android JNI layout with GetEnv at slot 6 and one ARM SVC stub; unsupported invoke slots remain null",
-  "JavaVM::GetEnv validates the exact JavaVM pointer, writes the exact guest JNIEnv pointer for JNI 1.2/1.4/1.6, returns JNI_OK on success, and returns JNI_EVERSION with a null output pointer for unsupported versions",
+  "JavaVM::GetEnv validates the exact JavaVM pointer, matches Dalvik by accepting the inclusive numeric JNI 1.1..1.6 range, writes the exact guest JNIEnv pointer and returns JNI_OK on success, and returns JNI_EVERSION with a null output pointer outside that range",
   "VM/table/env/stub guest ranges are nonzero, word-aligned, non-overlapping, bounded, and must already be caller-mapped; install does not map/unmap/protect guest memory",
   "one exact-object JNI_OnLoad transaction resolves JNI_OnLoad only from the requested loaded object, calls it with r0=JavaVM*, r1=null, bounded stack/instruction/service budgets, and validates its return as JNI 1.2/1.4/1.6",
   "JNI_OnLoad missing symbol, bad object, invalid function address, CPU/memory/service failure, and unsupported returned version are classified explicitly without inventing Java state",
