@@ -38,10 +38,16 @@ inline constexpr std::uint32_t kA32LibDlDlerrorSvcImmediate =
 inline constexpr std::uint32_t kA32LibDlDladdrSvcImmediate =
     LIBA32ANDROID_A32_LIBDL_DLADDR_SVC;
 
-inline constexpr std::uint32_t kA32RtldLazy = 0x1U;
-inline constexpr std::uint32_t kA32RtldNow = 0x2U;
-inline constexpr std::uint32_t kA32RtldDefault = 0U;
-inline constexpr std::uint32_t kA32RtldNext = 0xffffffffU;
+// Android/bionic LP32 dlfcn ABI values. LP32 historically differs from
+// LP64/generic ELF: RTLD_NOW is zero and RTLD_GLOBAL occupies bit 1.
+inline constexpr std::uint32_t kA32RtldLocal = 0x00000U;
+inline constexpr std::uint32_t kA32RtldNow = 0x00000U;
+inline constexpr std::uint32_t kA32RtldLazy = 0x00001U;
+inline constexpr std::uint32_t kA32RtldGlobal = 0x00002U;
+inline constexpr std::uint32_t kA32RtldNoLoad = 0x00004U;
+inline constexpr std::uint32_t kA32RtldNodelete = 0x01000U;
+inline constexpr std::uint32_t kA32RtldDefault = 0xffffffffU;
+inline constexpr std::uint32_t kA32RtldNext = 0xfffffffeU;
 
 inline constexpr std::string_view kA32LibDlShimSoname = "libdl.so";
 inline constexpr std::string_view kA32LibDlShimIdentity =
