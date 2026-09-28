@@ -78,6 +78,34 @@ struct InstallRegion {
     std::array<std::uint8_t, kMaxInstallRegionBytes> original{};
 };
 
+class JniExecutionContextScope final {
+public:
+    JniExecutionContextScope(
+        elf::Elf32LifecycleExecutionContext* context,
+        std::size_t object_index) noexcept
+        : context_(context) {
+        if (context_ != nullptr) {
+            previous_ = context_->object_index;
+            context_->object_index = object_index;
+        }
+    }
+
+    ~JniExecutionContextScope() {
+        if (context_ != nullptr) {
+            context_->object_index = previous_;
+        }
+    }
+
+    JniExecutionContextScope(
+        const JniExecutionContextScope&) = delete;
+    JniExecutionContextScope& operator=(
+        const JniExecutionContextScope&) = delete;
+
+private:
+    elf::Elf32LifecycleExecutionContext* context_{};
+    std::optional<std::size_t> previous_;
+};
+
 [[nodiscard]] A32JniOnLoadResult onload_failure(
     A32JniOnLoadError error) {
     A32JniOnLoadResult result;
@@ -305,6 +333,10 @@ A32JniOnLoadResult invoke_a32_jni_on_load(
         options.return_pc | (thumb ? 1U : 0U);
     request.instruction_count = options.max_instructions;
     request.stop_pc = options.return_pc;
+
+    JniExecutionContextScope context_scope{
+        options.execution_context,
+        object_index};
 
     auto execution = runtime::execute_a32_with_services(
         memory,
