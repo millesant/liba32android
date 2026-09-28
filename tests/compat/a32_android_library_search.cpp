@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "compat/a32_android_library_search.h"
+#include "compat/a32_android_apk_runtime.h"
 #include "elf/elf32_dependency_resolver.h"
 
 namespace {
@@ -25,9 +26,18 @@ using liba32android::compat::A32AndroidLibrarySourceError;
 using liba32android::compat::A32AndroidLibrarySourceResult;
 using liba32android::compat::A32ApkLibrarySource;
 using liba32android::compat::A32ApkLibrarySourceOptions;
+using liba32android::compat::A32AndroidApkRuntimeBootstrap;
+using liba32android::compat::A32AndroidApkRuntimeBootstrapError;
+using liba32android::compat::A32AndroidApkRuntimeBootstrapOptions;
+using liba32android::compat::A32LibDlHandle;
 using liba32android::compat::A32FilesystemLibrarySource;
 using liba32android::compat::A32FilesystemLibrarySourceOptions;
+using liba32android::elf::Elf32DependencyProvider;
 using liba32android::elf::Elf32DependencyProviderError;
+using liba32android::elf::Elf32DependencyProviderResult;
+using liba32android::elf::Elf32LifecycleState;
+using liba32android::elf::Elf32LinkMap;
+using liba32android::memory::MappedGuestMemory;
 
 int fail(const char* message) {
     std::cerr << message << '\n';
@@ -75,6 +85,37 @@ public:
 
 private:
     std::span<const SourceEntry> entries_;
+};
+
+class RecordingPlatformProvider final
+    : public Elf32DependencyProvider {
+public:
+    Elf32DependencyProviderResult resolve(
+        std::string_view requested_name,
+        std::uint64_t max_image_bytes) override {
+        return resolve_for({}, requested_name, max_image_bytes);
+    }
+
+    Elf32DependencyProviderResult resolve_for(
+        std::string_view requester_identity,
+        std::string_view requested_name,
+        std::uint64_t max_image_bytes) override {
+        requesters.emplace_back(requester_identity);
+        names.emplace_back(requested_name);
+        if (requested_name != "libplatform.so" ||
+            max_image_bytes < 4U) {
+            Elf32DependencyProviderResult result;
+            result.error = Elf32DependencyProviderError::NotFound;
+            return result;
+        }
+        Elf32DependencyProviderResult result;
+        result.source.identity = "platform:libplatform.so";
+        result.source.image = {0x7fU, 'E', 'L', 'F'};
+        return result;
+    }
+
+    std::vector<std::string> requesters;
+    std::vector<std::string> names;
 };
 
 class TemporaryDirectory {
@@ -267,6 +308,254 @@ A32ApkLibrarySourceOptions apk_options() {
         .max_central_directory_bytes = 64U << 10,
         .max_entry_name_bytes = 512U,
     };
+}
+
+A32AndroidApkRuntimeBootstrapOptions bootstrap_options() {
+    A32AndroidApkRuntimeBootstrapOptions result;
+    result.max_application_libraries = 8U;
+    result.max_soname_bytes = 128U;
+    result.max_abi_directory_bytes = 64U;
+    result.source = apk_options();
+    result.search.max_path_bytes = 4096U;
+
+    result.open.handle_base = 0x70000000U;
+    result.open.load.max_objects = 8U;
+    result.open.load.max_depth = 8U;
+    result.open.load.max_dependency_occurrences = 32U;
+    result.open.load.max_image_bytes = 1U << 20;
+    result.open.load.max_total_image_bytes = 8U << 20;
+    result.open.load.max_string_bytes = 128U;
+    result.open.load.placement.search_begin = 0x10000U;
+    result.open.load.placement.search_end_exclusive = 0x80000U;
+
+    result.open.relocation.max_relocations = 32U;
+    result.open.relocation.symbols.max_symbols = 128U;
+    result.open.relocation.symbols.max_hash_buckets = 128U;
+    result.open.relocation.symbols.max_gnu_bloom_words = 64U;
+    result.open.relocation.symbols.max_scope_objects = 8U;
+    result.open.relocation.symbols.max_name_bytes = 128U;
+    result.open.relocation.symbols.max_version_records = 128U;
+
+    result.open.relro.max_pages = 8U;
+    result.open.lifecycle.max_objects = 8U;
+    result.open.lifecycle.max_array_entries = 8U;
+    result.open.lifecycle.execution.stack_top = 0x8ff8U;
+    result.open.lifecycle.execution.return_pc = 0x9000U;
+    result.open.lifecycle.execution.max_instructions_per_call = 32U;
+
+    result.open.reclamation.max_objects = 8U;
+    result.open.reclamation.max_segments = 16U;
+    result.open.reclamation.max_snapshot_bytes = 1U << 20;
+    return result;
+}
+
+int test_apk_runtime_bootstrap_provider_composition() {
+    TemporaryDirectory temporary;
+    if (!temporary.ready()) {
+        return fail("could not create APK-bootstrap directory");
+    }
+
+    const std::vector<std::uint8_t> root_image{
+        0x7fU, 'E', 'L', 'F', 'r'};
+    const std::vector<std::uint8_t> child_image{
+        0x7fU, 'E', 'L', 'F', 'c'};
+    const std::array<ZipFixtureEntry, 2> entries{{
+        {
+            .name = "lib/armeabi-v7a/libroot.so",
+            .image = root_image,
+            .method = 0U,
+        },
+        {
+            .name = "lib/armeabi-v7a/libchild.so",
+            .image = child_image,
+            .method = 0U,
+        },
+    }};
+    const auto archive = make_zip_fixture(entries);
+    const auto apk_path = temporary.path() / "bootstrap.apk";
+    if (!write_fixture_file(apk_path, archive)) {
+        return fail("could not write APK-bootstrap fixture");
+    }
+
+    MappedGuestMemory memory;
+    Elf32LinkMap link_map;
+    Elf32LifecycleState lifecycle;
+    std::array<A32LibDlHandle, 4> handles{};
+    RecordingPlatformProvider platform;
+    const std::array<std::string_view, 2> application_sonames{{
+        "libroot.so",
+        "libchild.so",
+    }};
+
+    A32AndroidApkRuntimeBootstrap bootstrap{
+        memory,
+        link_map,
+        platform,
+        std::span{handles},
+        lifecycle,
+        apk_path.string(),
+        "lib/armeabi-v7a",
+        std::span{application_sonames},
+        bootstrap_options(),
+    };
+    if (!bootstrap.configuration_valid() ||
+        bootstrap.application_library_count() != 2U ||
+        bootstrap.search_root() !=
+            apk_path.string() + "!/lib/armeabi-v7a") {
+        return fail("valid APK bootstrap configuration was rejected");
+    }
+
+    const std::string root_identity =
+        apk_path.string() +
+        "!/lib/armeabi-v7a/libroot.so";
+    const std::string child_identity =
+        apk_path.string() +
+        "!/lib/armeabi-v7a/libchild.so";
+
+    auto provided = bootstrap.provider().resolve(
+        "libroot.so", root_image.size());
+    if (!provided ||
+        provided.source.identity != root_identity ||
+        provided.source.image != root_image ||
+        !platform.names.empty()) {
+        return fail("context-free APK root did not resolve before platform");
+    }
+
+    provided = bootstrap.provider().resolve(
+        "libchild.so", child_image.size());
+    if (!provided ||
+        provided.source.identity != child_identity ||
+        provided.source.image != child_image) {
+        return fail("later app-local context-free root did not resolve");
+    }
+
+    provided = bootstrap.provider().resolve_for(
+        root_identity,
+        "libchild.so",
+        child_image.size());
+    if (!provided ||
+        provided.source.identity != child_identity ||
+        provided.source.image != child_image ||
+        !platform.names.empty()) {
+        return fail("requester-scoped APK dependency did not resolve");
+    }
+
+    provided = bootstrap.provider().resolve_for(
+        child_identity,
+        "libplatform.so",
+        4U);
+    if (!provided ||
+        provided.source.identity != "platform:libplatform.so" ||
+        platform.requesters !=
+            std::vector<std::string>{child_identity} ||
+        platform.names !=
+            std::vector<std::string>{"libplatform.so"}) {
+        return fail("APK provider did not fall through to platform exactly");
+    }
+
+    provided = bootstrap.provider().resolve(
+        "libundeclared.so", 16U);
+    if (provided.error != Elf32DependencyProviderError::NotFound) {
+        return fail("undeclared app root unexpectedly resolved");
+    }
+
+    const auto invalid_root =
+        bootstrap.open_root("libundeclared.so");
+    if (invalid_root.error !=
+        A32AndroidApkRuntimeBootstrapError::InvalidRootName) {
+        return fail("bootstrap accepted undeclared initial root");
+    }
+
+    return 0;
+}
+
+int test_apk_runtime_bootstrap_validation() {
+    TemporaryDirectory temporary;
+    if (!temporary.ready()) {
+        return fail("could not create bootstrap-validation directory");
+    }
+
+    MappedGuestMemory memory;
+    Elf32LinkMap link_map;
+    Elf32LifecycleState lifecycle;
+    std::array<A32LibDlHandle, 2> handles{};
+    RecordingPlatformProvider platform;
+
+    const std::array<std::string_view, 2> duplicate{{
+        "libroot.so",
+        "libroot.so",
+    }};
+    A32AndroidApkRuntimeBootstrap duplicate_bootstrap{
+        memory,
+        link_map,
+        platform,
+        std::span{handles},
+        lifecycle,
+        (temporary.path() / "base.apk").string(),
+        "lib/armeabi-v7a",
+        std::span{duplicate},
+        bootstrap_options(),
+    };
+    if (duplicate_bootstrap.configuration_valid() ||
+        duplicate_bootstrap.open_root("libroot.so").error !=
+            A32AndroidApkRuntimeBootstrapError::InvalidOptions) {
+        return fail("duplicate APK application SONAMEs were accepted");
+    }
+
+    const std::array<std::string_view, 1> one{{"libroot.so"}};
+    A32AndroidApkRuntimeBootstrap bad_abi{
+        memory,
+        link_map,
+        platform,
+        std::span{handles},
+        lifecycle,
+        (temporary.path() / "base.apk").string(),
+        "../armeabi-v7a",
+        std::span{one},
+        bootstrap_options(),
+    };
+    if (bad_abi.configuration_valid()) {
+        return fail("unsafe APK ABI directory was accepted");
+    }
+
+    auto limited = bootstrap_options();
+    limited.max_application_libraries = 1U;
+    const std::array<std::string_view, 2> too_many{{
+        "libroot.so",
+        "libchild.so",
+    }};
+    A32AndroidApkRuntimeBootstrap count_limited{
+        memory,
+        link_map,
+        platform,
+        std::span{handles},
+        lifecycle,
+        (temporary.path() / "base.apk").string(),
+        "lib/armeabi-v7a",
+        std::span{too_many},
+        limited,
+    };
+    if (count_limited.configuration_valid()) {
+        return fail("APK application-library count ceiling was ignored");
+    }
+
+    limited = bootstrap_options();
+    limited.search.max_path_bytes = 8U;
+    A32AndroidApkRuntimeBootstrap path_limited{
+        memory,
+        link_map,
+        platform,
+        std::span{handles},
+        lifecycle,
+        (temporary.path() / "base.apk").string(),
+        "lib/armeabi-v7a",
+        std::span{one},
+        limited,
+    };
+    if (path_limited.configuration_valid()) {
+        return fail("APK bootstrap path ceiling was ignored");
+    }
+    return 0;
 }
 
 int test_apk_source_stored_deflate_and_provider_composition() {
@@ -837,6 +1126,15 @@ int test_malformed_root_and_context_free_behavior() {
 }  // namespace
 
 int main() {
+    if (const int status =
+            test_apk_runtime_bootstrap_provider_composition();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_apk_runtime_bootstrap_validation();
+        status != 0) {
+        return status;
+    }
     if (const int status =
             test_apk_source_stored_deflate_and_provider_composition();
         status != 0) {
