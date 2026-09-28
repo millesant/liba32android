@@ -476,6 +476,23 @@ runtime::A32HostServiceDisposition A32LibDlService::handle(
             .no_load = (mode & kA32RtldNoLoad) != 0U,
         };
 
+        const auto rollback_unpublished_handle =
+            [&](std::size_t object_index, std::uint32_t guest_handle) {
+                for (auto& handle : handles_) {
+                    if (handle.refcount == 0U ||
+                        handle.guest_handle != guest_handle ||
+                        handle.object_index != object_index) {
+                        continue;
+                    }
+                    if (handle.refcount > 1U) {
+                        --handle.refcount;
+                    } else {
+                        handle = {};
+                    }
+                    return;
+                }
+            };
+
         if (regs[0] == 0U) {
             if (link_map_.roots.empty()) {
                 set_error("dlopen: no main object");
@@ -487,6 +504,13 @@ runtime::A32HostServiceDisposition A32LibDlService::handle(
             if (!link_map_.object_active(object_index)) {
                 return A32HostServiceDisposition::Failed;
             }
+            const std::uint32_t guest_handle =
+                acquire_handle(object_index);
+            if (guest_handle == 0U) {
+                set_error("dlopen: handle table exhausted");
+                regs[0] = 0U;
+                return A32HostServiceDisposition::Handled;
+            }
             const auto policy_updated =
                 elf::update_elf32_link_map_root_policy(
                     link_map_,
@@ -496,14 +520,12 @@ runtime::A32HostServiceDisposition A32LibDlService::handle(
                         : elf::Elf32LinkMapRootPolicy::Local,
                     policy.nodelete);
             if (!policy_updated) {
+                rollback_unpublished_handle(object_index, guest_handle);
                 set_error("dlopen: root policy update failed");
                 regs[0] = 0U;
                 return A32HostServiceDisposition::Handled;
             }
-            regs[0] = acquire_handle(object_index);
-            if (regs[0] == 0U) {
-                set_error("dlopen: handle table exhausted");
-            }
+            regs[0] = guest_handle;
             return A32HostServiceDisposition::Handled;
         }
 
@@ -542,6 +564,14 @@ runtime::A32HostServiceDisposition A32LibDlService::handle(
             return A32HostServiceDisposition::Handled;
         }
 
+        const std::uint32_t guest_handle =
+            acquire_handle(*object_index);
+        if (guest_handle == 0U) {
+            set_error("dlopen: handle table exhausted");
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+
         const auto policy_updated =
             elf::update_elf32_link_map_root_policy(
                 link_map_,
@@ -551,15 +581,13 @@ runtime::A32HostServiceDisposition A32LibDlService::handle(
                     : elf::Elf32LinkMapRootPolicy::Local,
                 policy.nodelete);
         if (!policy_updated) {
+            rollback_unpublished_handle(*object_index, guest_handle);
             set_error("dlopen: root policy update failed");
             regs[0] = 0U;
             return A32HostServiceDisposition::Handled;
         }
 
-        regs[0] = acquire_handle(*object_index);
-        if (regs[0] == 0U) {
-            set_error("dlopen: handle table exhausted");
-        }
+        regs[0] = guest_handle;
         return A32HostServiceDisposition::Handled;
     }
 
