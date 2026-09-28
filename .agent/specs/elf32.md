@@ -220,3 +220,21 @@ This operation is planning only. It does not distinguish newly unreachable
 objects from pre-existing unowned Active objects by itself; higher ownership
 transactions may compare ordinary and root-release plans or require a clean
 ordinary baseline before acting.
+
+
+## L32-E022 — Scoped lifecycle object execution context
+
+A lifecycle call executor may borrow one caller-owned
+`Elf32LifecycleExecutionContext`. The context contains only an optional stable
+dependency-graph object index.
+
+Immediately before each guest lifecycle call, execution saves the previous
+context value and sets `object_index` to that call's exact stable object index.
+The previous value is restored when the call returns or fails. Nested lifecycle
+execution using the same context therefore observes the inner object only during
+the inner call and resumes the outer object provenance afterward.
+
+The context is advisory provenance for synchronous host services. It does not
+change guest registers, memory, lifecycle ordering, instruction/service
+ceilings, or persistent once/failure state. A null context preserves all prior
+behavior.
