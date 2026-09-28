@@ -4,10 +4,11 @@ Last updated: 2026-09-28
 Integration branch: `bleeding`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
-Active acceptance gates:
+Active acceptance gate:
 
-- `post-roadmap-a32-jni-register-natives` — ACTIVE; core implementation and focused host coverage exist, real ARM32 registration fixture integration still pending.
-- `post-roadmap-oss-readiness` — ACTIVE; public repository surface is being made self-contained and validation-backed.
+- `post-roadmap-a32-jni-register-natives` — ACTIVE; core implementation and
+  focused host coverage exist, real ARM32 registration fixture integration
+  remains pending.
 
 ## Phase
 
@@ -19,7 +20,16 @@ ownership/reclamation planning, physical reclamation, targeted final-close
 `dlclose` unload, lifecycle-scoped automatic DSO association, ARM32 Bionic
 libdl policy, bounded APK native-library acquisition, caller-supplied APK
 runtime bootstrap composition, bounded APK native-library catalog discovery,
-and the first ARM32 JNI VM/GetEnv/JNI_OnLoad bootstrap.
+and the ARM32 JNI VM/GetEnv/JNI_OnLoad bootstrap.
+
+The JNI VM/GetEnv/JNI_OnLoad bootstrap is DONE with exact-head evidence at
+`d8564a7a465f1099e8c8b415997f0d1812e2998e`. The pinned-NDK integration and focused bootstrap regressions are
+green there.
+
+`post-roadmap-oss-readiness` is also DONE with exact-head evidence at
+`d8564a7a465f1099e8c8b415997f0d1812e2998e`. All nine workflows triggered for that head concluded success,
+including repository hygiene, the public C API, compatibility integrations,
+and the main CI workflow.
 
 ## Active JNI follow-up
 
@@ -29,8 +39,8 @@ through real slot 215 and publishes the evidence-backed entries:
 - `FindClass` at slot 6 / byte offset `0x18`;
 - `RegisterNatives` at slot 215 / byte offset `0x35c`.
 
-`A32JniVmService` now installs private ARM service stubs for GetEnv, FindClass,
-and RegisterNatives while keeping unsupported entries null.
+`A32JniVmService` installs private ARM service stubs for GetEnv, FindClass, and
+RegisterNatives while keeping unsupported entries null.
 
 `A32JniClassRegistry` provides caller-owned bounded class handles and registered
 native metadata. Guest class/function identities remain logical 32-bit values;
@@ -55,17 +65,23 @@ FindClass + RegisterNatives and then invoke one registered guest native.
 
 ## Public repository readiness
 
-The repository has a versioned public C embedding API, reproducible fixture
-builders, architecture/development documentation, CI workflows, and a large
-host regression suite.
+The public surface now includes a clear maturity/scope-oriented landing page,
+roadmap, contribution/security/conduct guidance, CODEOWNERS, issue/PR templates,
+a public C API quick start, repository/documentation hygiene validation, and CI
+for that hygiene contract.
 
-The current OSS-readiness change adds a clearer public landing page, roadmap,
-contribution/security/conduct guidance, GitHub collaboration templates, a public
-API quick start, repository/docs link validation, and CI for repository hygiene.
+The GitHub repository description and topics now reflect the actual AArch32,
+Android, ELF, JNI, compatibility-layer, and binary-translation scope. The unused
+wiki is disabled so maintained documentation remains in Git.
+
+Local exact-head validation at `d8564a7a465f1099e8c8b415997f0d1812e2998e` built successfully, passed the
+locally configured 61-test suite including the pinned-NDK JNI integration, and
+passed the external C11 public-API consumer. GitHub Actions then reported all
+nine triggered workflows successful.
 
 The project license is still intentionally unresolved. A public repository is
 not itself a license grant; selecting and committing the project license remains
-a release/OSS-readiness blocker that requires an explicit maintainer decision.
+the single explicit OSS-release blocker that requires a maintainer decision.
 
 ## Deferred / partial
 

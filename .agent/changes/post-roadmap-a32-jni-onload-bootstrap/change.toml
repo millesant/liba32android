@@ -2,10 +2,11 @@ schema = 1
 id = "post-roadmap-a32-jni-onload-bootstrap"
 kind = "feature"
 size = "S2"
-status = "implemented"
+status = "done"
 workflow = "feature"
 control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
 base_revision = "bf195e3443f4ca3056ee7a948f5affd16b420a06"
+result_revision = "d8564a7a465f1099e8c8b415997f0d1812e2998e"
 acceptance = [
   "one bounded ARM32 JNI VM bootstrap installs guest-visible JavaVM/JNIEnv objects and pointer tables at caller-selected logical guest addresses without exposing host pointers",
   "the JavaVM invoke table follows Android JNI layout with GetEnv at slot 6 and one ARM SVC stub; unsupported invoke slots remain null",
@@ -27,5 +28,5 @@ tests = "aligned"
 documentation = "aligned"
 decisions = "not_applicable"
 tasks = "aligned"
-evidence = "pending"
+evidence = "aligned"
 repository = "aligned"

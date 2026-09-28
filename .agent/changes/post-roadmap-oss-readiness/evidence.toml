@@ -1,0 +1,47 @@
+schema = 1
+change = "post-roadmap-oss-readiness"
+
+[[evidence]]
+id = "repository-hygiene-local"
+kind = "validation"
+status = "passed"
+claim = "The public repository surface has the required community/development files, valid in-repository Markdown links, and no known literal escaped-newline documentation artifacts."
+source = "tools/validate_repository.py"
+result = "repo-hygiene PASS on d8564a7a465f1099e8c8b415997f0d1812e2998e: required=13, markdown_files=87; git diff --check also passed."
+limitations = "External links are intentionally not network-validated by the dependency-free hygiene script."
+
+[[evidence]]
+id = "host-build-and-regressions"
+kind = "test"
+status = "passed"
+claim = "The cleaned repository and current JNI implementation build successfully and pass the complete locally configured host regression suite, including the pinned-NDK JNI_OnLoad integration."
+source = "CMake/Ninja/CTest on the maintainer Linux environment"
+result = "Release build succeeded and CTest passed 61/61 tests at d8564a7a465f1099e8c8b415997f0d1812e2998e after configuring LIBA32ANDROID_ARM32_JNI_ONLOAD_FIXTURE_PATH to a locally generated pinned-NDK fixture."
+limitations = "Local host validation does not replace Android device execution."
+
+[[evidence]]
+id = "public-c-api-external-caller"
+kind = "test"
+status = "passed"
+claim = "The installable public C API remains consumable by an external C11 caller after repository cleanup."
+source = "docs/development/public-api-quickstart.md and tests/runtime/public_embedding_api.c"
+result = "Staged install produced the public header/library and the external caller reported public.embedding.status=PASS at d8564a7a465f1099e8c8b415997f0d1812e2998e."
+limitations = "The public API intentionally excludes private ELF/linker/compatibility policy objects."
+
+[[evidence]]
+id = "github-repository-metadata"
+kind = "external"
+status = "observed"
+claim = "The GitHub repository has a concise technical description and discoverable topics matching the implemented project scope."
+source = "GitHub repository metadata"
+result = "Description set to the AArch32 Android compatibility-runtime summary; topics are aarch32, android, arm32, binary-translation, compatibility-layer, elf, jni, systems-programming; unused wiki disabled."
+limitations = "Repository metadata is mutable GitHub state rather than Git history."
+
+[[evidence]]
+id = "exact-head-ci"
+kind = "validation"
+status = "passed"
+claim = "All workflows triggered for the exact validated head completed successfully."
+source = "GitHub Actions at d8564a7a465f1099e8c8b415997f0d1812e2998e"
+result = "Repository hygiene 36376336451, Public C embedding API 36376336404, ARM32 JNI_OnLoad bootstrap 36376336398, ARM32 libm shim 36376336399, ARM32 libdl shim 36376336418, ARM32 libc memory string shim 36376336415, ARM32 Android app library search 36376336474, ARM32 liblog shim 36376336440, and CI 36376336441 all concluded success."
+limitations = "The project license remains an explicit maintainer decision and is not supplied by this change."

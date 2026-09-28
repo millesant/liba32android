@@ -2,14 +2,8 @@
 
 The numbered 011-049 roadmap is COMPLETE.
 
-## Immediate repository gate
-
-Finish `post-roadmap-oss-readiness`:
-
-1. validate the public repository/docs hygiene checks;
-2. run the normal host build and CTest suite on the exact resulting revision;
-3. verify the pushed `bleeding` head and CI state;
-4. close the change only after observed validation supports it.
+`post-roadmap-oss-readiness` is DONE with exact-head local and GitHub Actions
+validation at `d8564a7a465f1099e8c8b415997f0d1812e2998e`.
 
 The remaining non-technical OSS-release blocker is the project license. The
 maintainer must explicitly select and commit a license before the repository
