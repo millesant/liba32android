@@ -297,12 +297,14 @@ A32LibDlCloseTransactionResult A32LibDlCloseTransaction::close(
         }
         exact_root = &root;
     }
-    if (exact_root != nullptr && exact_root->nodelete) {
+    if (exact_root != nullptr &&
+        (exact_root->nodelete ||
+         exact_root->policy == elf::Elf32LinkMapRootPolicy::Global)) {
         handle = {};
         A32LibDlCloseTransactionResult result;
         result.object_index = object_index;
         result.outcome =
-            A32LibDlCloseTransactionOutcome::NodeleteRetained;
+            A32LibDlCloseTransactionOutcome::LoadPolicyRetained;
         return result;
     }
 
