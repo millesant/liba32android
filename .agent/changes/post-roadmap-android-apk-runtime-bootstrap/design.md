@@ -15,10 +15,15 @@ The bootstrap is a persistent composition object, not a second loader. It owns:
 8. one A32LibDlOpenTransaction borrowing the caller's memory, persistent link
    map, handle table, and lifecycle state.
 
-Context-free app-root provider lookup is whitelist-only. It resolves a declared
-bare SONAME as `<apk>!/<abi-dir>/<soname>` and deliberately returns NotFound
-for non-empty requester identity so transitive resolution is forced through the
-existing requester-scoped search provider.
+The provider chain order is requester-scoped application search, APK-local
+guard/root provider, then caller-owned platform provider.
+
+Context-free application search is inert, so the guard/root provider resolves a
+declared bare SONAME as `<apk>!/<abi-dir>/<soname>` for initial bootstrap or
+later app-local dlopen. For requester-aware lookup the accepted application
+search gets first chance. If a requested SONAME is declared APK-local but its
+entry is absent, the guard then fails closed instead of allowing accidental
+platform substitution. Undeclared names continue to the platform provider.
 
 The requester search has one exact root record for every declared app identity.
 This preserves feature-048 exact-requester semantics while allowing root -> child
@@ -29,7 +34,9 @@ delegates directly to A32LibDlOpenTransaction::open. No relocation, RELRO,
 constructor, handle, cleanup, or load-policy logic is reimplemented.
 
 The composition remains alive after bootstrap and exposes the same open
-transaction/provider chain for A32LibDlService dynamic dlopen.
+transaction/provider chain for A32LibDlService dynamic dlopen. A later
+context-free open of another declared application SONAME resolves from the same
+APK root; resident dependencies reuse the existing persistent object.
 
 Caller responsibility remains explicit: APK path, ABI directory, complete
 finite app SONAME set, platform compatibility provider/policy, guest stack and
