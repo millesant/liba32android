@@ -182,8 +182,9 @@ adds a root when an already-loaded dependency gains independent ownership,
 promotes Local to Global without allowing demotion, sets NODELETE without
 allowing it to clear, and maintains deterministic sorted global membership.
 
-The primitive intentionally does not make NODELETE a generic reclamation rule.
-Generic ELF root release remains policy-neutral; libdl checks NODELETE before
+The primitive intentionally does not make bionic unload policy a generic
+reclamation rule. Generic ELF root release remains policy-neutral; libdl checks
+whether the exact root is retained by Global or NODELETE policy before
 requesting lifecycle or physical reclamation. This keeps platform dlopen policy
 above the reusable link-map ownership machinery.
 
