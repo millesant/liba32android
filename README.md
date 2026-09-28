@@ -182,10 +182,10 @@ dependency-ordered next work is recorded in `.agent/NEXT.md`. Historical
 feature-era packages under `specs/` are retained as engineering history rather
 than current authority.
 
-## License status
+## License
 
-The project's own open-source license has **not yet been selected**. Dependency
-licenses are tracked separately. Until a project license is committed, no
-license grant should be inferred from the repository being public.
+liba32android is licensed under the [Apache License 2.0](LICENSE).
 
-Selecting and committing the project license is a release/OSS-readiness blocker.
+Third-party dependencies retain their own licenses. The project does not vendor
+the supplied real-world ARM32 evidence binaries used during compatibility
+research.

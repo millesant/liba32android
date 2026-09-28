@@ -107,7 +107,9 @@ data is involved.
 
 ## Licensing
 
-The project license has not yet been selected. Contributions made before a
-license is committed do not imply that a particular open-source license already
-applies. This is an explicit project-level item that must be resolved before a
-formal open-source release.
+liba32android is licensed under the Apache License 2.0. Unless explicitly stated
+otherwise, contributions intentionally submitted for inclusion in this
+repository are provided under the same Apache-2.0 terms.
+
+Do not submit code, binaries, traces, or other material that you are not
+authorized to redistribute.

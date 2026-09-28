@@ -1,0 +1,28 @@
+schema = 1
+id = "post-roadmap-apache-license"
+kind = "feature"
+size = "S1"
+status = "active"
+workflow = "feature"
+control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
+base_revision = "4fc9d65eb8b95fbd795ac9c2bc9b759711ae6a4c"
+acceptance = [
+  "the repository root contains the canonical Apache License 2.0 text",
+  "the public README identifies Apache-2.0 as the project license and links the committed license",
+  "contribution guidance states that intentionally submitted contributions use the same Apache-2.0 terms unless explicitly stated otherwise",
+  "the public roadmap no longer describes project-license selection as an unresolved release blocker",
+  "current project state records the maintainer license decision without rewriting historical validation evidence",
+  "GitHub recognizes the repository license as Apache-2.0",
+  "repository hygiene, host tests, and exact-head CI remain green after the licensing change"
+]
+
+[convergence]
+requirements = "aligned"
+specs = "not_applicable"
+implementation = "aligned"
+tests = "pending"
+documentation = "aligned"
+decisions = "aligned"
+tasks = "aligned"
+evidence = "pending"
+repository = "aligned"

@@ -58,14 +58,13 @@ separate.
 
 ## Release-readiness gates
 
-Before calling liba32android a generally consumable open-source release, the
-project should have:
+The project now has an Apache-2.0 license and a documented security-reporting
+path. Before calling liba32android a generally consumable release, it should
+still have:
 
-- a selected and committed open-source license;
 - a documented supported platform/toolchain matrix;
 - stable release/versioning policy for the public C ABI;
 - reproducible release artifacts;
-- a defined vulnerability-reporting path;
 - representative real-device Android validation;
 - clearly documented compatibility limits.
 

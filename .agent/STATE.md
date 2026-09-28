@@ -79,9 +79,10 @@ locally configured 61-test suite including the pinned-NDK JNI integration, and
 passed the external C11 public-API consumer. GitHub Actions then reported all
 nine triggered workflows successful.
 
-The project license is still intentionally unresolved. A public repository is
-not itself a license grant; selecting and committing the project license remains
-the single explicit OSS-release blocker that requires a maintainer decision.
+The maintainer selected Apache License 2.0 for liba32android. The canonical
+license text is committed at the repository root, public contribution guidance
+uses the same inbound terms by default, and project-license selection is no
+longer an OSS-release blocker.
 
 ## Deferred / partial
 

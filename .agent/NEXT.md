@@ -5,9 +5,9 @@ The numbered 011-049 roadmap is COMPLETE.
 `post-roadmap-oss-readiness` is DONE with exact-head local and GitHub Actions
 validation at `d8564a7a465f1099e8c8b415997f0d1812e2998e`.
 
-The remaining non-technical OSS-release blocker is the project license. The
-maintainer must explicitly select and commit a license before the repository
-should be presented as a formally licensed open-source release.
+The maintainer selected Apache License 2.0. Finish
+post-roadmap-apache-license by verifying GitHub license detection and exact-head
+validation; after that, licensing is no longer an OSS-readiness blocker.
 
 ## Active JNI track
 
