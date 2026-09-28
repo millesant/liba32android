@@ -1,0 +1,38 @@
+schema = 1
+change = "post-roadmap-android-apk-runtime-bootstrap"
+
+[[evidence]]
+id = "accepted-apk-source-prerequisite"
+kind = "repository"
+status = "observed"
+claim = "Bounded ZIP32 stored/DEFLATE native-library acquisition is accepted and available to the runtime bootstrap."
+source = ".agent/changes/post-roadmap-android-apk-library-source"
+result = "Project operator confirmed all required exact-head CI checks at 4c3cca6e8bd9b04c4995e82b83c5976f9be52763 were green."
+limitations = "The accepted source performs exact-entry acquisition only and does not discover packages/ABI policy."
+
+[[evidence]]
+id = "bootstrap-provider-regressions"
+kind = "test"
+status = "not_run"
+claim = "Focused host coverage proves bounded unique app SONAME validation, exact virtual requester identities, context-free app roots, requester-scoped transitive lookup, declared-name fail-closed behavior, undeclared platform fallback, and invalid root rejection."
+source = "tests/compat/a32_android_library_search.cpp"
+result = "Integrated but exact-head execution has not yet been observed."
+limitations = ""
+
+[[evidence]]
+id = "real-arm32-apk-bootstrap"
+kind = "test"
+status = "not_run"
+claim = "The real ARM32 integration starts from an empty link map, bootstraps root and child from one deterministic DEFLATED APK, initializes through A32LibDlOpenTransaction, reopens the resident child through the same transaction, and executes the relocated root call."
+source = ".github/workflows/compat-app-search.yml and tests/compat/a32_android_library_search_integration.cpp"
+result = "Integrated but terminal workflow success has not yet been observed."
+limitations = "The fixture has two app DSOs and a NotFound platform provider; richer platform compatibility composition remains caller supplied."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "not_run"
+claim = "The caller-supplied APK runtime bootstrap passes required exact-head checks before closure."
+source = "GitHub commit checks on the eventual integration revision"
+result = ""
+limitations = "The change remains implemented rather than done until terminal exact-head success is observed."
