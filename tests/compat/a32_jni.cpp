@@ -21,6 +21,7 @@ using liba32android::compat::A32JniVmService;
 using liba32android::compat::kA32JniEversion;
 using liba32android::compat::kA32JniGetEnvSvcImmediate;
 using liba32android::compat::kA32JniOk;
+using liba32android::compat::kA32JniVersion11;
 using liba32android::compat::kA32JniVersion12;
 using liba32android::compat::kA32JniVersion14;
 using liba32android::compat::kA32JniVersion16;
@@ -158,9 +159,12 @@ int test_vm_install_and_getenv() {
     }
 
     std::uint32_t cpsr{};
-    constexpr std::array<std::uint32_t, 3> supported_versions{{
+    constexpr std::array<std::uint32_t, 6> supported_versions{{
+        kA32JniVersion11,
         kA32JniVersion12,
+        0x00010003U,
         kA32JniVersion14,
+        0x00010005U,
         kA32JniVersion16,
     }};
     for (const std::uint32_t version : supported_versions) {
@@ -181,9 +185,27 @@ int test_vm_install_and_getenv() {
     }
 
     if (!write_u32(memory, 0x1200U, 0xdeadbeefU)) {
-        return fail("could not seed unsupported-version output");
+        return fail("could not seed below-range version output");
     }
     std::array<std::uint32_t, 16> regs{};
+    regs[0] = configured.java_vm_address;
+    regs[1] = 0x1200U;
+    regs[2] = 0x00010000U;
+    if (service.handle(
+            memory,
+            kA32JniGetEnvSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] !=
+            static_cast<std::uint32_t>(kA32JniEversion) ||
+        read_u32(memory, 0x1200U) != 0U) {
+        return fail("JNI GetEnv below-range version did not return EVERSION/null");
+    }
+
+    if (!write_u32(memory, 0x1200U, 0xdeadbeefU)) {
+        return fail("could not seed unsupported-version output");
+    }
+    regs = {};
     regs[0] = configured.java_vm_address;
     regs[1] = 0x1200U;
     regs[2] = 0x00010008U;
