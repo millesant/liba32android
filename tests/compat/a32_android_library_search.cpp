@@ -24,6 +24,8 @@ using liba32android::compat::A32AndroidLibrarySearchRoot;
 using liba32android::compat::A32AndroidLibrarySource;
 using liba32android::compat::A32AndroidLibrarySourceError;
 using liba32android::compat::A32AndroidLibrarySourceResult;
+using liba32android::compat::A32ApkLibraryCatalogError;
+using liba32android::compat::A32ApkLibraryCatalogOptions;
 using liba32android::compat::A32ApkLibrarySource;
 using liba32android::compat::A32ApkLibrarySourceOptions;
 using liba32android::compat::A32AndroidApkRuntimeBootstrap;
@@ -310,6 +312,15 @@ A32ApkLibrarySourceOptions apk_options() {
     };
 }
 
+A32ApkLibraryCatalogOptions catalog_options() {
+    return A32ApkLibraryCatalogOptions{
+        .max_libraries = 8U,
+        .max_soname_bytes = 128U,
+        .max_total_soname_bytes = 512U,
+        .max_abi_directory_bytes = 64U,
+    };
+}
+
 A32AndroidApkRuntimeBootstrapOptions bootstrap_options() {
     A32AndroidApkRuntimeBootstrapOptions result;
     result.max_application_libraries = 8U;
@@ -347,6 +358,233 @@ A32AndroidApkRuntimeBootstrapOptions bootstrap_options() {
     result.open.reclamation.max_segments = 16U;
     result.open.reclamation.max_snapshot_bytes = 1U << 20;
     return result;
+}
+
+int test_apk_native_catalog_and_bootstrap_consumption() {
+    TemporaryDirectory temporary;
+    if (!temporary.ready()) {
+        return fail("could not create APK-catalog directory");
+    }
+
+    const std::vector<std::uint8_t> image{
+        0x7fU, 'E', 'L', 'F', 1U};
+    const std::array<ZipFixtureEntry, 5> entries{{
+        {
+            .name = "lib/armeabi-v7a/libroot.so",
+            .image = image,
+            .method = 0U,
+        },
+        {
+            .name = "lib/armeabi-v7a/nested/libnested.so",
+            .image = image,
+            .method = 0U,
+        },
+        {
+            .name = "lib/armeabi-v7a/README.txt",
+            .image = image,
+            .method = 0U,
+        },
+        {
+            .name = "lib/armeabi-v7a/libchild.so",
+            .image = image,
+            .method = 0U,
+        },
+        {
+            .name = "lib/x86/libwrongabi.so",
+            .image = image,
+            .method = 0U,
+        },
+    }};
+    const auto archive = make_zip_fixture(entries);
+    const auto apk_path = temporary.path() / "catalog.apk";
+    if (!write_fixture_file(apk_path, archive)) {
+        return fail("could not write APK-catalog fixture");
+    }
+
+    A32ApkLibrarySource source{apk_options()};
+    const auto catalog = source.catalog(
+        apk_path.string(),
+        "lib/armeabi-v7a",
+        catalog_options());
+    if (!catalog ||
+        catalog.sonames !=
+            std::vector<std::string>{
+                "libchild.so",
+                "libroot.so",
+            }) {
+        return fail("APK catalog did not filter/sort direct native libraries");
+    }
+
+    std::vector<std::string_view> soname_views;
+    soname_views.reserve(catalog.sonames.size());
+    for (const std::string& soname : catalog.sonames) {
+        soname_views.push_back(soname);
+    }
+
+    MappedGuestMemory memory;
+    Elf32LinkMap link_map;
+    Elf32LifecycleState lifecycle;
+    std::array<A32LibDlHandle, 4> handles{};
+    RecordingPlatformProvider platform;
+    A32AndroidApkRuntimeBootstrap bootstrap{
+        memory,
+        link_map,
+        platform,
+        std::span{handles},
+        lifecycle,
+        apk_path.string(),
+        "lib/armeabi-v7a",
+        std::span<const std::string_view>{soname_views},
+        bootstrap_options(),
+    };
+    if (!bootstrap.configuration_valid() ||
+        bootstrap.application_library_count() != 2U) {
+        return fail("APK bootstrap did not consume discovered catalog");
+    }
+
+    const auto root = bootstrap.provider().resolve(
+        "libroot.so", image.size());
+    if (!root ||
+        root.source.identity !=
+            apk_path.string() +
+                "!/lib/armeabi-v7a/libroot.so") {
+        return fail("catalog-fed bootstrap could not resolve discovered root");
+    }
+    return 0;
+}
+
+int test_apk_native_catalog_failures() {
+    TemporaryDirectory temporary;
+    if (!temporary.ready()) {
+        return fail("could not create APK-catalog failure directory");
+    }
+
+    const std::vector<std::uint8_t> image{
+        0x7fU, 'E', 'L', 'F', 2U};
+    const auto apk_path = temporary.path() / "catalog-fail.apk";
+
+    A32ApkLibrarySource source{apk_options()};
+    if (source.catalog(
+            (temporary.path() / "missing.apk").string(),
+            "lib/armeabi-v7a",
+            catalog_options()).error !=
+        A32ApkLibraryCatalogError::NotFound) {
+        return fail("missing APK catalog did not return NotFound");
+    }
+
+    const std::array<std::string_view, 4> invalid_abis{{
+        "",
+        "/lib/armeabi-v7a",
+        "lib/../armeabi-v7a",
+        "lib/armeabi-v7a/",
+    }};
+    for (const std::string_view abi : invalid_abis) {
+        if (source.catalog(
+                apk_path.string(),
+                abi,
+                catalog_options()).error !=
+            A32ApkLibraryCatalogError::Failed) {
+            return fail("APK catalog accepted malformed ABI directory");
+        }
+    }
+
+    const std::array<ZipFixtureEntry, 2> duplicate{{
+        {
+            .name = "lib/armeabi-v7a/libdup.so",
+            .image = image,
+            .method = 0U,
+        },
+        {
+            .name = "lib/armeabi-v7a/libdup.so",
+            .image = image,
+            .method = 0U,
+        },
+    }};
+    if (!write_fixture_file(apk_path, make_zip_fixture(duplicate)) ||
+        source.catalog(
+            apk_path.string(),
+            "lib/armeabi-v7a",
+            catalog_options()).error !=
+            A32ApkLibraryCatalogError::Failed) {
+        return fail("APK catalog accepted duplicate direct SONAME");
+    }
+
+    const std::array<ZipFixtureEntry, 2> bounded{{
+        {
+            .name = "lib/armeabi-v7a/libone.so",
+            .image = image,
+            .method = 0U,
+        },
+        {
+            .name = "lib/armeabi-v7a/libtwolong.so",
+            .image = image,
+            .method = 0U,
+        },
+    }};
+    const auto bounded_archive = make_zip_fixture(bounded);
+    if (!write_fixture_file(apk_path, bounded_archive)) {
+        return fail("could not write bounded APK catalog fixture");
+    }
+
+    auto limited = catalog_options();
+    limited.max_libraries = 1U;
+    if (source.catalog(
+            apk_path.string(),
+            "lib/armeabi-v7a",
+            limited).error !=
+        A32ApkLibraryCatalogError::Failed) {
+        return fail("APK catalog ignored library-count ceiling");
+    }
+
+    limited = catalog_options();
+    limited.max_soname_bytes = 8U;
+    if (source.catalog(
+            apk_path.string(),
+            "lib/armeabi-v7a",
+            limited).error !=
+        A32ApkLibraryCatalogError::Failed) {
+        return fail("APK catalog ignored per-SONAME ceiling");
+    }
+
+    limited = catalog_options();
+    limited.max_total_soname_bytes = 10U;
+    if (source.catalog(
+            apk_path.string(),
+            "lib/armeabi-v7a",
+            limited).error !=
+        A32ApkLibraryCatalogError::Failed) {
+        return fail("APK catalog ignored total SONAME byte ceiling");
+    }
+
+    limited = catalog_options();
+    limited.max_abi_directory_bytes = 8U;
+    if (source.catalog(
+            apk_path.string(),
+            "lib/armeabi-v7a",
+            limited).error !=
+        A32ApkLibraryCatalogError::Failed) {
+        return fail("APK catalog ignored ABI-directory ceiling");
+    }
+
+    const std::array<ZipFixtureEntry, 1> ordinary{{
+        {
+            .name = "lib/armeabi-v7a/libone.so",
+            .image = image,
+            .method = 0U,
+        },
+    }};
+    if (!write_fixture_file(
+            apk_path,
+            make_zip_fixture(ordinary, true)) ||
+        source.catalog(
+            apk_path.string(),
+            "lib/armeabi-v7a",
+            catalog_options()).error !=
+            A32ApkLibraryCatalogError::Failed) {
+        return fail("APK catalog accepted ZIP64 EOCD sentinel");
+    }
+
+    return 0;
 }
 
 int test_apk_runtime_bootstrap_provider_composition() {
@@ -1143,6 +1381,15 @@ int test_malformed_root_and_context_free_behavior() {
 }  // namespace
 
 int main() {
+    if (const int status =
+            test_apk_native_catalog_and_bootstrap_consumption();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_apk_native_catalog_failures();
+        status != 0) {
+        return status;
+    }
     if (const int status =
             test_apk_runtime_bootstrap_provider_composition();
         status != 0) {
