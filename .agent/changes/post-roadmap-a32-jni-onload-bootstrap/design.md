@@ -31,10 +31,13 @@ All guest ranges must be nonzero, word aligned, non-overlapping and fit in the
 The service accepts only the exact configured JavaVM address in r0 and a
 non-null writable 32-bit `void**` slot in r1. r2 is the requested JNI version.
 
-For JNI_VERSION_1_2, 1_4, or 1_6 the service writes the configured JNIEnv
-logical guest pointer and returns JNI_OK (0). For every other version it writes
-zero and returns JNI_EVERSION (-3). An invalid VM pointer or failed guest write
-is a host-service failure, not a fabricated JNI result.
+Matching Dalvik, GetEnv accepts the inclusive numeric range from
+JNI_VERSION_1_1 through JNI_VERSION_1_6. For an in-range value the service
+requires a writable output slot, writes the configured JNIEnv logical guest
+pointer, and returns JNI_OK (0). For a version outside that range it returns
+JNI_EVERSION (-3) before touching the output slot. An invalid VM pointer or
+failed required guest write is a host-service failure, not a fabricated JNI
+result.
 
 This first VM represents the currently executing guest context as attached.
 Attach/Detach/Destroy and daemon attach remain null/unimplemented.
