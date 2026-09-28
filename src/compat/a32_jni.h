@@ -19,6 +19,7 @@ namespace liba32android::compat {
 inline constexpr std::uint32_t kA32JniGetEnvSvcImmediate =
     LIBA32ANDROID_A32_JNI_GET_ENV_SVC;
 
+inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
 inline constexpr std::uint32_t kA32JniVersion14 = 0x00010004U;
 inline constexpr std::uint32_t kA32JniVersion16 = 0x00010006U;
@@ -27,7 +28,15 @@ inline constexpr std::int32_t kA32JniOk = 0;
 inline constexpr std::int32_t kA32JniErr = -1;
 inline constexpr std::int32_t kA32JniEversion = -3;
 
-[[nodiscard]] constexpr bool is_a32_supported_jni_version(
+// Android/Dalvik GetEnv accepts the inclusive numeric JNI 1.1..1.6
+// range. JNI_OnLoad is stricter and accepts only 1.2, 1.4, or 1.6.
+[[nodiscard]] constexpr bool is_a32_supported_jni_getenv_version(
+    std::uint32_t version) noexcept {
+    return version >= kA32JniVersion11 &&
+           version <= kA32JniVersion16;
+}
+
+[[nodiscard]] constexpr bool is_a32_supported_jni_onload_version(
     std::uint32_t version) noexcept {
     return version == kA32JniVersion12 ||
            version == kA32JniVersion14 ||
