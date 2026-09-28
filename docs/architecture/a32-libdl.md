@@ -1,6 +1,6 @@
 # ARM32 libdl compatibility
 
-Status: feature 046 resident service accepted; dynamic acquisition follow-up implemented
+Status: resident/dynamic acquisition and targeted unload accepted; automatic DSO association implemented
 
 ## Goal
 
@@ -124,12 +124,20 @@ the physical release stage.
 The service enables this path only for `MappedGuestMemory`, because generic
 `GuestMemory` does not promise map/protect/unmap operations.
 
-Automatic derivation of the opaque per-object `__dso_handle` binding is not
-part of this transaction; embeddings still supply the object-to-DSO binding
-table.
+Exact-object teardown may use either caller-supplied object-to-DSO bindings or
+associations learned from constructor-time `__aeabi_atexit` registrations.
+Lifecycle execution scopes a stable current-object index around guest calls, so
+the registration's opaque r2 DSO word becomes direct association evidence.
+Explicit and learned bindings must agree when both exist.
+
+Learned association state is retained across failed teardown/reclamation and is
+forgotten only after successful physical retirement of the corresponding
+object, preventing a failed retry from losing its DSO selector while allowing
+later reloads to reuse finite binding capacity.
 
 ## Limits
 
-Recursive final-close lifecycle over only newly unreachable objects,
+Objects that never register `__aeabi_atexit` or register only outside known
+lifecycle object context may still need explicit DSO association policy.
 RTLD_GLOBAL/NOLOAD/NODELETE policy, RTLD_NEXT, lazy binding, concrete Android
 search paths/APK extraction, and pathname accessibility remain separate work.
