@@ -223,6 +223,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_jni_test
+    tests/compat/a32_jni.cpp
+)
+
+add_test(
+    NAME a32_jni_vm_bootstrap
+    COMMAND compat_jni_test
+)
+
+liba32android_add_test_executable(
     compat_libdl_shim_integration_test
     tests/compat/a32_libdl_shim.cpp
 )
