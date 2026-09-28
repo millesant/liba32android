@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -22,6 +23,8 @@ using liba32android::compat::A32AndroidLibrarySearchRoot;
 using liba32android::compat::A32AndroidLibrarySource;
 using liba32android::compat::A32AndroidLibrarySourceError;
 using liba32android::compat::A32AndroidLibrarySourceResult;
+using liba32android::compat::A32ApkLibrarySource;
+using liba32android::compat::A32ApkLibrarySourceOptions;
 using liba32android::compat::A32FilesystemLibrarySource;
 using liba32android::compat::A32FilesystemLibrarySourceOptions;
 using liba32android::elf::Elf32DependencyProviderError;
@@ -107,6 +110,456 @@ private:
     std::filesystem::path path_;
     bool ready_{};
 };
+
+struct ZipFixtureEntry {
+    std::string name;
+    std::vector<std::uint8_t> image;
+    std::vector<std::uint8_t> payload;
+    std::uint16_t method{};
+    std::uint16_t flags{};
+    std::optional<std::uint32_t> crc_override;
+    std::optional<std::uint16_t> local_method_override;
+};
+
+void append_u16(
+    std::vector<std::uint8_t>& output,
+    std::uint16_t value) {
+    output.push_back(static_cast<std::uint8_t>(value));
+    output.push_back(static_cast<std::uint8_t>(value >> 8U));
+}
+
+void append_u32(
+    std::vector<std::uint8_t>& output,
+    std::uint32_t value) {
+    output.push_back(static_cast<std::uint8_t>(value));
+    output.push_back(static_cast<std::uint8_t>(value >> 8U));
+    output.push_back(static_cast<std::uint8_t>(value >> 16U));
+    output.push_back(static_cast<std::uint8_t>(value >> 24U));
+}
+
+std::uint32_t fixture_crc32(
+    std::span<const std::uint8_t> bytes) {
+    std::uint32_t crc = 0xffffffffU;
+    for (const std::uint8_t byte : bytes) {
+        crc ^= byte;
+        for (int bit = 0; bit < 8; ++bit) {
+            const std::uint32_t mask =
+                0U - (crc & 1U);
+            crc = (crc >> 1U) ^ (0xedb88320U & mask);
+        }
+    }
+    return ~crc;
+}
+
+std::vector<std::uint8_t> make_zip_fixture(
+    std::span<const ZipFixtureEntry> entries,
+    bool zip64_eocd = false) {
+    std::vector<std::uint8_t> output;
+    std::vector<std::uint32_t> local_offsets;
+    local_offsets.reserve(entries.size());
+
+    for (const ZipFixtureEntry& entry : entries) {
+        const std::vector<std::uint8_t>& payload =
+            entry.payload.empty() && entry.method == 0U
+                ? entry.image
+                : entry.payload;
+        local_offsets.push_back(
+            static_cast<std::uint32_t>(output.size()));
+        const std::uint32_t crc = entry.crc_override.value_or(
+            fixture_crc32(entry.image));
+        const std::uint16_t local_method =
+            entry.local_method_override.value_or(entry.method);
+
+        append_u32(output, 0x04034b50U);
+        append_u16(output, 20U);
+        append_u16(output, entry.flags);
+        append_u16(output, local_method);
+        append_u16(output, 0U);
+        append_u16(output, 0U);
+        append_u32(output, crc);
+        append_u32(
+            output,
+            static_cast<std::uint32_t>(payload.size()));
+        append_u32(
+            output,
+            static_cast<std::uint32_t>(entry.image.size()));
+        append_u16(
+            output,
+            static_cast<std::uint16_t>(entry.name.size()));
+        append_u16(output, 0U);
+        output.insert(
+            output.end(), entry.name.begin(), entry.name.end());
+        output.insert(
+            output.end(), payload.begin(), payload.end());
+    }
+
+    const std::uint32_t central_offset =
+        static_cast<std::uint32_t>(output.size());
+    for (std::size_t index = 0; index < entries.size(); ++index) {
+        const ZipFixtureEntry& entry = entries[index];
+        const std::vector<std::uint8_t>& payload =
+            entry.payload.empty() && entry.method == 0U
+                ? entry.image
+                : entry.payload;
+        const std::uint32_t crc = entry.crc_override.value_or(
+            fixture_crc32(entry.image));
+
+        append_u32(output, 0x02014b50U);
+        append_u16(output, 20U);
+        append_u16(output, 20U);
+        append_u16(output, entry.flags);
+        append_u16(output, entry.method);
+        append_u16(output, 0U);
+        append_u16(output, 0U);
+        append_u32(output, crc);
+        append_u32(
+            output,
+            static_cast<std::uint32_t>(payload.size()));
+        append_u32(
+            output,
+            static_cast<std::uint32_t>(entry.image.size()));
+        append_u16(
+            output,
+            static_cast<std::uint16_t>(entry.name.size()));
+        append_u16(output, 0U);
+        append_u16(output, 0U);
+        append_u16(output, 0U);
+        append_u16(output, 0U);
+        append_u32(output, 0U);
+        append_u32(output, local_offsets[index]);
+        output.insert(
+            output.end(), entry.name.begin(), entry.name.end());
+    }
+
+    const std::uint32_t central_bytes =
+        static_cast<std::uint32_t>(
+            output.size() - central_offset);
+    append_u32(output, 0x06054b50U);
+    append_u16(output, 0U);
+    append_u16(output, 0U);
+    const std::uint16_t count = zip64_eocd
+        ? 0xffffU
+        : static_cast<std::uint16_t>(entries.size());
+    append_u16(output, count);
+    append_u16(output, count);
+    append_u32(output, central_bytes);
+    append_u32(output, central_offset);
+    append_u16(output, 0U);
+    return output;
+}
+
+bool write_fixture_file(
+    const std::filesystem::path& path,
+    std::span<const std::uint8_t> bytes) {
+    std::ofstream output{
+        path, std::ios::binary | std::ios::trunc};
+    output.write(
+        reinterpret_cast<const char*>(bytes.data()),
+        static_cast<std::streamsize>(bytes.size()));
+    return static_cast<bool>(output);
+}
+
+A32ApkLibrarySourceOptions apk_options() {
+    return A32ApkLibrarySourceOptions{
+        .max_virtual_path_bytes = 4096U,
+        .max_archive_bytes = 1U << 20,
+        .max_entries = 16U,
+        .max_central_directory_bytes = 64U << 10,
+        .max_entry_name_bytes = 512U,
+    };
+}
+
+int test_apk_source_stored_deflate_and_provider_composition() {
+    TemporaryDirectory temporary;
+    if (!temporary.ready()) {
+        return fail("could not create temporary APK-source directory");
+    }
+
+    const std::vector<std::uint8_t> stored_image{
+        0x7fU, 'E', 'L', 'F', '-', 's', 't', 'o', 'r', 'e', 'd'};
+    const std::vector<std::uint8_t> deflated_image{
+        0x7fU, 'E', 'L', 'F', 'a', 'p', 'k', '-', 'd', 'e', 'f', 'l',
+        'a', 't', 'e', '-', 'f', 'i', 'x', 't', 'u', 'r', 'e'};
+    const std::vector<std::uint8_t> deflated_payload{
+        0xabU,0x77U,0xf5U,0x71U,0x4bU,0x2cU,0xc8U,0xd6U,
+        0x4dU,0x49U,0x4dU,0xcbU,0x49U,0x2cU,0x49U,0xd5U,
+        0x4dU,0xcbU,0xacU,0x28U,0x29U,0x2dU,0x4aU,0x05U,0x00U,
+    };
+    const std::array<ZipFixtureEntry, 2> entries{{
+        {
+            .name = "lib/armeabi-v7a/libstored.so",
+            .image = stored_image,
+            .method = 0U,
+        },
+        {
+            .name = "lib/armeabi-v7a/libdeflated.so",
+            .image = deflated_image,
+            .payload = deflated_payload,
+            .method = 8U,
+        },
+    }};
+    const auto archive = make_zip_fixture(entries);
+    const auto apk_path = temporary.path() / "base.apk";
+    if (!write_fixture_file(apk_path, archive)) {
+        return fail("could not write APK-source fixture");
+    }
+
+    A32ApkLibrarySource source{apk_options()};
+    const std::string stored_virtual =
+        apk_path.string() + "!/lib/armeabi-v7a/libstored.so";
+    const std::string deflated_virtual =
+        apk_path.string() + "!/lib/armeabi-v7a/libdeflated.so";
+
+    const auto stored = source.load(
+        stored_virtual, stored_image.size());
+    if (!stored ||
+        stored.identity != stored_virtual ||
+        stored.image != stored_image) {
+        return fail("APK source did not read stored entry");
+    }
+
+    const auto deflated = source.load(
+        deflated_virtual, deflated_image.size());
+    if (!deflated ||
+        deflated.identity != deflated_virtual ||
+        deflated.image != deflated_image) {
+        return fail("APK source did not inflate raw DEFLATE entry");
+    }
+
+    const std::string root =
+        apk_path.string() + "!/lib/armeabi-v7a";
+    const std::array<A32AndroidLibrarySearchRoot, 1> roots{{
+        {"root.so", root},
+    }};
+    A32AndroidLibrarySearchProvider provider{
+        std::span{roots},
+        source,
+        A32AndroidLibrarySearchOptions{.max_path_bytes = 4096U},
+    };
+    const auto resolved = provider.resolve_for(
+        "root.so", "libdeflated.so", deflated_image.size());
+    if (!resolved ||
+        resolved.source.identity != deflated_virtual ||
+        resolved.source.image != deflated_image) {
+        return fail("APK source did not compose with requester search");
+    }
+    return 0;
+}
+
+int test_apk_source_missing_and_resource_failures() {
+    TemporaryDirectory temporary;
+    if (!temporary.ready()) {
+        return fail("could not create APK resource-test directory");
+    }
+
+    const std::vector<std::uint8_t> image{
+        0x7fU, 'E', 'L', 'F', 1U, 2U, 3U, 4U};
+    const std::array<ZipFixtureEntry, 2> entries{{
+        {
+            .name = "lib/armeabi-v7a/libone.so",
+            .image = image,
+            .method = 0U,
+        },
+        {
+            .name = "lib/armeabi-v7a/libtwo.so",
+            .image = image,
+            .method = 0U,
+        },
+    }};
+    const auto archive = make_zip_fixture(entries);
+    const auto apk_path = temporary.path() / "limits.apk";
+    if (!write_fixture_file(apk_path, archive)) {
+        return fail("could not write APK resource-test fixture");
+    }
+    const std::string prefix = apk_path.string() + "!/";
+
+    A32ApkLibrarySource source{apk_options()};
+    if (source.load(
+            (temporary.path() / "missing.apk").string() +
+                "!/lib/armeabi-v7a/libone.so",
+            image.size()).error !=
+            A32AndroidLibrarySourceError::NotFound ||
+        source.load(
+            prefix + "lib/armeabi-v7a/missing.so",
+            image.size()).error !=
+            A32AndroidLibrarySourceError::NotFound) {
+        return fail("APK source missing archive/entry was not NotFound");
+    }
+
+    std::string nul_path = prefix + "lib/armeabi-v7a/libone.so";
+    nul_path.push_back('\0');
+    nul_path.append("tail");
+    const std::array<std::string, 3> malformed{{
+        apk_path.string(),
+        apk_path.string() + "!/",
+        nul_path,
+    }};
+    for (const std::string& candidate : malformed) {
+        if (source.load(
+                std::string_view{candidate.data(), candidate.size()},
+                image.size()).error !=
+            A32AndroidLibrarySourceError::Failed) {
+            return fail("APK source accepted malformed virtual path");
+        }
+    }
+
+    auto limited = apk_options();
+    limited.max_archive_bytes = archive.size() - 1U;
+    if (A32ApkLibrarySource{limited}.load(
+            prefix + "lib/armeabi-v7a/libone.so",
+            image.size()).error !=
+        A32AndroidLibrarySourceError::Failed) {
+        return fail("APK source ignored archive byte ceiling");
+    }
+
+    limited = apk_options();
+    limited.max_entries = 1U;
+    if (A32ApkLibrarySource{limited}.load(
+            prefix + "lib/armeabi-v7a/libone.so",
+            image.size()).error !=
+        A32AndroidLibrarySourceError::Failed) {
+        return fail("APK source ignored entry-count ceiling");
+    }
+
+    limited = apk_options();
+    limited.max_central_directory_bytes = 1U;
+    if (A32ApkLibrarySource{limited}.load(
+            prefix + "lib/armeabi-v7a/libone.so",
+            image.size()).error !=
+        A32AndroidLibrarySourceError::Failed) {
+        return fail("APK source ignored central-directory ceiling");
+    }
+
+    limited = apk_options();
+    limited.max_entry_name_bytes = 4U;
+    if (A32ApkLibrarySource{limited}.load(
+            prefix + "lib/armeabi-v7a/libone.so",
+            image.size()).error !=
+        A32AndroidLibrarySourceError::Failed) {
+        return fail("APK source ignored entry-name ceiling");
+    }
+
+    limited = apk_options();
+    limited.max_virtual_path_bytes = 8U;
+    if (A32ApkLibrarySource{limited}.load(
+            prefix + "lib/armeabi-v7a/libone.so",
+            image.size()).error !=
+        A32AndroidLibrarySourceError::Failed) {
+        return fail("APK source ignored virtual-path ceiling");
+    }
+
+    if (source.load(
+            prefix + "lib/armeabi-v7a/libone.so",
+            image.size() - 1U).error !=
+        A32AndroidLibrarySourceError::Failed) {
+        return fail("APK source ignored image byte ceiling");
+    }
+    return 0;
+}
+
+int test_apk_source_rejects_malformed_entries() {
+    TemporaryDirectory temporary;
+    if (!temporary.ready()) {
+        return fail("could not create malformed-APK directory");
+    }
+
+    const std::vector<std::uint8_t> image{
+        0x7fU, 'E', 'L', 'F', 9U, 8U, 7U, 6U};
+    const std::string name = "lib/armeabi-v7a/libbad.so";
+    const auto apk_path = temporary.path() / "bad.apk";
+    const std::string virtual_path =
+        apk_path.string() + "!/" + name;
+
+    const auto expect_failed =
+        [&](std::span<const ZipFixtureEntry> entries,
+            bool zip64 = false) -> bool {
+            const auto archive =
+                make_zip_fixture(entries, zip64);
+            if (!write_fixture_file(apk_path, archive)) {
+                return false;
+            }
+            A32ApkLibrarySource source{apk_options()};
+            return source.load(
+                virtual_path, image.size()).error ==
+                A32AndroidLibrarySourceError::Failed;
+        };
+
+    const std::array<ZipFixtureEntry, 1> encrypted{{
+        {
+            .name = name,
+            .image = image,
+            .method = 0U,
+            .flags = 1U,
+        },
+    }};
+    if (!expect_failed(encrypted)) {
+        return fail("APK source accepted encrypted entry");
+    }
+
+    const std::array<ZipFixtureEntry, 1> unsupported{{
+        {
+            .name = name,
+            .image = image,
+            .payload = image,
+            .method = 12U,
+        },
+    }};
+    if (!expect_failed(unsupported)) {
+        return fail("APK source accepted unsupported compression");
+    }
+
+    const std::array<ZipFixtureEntry, 1> bad_crc{{
+        {
+            .name = name,
+            .image = image,
+            .method = 0U,
+            .crc_override = 0x12345678U,
+        },
+    }};
+    if (!expect_failed(bad_crc)) {
+        return fail("APK source accepted CRC mismatch");
+    }
+
+    const std::array<ZipFixtureEntry, 1> local_mismatch{{
+        {
+            .name = name,
+            .image = image,
+            .method = 0U,
+            .local_method_override = 8U,
+        },
+    }};
+    if (!expect_failed(local_mismatch)) {
+        return fail("APK source accepted local/central method mismatch");
+    }
+
+    const std::array<ZipFixtureEntry, 2> duplicate{{
+        {
+            .name = name,
+            .image = image,
+            .method = 0U,
+        },
+        {
+            .name = name,
+            .image = image,
+            .method = 0U,
+        },
+    }};
+    if (!expect_failed(duplicate)) {
+        return fail("APK source accepted duplicate exact entry name");
+    }
+
+    const std::array<ZipFixtureEntry, 1> ordinary{{
+        {
+            .name = name,
+            .image = image,
+            .method = 0U,
+        },
+    }};
+    if (!expect_failed(ordinary, true)) {
+        return fail("APK source accepted ZIP64 EOCD sentinel");
+    }
+    return 0;
+}
 
 int test_filesystem_source_exact_read_and_provider_composition() {
     TemporaryDirectory temporary;
@@ -373,6 +826,19 @@ int test_malformed_root_and_context_free_behavior() {
 }  // namespace
 
 int main() {
+    if (const int status =
+            test_apk_source_stored_deflate_and_provider_composition();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_apk_source_missing_and_resource_failures();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_apk_source_rejects_malformed_entries();
+        status != 0) {
+        return status;
+    }
     if (const int status =
             test_filesystem_source_exact_read_and_provider_composition();
         status != 0) {
