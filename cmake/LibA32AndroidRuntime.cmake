@@ -51,7 +51,7 @@ target_include_directories(liba32android
 target_link_libraries(liba32android
     PRIVATE
         dynarmic
-        ZLIB::ZLIB
+        ${LIBA32ANDROID_ZLIB_TARGET}
         m
 )
 
