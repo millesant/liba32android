@@ -31,6 +31,7 @@ using liba32android::elf::Elf32LifecycleExecutionContext;
 using liba32android::elf::Elf32LifecycleObjectStatus;
 using liba32android::elf::Elf32LifecycleState;
 using liba32android::elf::Elf32LinkMap;
+using liba32android::elf::Elf32LinkMapRootPolicy;
 using liba32android::elf::Elf32LoadedDependencyObject;
 using liba32android::memory::LinearGuestMemory;
 using liba32android::runtime::A32HostServiceDisposition;
@@ -254,6 +255,63 @@ int test_explicit_and_learned_binding_disagreement_fails() {
     return 0;
 }
 
+int test_nodelete_exact_close_skips_teardown() {
+    LinearGuestMemory memory{0x1000U};
+    Elf32LinkMap link_map;
+    Elf32LoadedDependencyObject object;
+    object.identity = "nodelete-exact";
+    link_map.graph.objects.push_back(std::move(object));
+    link_map.roots.push_back({
+        .object_index = 0U,
+        .policy = Elf32LinkMapRootPolicy::Local,
+        .nodelete = true,
+    });
+
+    Elf32LifecycleState lifecycle;
+    lifecycle.objects.resize(1U);
+    lifecycle.objects[0].constructors =
+        Elf32LifecycleObjectStatus::Complete;
+
+    std::array<A32AeabiAtexitRecord, 1> records{};
+    A32AeabiAtexitService registrations{std::span{records}};
+    const std::array<A32HostServiceRegistryEntry, 0> entries{};
+    A32HostServiceRegistry registry{std::span{entries}};
+    std::array<A32LibDlHandle, 1> handles{{
+        {.guest_handle = 0x70000000U, .object_index = 0U, .refcount = 1U},
+    }};
+    A32LibDlCloseTransaction transaction{
+        link_map,
+        std::span{handles},
+        lifecycle,
+        registrations,
+        std::span<const A32LibDlObjectLifecycleBinding>{},
+        A32LibDlCloseTransactionOptions{
+            .max_fini_array_entries = 1U,
+            .execution = {
+                .stack_top = 0x0ff8U,
+                .return_pc = 0x1000U,
+                .max_instructions_per_call = 16U,
+                .service_handler = &registry,
+                .max_service_calls_per_call = 1U,
+            },
+        },
+    };
+
+    const auto result =
+        transaction.close(memory, 0x70000000U);
+    if (!result ||
+        result.outcome !=
+            A32LibDlCloseTransactionOutcome::NodeleteRetained ||
+        handles[0].refcount != 0U ||
+        link_map.roots.size() != 1U ||
+        !link_map.roots[0].nodelete ||
+        lifecycle.objects[0].destructors !=
+            Elf32LifecycleObjectStatus::Pending) {
+        return fail("exact close ignored persistent NODELETE policy");
+    }
+    return 0;
+}
+
 int test_incomplete_registration_preserves_final_handle() {
     LinearGuestMemory memory{0x2000};
     Elf32LinkMap link_map;
@@ -394,6 +452,10 @@ int main() {
         return status;
     }
     if (const int status = test_nested_stack_override_uses_live_guest_sp();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_nodelete_exact_close_skips_teardown();
         status != 0) {
         return status;
     }
