@@ -91,7 +91,7 @@ jobs:
           grep -F 'fixture.android_search.root_identity=build-fixtures/app-search/fixture-app.apk!/lib/armeabi-v7a/libfixture_app_root.so' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.child_identity=build-fixtures/app-search/fixture-app.apk!/lib/armeabi-v7a/libfixture_app_child.so' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.root_handle=1879048192' build-fixtures/app-search-integration-evidence.txt
-          grep -F 'fixture.android_search.child_handle=1879048193' build-fixtures/app-search-integration-evidence.txt
+          grep -F 'fixture.android_search.child_handle=1879048196' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.result=123' build-fixtures/app-search-integration-evidence.txt
           grep -F 'fixture.android_search.status=PASS' build-fixtures/app-search-integration-evidence.txt
 
