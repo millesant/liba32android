@@ -67,13 +67,7 @@ __attribute__((visibility("default"), noinline))
 jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     JNIEnv* env = (JNIEnv*)0;
     jclass fixture_class;
-    const JNINativeMethod methods[1] = {
-        {
-            "nativePing",
-            "()I",
-            (void*)native_ping,
-        },
-    };
+    JNINativeMethod method;
 
     if (vm == (JavaVM*)0 || reserved != (void*)0) {
         return JNI_ERR;
@@ -94,10 +88,13 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     if (fixture_class == (jclass)0) {
         return JNI_ERR;
     }
+    method.name = "nativePing";
+    method.signature = "()I";
+    method.fnPtr = (void*)native_ping;
     if (env->functions->RegisterNatives(
             env,
             fixture_class,
-            methods,
+            &method,
             1) != JNI_OK) {
         return JNI_ERR;
     }
