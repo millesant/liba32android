@@ -173,10 +173,10 @@ Para regras de ownership/dependências, veja
 O roadmap público está em [ROADMAP.md](ROADMAP.md). A trilha imediata de
 compatibilidade já concluiu as primeiras etapas de registro de natives, IDs de
 membros, attach/detach da JavaVM, referências local/global, GetArrayLength,
-GetStaticIntField, strings modified-UTF-8 e arrays de jlong guiadas por
-evidência. O trabalho atual adiciona a família observada de três chamadas para
-arrays de objetos antes de APIs mais amplas de arrays primitivos, campos/métodos
-e exceções.
+GetStaticIntField, strings modified-UTF-8, arrays de jlong e arrays de objetos
+guiadas por evidência. O trabalho atual adiciona o par observado
+GetLongField/SetLongField antes de comportamento mais amplo de objetos/métodos,
+exceções, referências fracas e campos restantes.
 
 ## Contribuindo
 

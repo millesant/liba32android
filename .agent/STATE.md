@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-object-arrays` — ACTIVE; add the supplied
-  ARMv7-evidenced NewObjectArray/GetObjectArrayElement/SetObjectArrayElement
-  family with bounded APK-agnostic logical object-array storage.
+- `post-roadmap-a32-jni-instance-long-fields` — ACTIVE; add the
+  supplied ARMv7-evidenced GetLongField/SetLongField pair with bounded
+  APK-agnostic logical jobject + InstanceField long-value state.
 
 ## Phase
 
@@ -116,11 +116,19 @@ ARM32 stack decoding for the fifth SetLongArrayRegion argument, generic
 GetArrayLength metadata, reference cleanup, and one bounded guest copy lease.
 All 11 exact-head checks passed.
 
-The active object-array slice is direct evidence from the same supplied ARMv7
-library: NewObjectArray uses slot 172 / `0x2b0`, GetObjectArrayElement slot
-173 / `0x2b4`, and SetObjectArrayElement slot 174 / `0x2b8`. The runtime
-stores only synthetic logical jobject identities in bounded owned vectors; no
-APK-specific class names or host object pointers enter the compatibility layer.
+The bounded object-array slice is DONE at
+`42d542ab8a14ae11ff534c6f7734f972280741c1`. NewObjectArray,
+GetObjectArrayElement, and SetObjectArrayElement are implemented at observed
+slots 172/173/174 with bounded owned logical jobject vectors, generic
+GetArrayLength integration, local-reference return semantics, and zero leaked
+array references in the real ARM32 fixture. All 11 exact-head checks passed.
+
+The active instance-field slice is direct evidence from supplied `libmla.so`:
+GetLongField uses slot 101 / `0x194` and SetLongField uses slot 110 /
+`0x1b8`. SetLongField's aligned jlong value is passed through guest
+`[sp]`/`[sp+4]`, while GetLongField returns the 64-bit bits through r0/r1.
+State remains generic: values are keyed only by logical jobject + existing
+InstanceField ID, with no APK-specific object layout or host pointer identity.
 
 ## Public repository readiness
 

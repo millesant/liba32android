@@ -1,0 +1,20 @@
+schema = 1
+change = "post-roadmap-a32-jni-instance-long-fields"
+
+[[evidence]]
+id = "libmla-instance-long-field-slots"
+kind = "artifact"
+status = "observed"
+claim = "Supplied ARMv7 libmla directly uses GetLongField and SetLongField with exact ARM32 jlong ABI."
+source = "docs/research/evidence/arm32-jni-instance-long-field-entrypoints-2026-09-29.md"
+result = "GetLongField loads JNIEnv offset 0x194 / slot 101. SetLongField loads offset 0x1b8 / slot 110 and passes the aligned 64-bit value through guest [sp]/[sp+4]."
+limitations = "Object/class assignability, field layout, inheritance, volatile semantics, and other field families remain outside this slice."
+
+[[evidence]]
+id = "focused-validation"
+kind = "validation"
+status = "pending"
+claim = "Focused host regressions prove bounded instance-long state, exact table/stub publication, ARM32 r0/r1 return bits, aligned stack decoding, updates, and error boundaries."
+source = "GitHub exact-head checks"
+result = ""
+limitations = "Pending exact-head execution."

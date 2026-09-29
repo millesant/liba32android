@@ -3,24 +3,24 @@ change = "post-roadmap-a32-jni-object-arrays"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Record supplied libmla object-array slots and define the bounded logical-object-array contract."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Implement NewObjectArray/GetObjectArrayElement/SetObjectArrayElement over owned logical handle vectors."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Add focused host regressions and suitable real ARM32 fixture coverage."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Converge accepted spec/architecture/state/evidence and pass exact-head validation."

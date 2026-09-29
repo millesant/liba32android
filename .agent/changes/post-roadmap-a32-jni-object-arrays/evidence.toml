@@ -13,8 +13,8 @@ limitations = "Class assignability, ArrayStoreException, object construction, lo
 [[evidence]]
 id = "focused-and-arm32-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host regressions and the pinned-NDK ARM32 fixture prove bounded object-array creation, access, mutation, reference behavior, and cleanup."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending exact-head execution."
+source = "GitHub exact-head checks at 42d542ab8a14ae11ff534c6f7734f972280741c1"
+result = "All 11 required exact-head checks concluded success. The pinned-NDK ARM32 JNI integration exercised NewObjectArray, SetObjectArrayElement, GetObjectArrayElement, local-reference release, generic GetArrayLength metadata, and final object-array reference cleanup; the focused Linux A32 matrix also passed."
+limitations = ""

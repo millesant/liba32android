@@ -10,24 +10,22 @@ at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c. Licensing is no longer an OSS-readi
 
 ## Active JNI track
 
-Continue `post-roadmap-a32-jni-object-arrays`.
+Continue `post-roadmap-a32-jni-instance-long-fields`.
 
-The jlong-array slice is complete at
-`94dd3ed5155654956decce93dd6cbe73c25d4cf0` with 11/11 checks green.
+The object-array slice is complete at
+`42d542ab8a14ae11ff534c6f7734f972280741c1` with 11/11 checks green.
 
-Direct ARMv7 `libmla.so` evidence drives one compact adjacent object-array
-family:
+Direct ARMv7 `libmla.so` evidence drives the next exact field pair:
 
-1. NewObjectArray at JNIEnv slot 172 / offset `0x2b0`;
-2. GetObjectArrayElement at slot 173 / `0x2b4`;
-3. SetObjectArrayElement at slot 174 / `0x2b8`;
-4. bounded synthetic object-array handles with owned logical jobject vectors;
-5. registered element-class identity, generic GetArrayLength metadata, and one
-   local array reference;
-6. GetObjectArrayElement creates one local reference for each non-null returned
-   stored identity;
-7. SetObjectArrayElement accepts null or a currently live logical identity;
-8. pinned-NDK ARM32 fixture coverage of create/set/get/release.
+1. GetLongField at JNIEnv slot 101 / offset `0x194`;
+2. SetLongField at slot 110 / `0x1b8`;
+3. bounded signed int64 values keyed by logical jobject + existing
+   InstanceField jfieldID;
+4. live-reference validation for service calls;
+5. GetLongField returns exact jlong bits through ARM32 r0/r1;
+6. SetLongField decodes the aligned value from guest `[sp]` / `[sp+4]`;
+7. focused coverage for negative values, updates, missing state, wrong member
+   kind, dead/unknown objects, and unreadable stack words.
 
-Do not infer Java class assignability, ArrayStoreException, inheritance, object
-construction, local frames, or general GC into this slice.
+Do not infer Java object class membership, field layout/offsets, inheritance,
+volatile behavior, reflection, or other field families into this slice.

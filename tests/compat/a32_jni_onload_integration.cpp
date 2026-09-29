@@ -244,6 +244,8 @@ int main(int argc, char** argv) {
         .new_object_array_stub_address = *stub_page + 0x280U,
         .get_object_array_element_stub_address = *stub_page + 0x2a0U,
         .set_object_array_element_stub_address = *stub_page + 0x2c0U,
+        .get_long_field_stub_address = *stub_page + 0x2e0U,
+        .set_long_field_stub_address = *stub_page + 0x300U,
     };
     constexpr std::uint32_t kFixtureClassHandle = 0x44550000U;
     constexpr std::uint32_t kFixtureStaticFieldHandle = 0x44551000U;

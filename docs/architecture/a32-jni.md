@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: jlong arrays validated; evidence-backed object-array slice in progress
+Status: object arrays validated; evidence-backed instance-long-field slice in progress
 
 ## Goal
 
@@ -31,6 +31,8 @@ entries include:
 - `DeleteLocalRef` — slot 23 / byte offset `0x5c`;
 - `GetMethodID` — slot 33 / byte offset `0x84`;
 - `GetFieldID` — slot 94 / byte offset `0x178`;
+- `GetLongField` — slot 101 / byte offset `0x194`;
+- `SetLongField` — slot 110 / byte offset `0x1b8`;
 - `GetStaticFieldID` — slot 144 / byte offset `0x240`;
 - `GetStaticIntField` — slot 150 / byte offset `0x258`;
 - `NewStringUTF` — slot 167 / byte offset `0x29c`;
@@ -88,7 +90,9 @@ The current private guest/host service immediates are:
 - `0xEA` — JNIEnv::SetLongArrayRegion;
 - `0xEB` — JNIEnv::NewObjectArray;
 - `0xEC` — JNIEnv::GetObjectArrayElement;
-- `0xED` — JNIEnv::SetObjectArrayElement.
+- `0xED` — JNIEnv::SetObjectArrayElement;
+- `0xEE` — JNIEnv::GetLongField;
+- `0xEF` — JNIEnv::SetLongField.
 
 Each guest stub is a minimal ARM `svc; bx lr` sequence. Unknown SVC immediates
 remain unhandled.
@@ -315,6 +319,30 @@ semantics.
 
 See
 [ARM32 JNI object-array evidence](../research/evidence/arm32-jni-object-array-entrypoints-2026-09-29.md).
+
+Exact-head validation at
+`42d542ab8a14ae11ff534c6f7734f972280741c1` passed all 11 required checks.
+
+## Instance long fields
+
+Supplied ARMv7 `libmla.so` identifies GetLongField at JNIEnv slot 101 /
+offset `0x194` and SetLongField at slot 110 / `0x1b8`.
+
+The bounded registry stores signed 64-bit values by exact logical jobject
+identity plus an existing InstanceField jfieldID. Service calls require the
+object identity to be currently live through the generic local/global reference
+ledger. Missing value state fails rather than inventing Java object state.
+
+GetLongField returns the exact 64-bit value through ARM32 r0/r1. SetLongField
+follows AAPCS32 alignment and decodes its jlong input from guest `[sp]` and
+`[sp+4]` after JNIEnv/object/field occupy r0-r2.
+
+The runtime still does not map arbitrary jobject identities to Java classes or
+field offsets, so object/class assignability, inheritance, volatile semantics,
+and reflection remain outside this slice.
+
+See
+[ARM32 JNI instance-long-field evidence](../research/evidence/arm32-jni-instance-long-field-entrypoints-2026-09-29.md).
 
 ## Reverse native dispatch
 

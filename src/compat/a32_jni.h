@@ -23,6 +23,8 @@
 #define LIBA32ANDROID_A32_JNI_NEW_OBJECT_ARRAY_SVC 0xEB
 #define LIBA32ANDROID_A32_JNI_GET_OBJECT_ARRAY_ELEMENT_SVC 0xEC
 #define LIBA32ANDROID_A32_JNI_SET_OBJECT_ARRAY_ELEMENT_SVC 0xED
+#define LIBA32ANDROID_A32_JNI_GET_LONG_FIELD_SVC 0xEE
+#define LIBA32ANDROID_A32_JNI_SET_LONG_FIELD_SVC 0xEF
 
 #ifdef __cplusplus
 
@@ -88,6 +90,10 @@ inline constexpr std::uint32_t kA32JniGetObjectArrayElementSvcImmediate =
     LIBA32ANDROID_A32_JNI_GET_OBJECT_ARRAY_ELEMENT_SVC;
 inline constexpr std::uint32_t kA32JniSetObjectArrayElementSvcImmediate =
     LIBA32ANDROID_A32_JNI_SET_OBJECT_ARRAY_ELEMENT_SVC;
+inline constexpr std::uint32_t kA32JniGetLongFieldSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_LONG_FIELD_SVC;
+inline constexpr std::uint32_t kA32JniSetLongFieldSvcImmediate =
+    LIBA32ANDROID_A32_JNI_SET_LONG_FIELD_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -208,6 +214,12 @@ struct A32JniStaticIntFieldValue {
     std::int32_t value{};
 };
 
+struct A32JniInstanceLongFieldValue {
+    std::uint32_t object_handle{};
+    std::uint32_t field_handle{};
+    std::int64_t value{};
+};
+
 struct A32JniStringInfo {
     std::uint32_t handle{};
     std::string modified_utf8;
@@ -311,6 +323,13 @@ public:
         std::int32_t value);
     [[nodiscard]] std::optional<std::int32_t> static_int_field_value(
         std::uint32_t field_handle) const noexcept;
+    [[nodiscard]] A32JniRegistryError set_instance_long_field_value(
+        std::uint32_t object_handle,
+        std::uint32_t field_handle,
+        std::int64_t value);
+    [[nodiscard]] std::optional<std::int64_t> instance_long_field_value(
+        std::uint32_t object_handle,
+        std::uint32_t field_handle) const noexcept;
     [[nodiscard]] const A32JniRegisteredNative* find_native(
         std::uint32_t class_handle,
         std::string_view name,
@@ -365,6 +384,7 @@ private:
     std::vector<A32JniStringInfo> strings_;
     std::vector<A32JniMemberId> members_;
     std::vector<A32JniStaticIntFieldValue> static_int_fields_;
+    std::vector<A32JniInstanceLongFieldValue> instance_long_fields_;
     std::vector<A32JniRegisteredNative> natives_;
 
     friend class A32JniVmService;
@@ -402,6 +422,8 @@ struct A32JniVmLayout {
     std::uint32_t new_object_array_stub_address{};
     std::uint32_t get_object_array_element_stub_address{};
     std::uint32_t set_object_array_element_stub_address{};
+    std::uint32_t get_long_field_stub_address{};
+    std::uint32_t set_long_field_stub_address{};
 };
 
 enum class A32JniVmInstallError : std::uint8_t {

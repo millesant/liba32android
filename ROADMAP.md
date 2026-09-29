@@ -24,15 +24,15 @@ Implemented and regression-tested foundations include:
 
 The first registration, observed member-ID, bounded JavaVM attach/detach,
 strong/local-reference, seeded GetArrayLength, GetStaticIntField,
-modified-UTF-8 string, and jlong-array steps are complete. Direct
-supplied-binary evidence now drives one compact object-array family:
+modified-UTF-8 string, jlong-array, and object-array steps are complete. Direct
+supplied-binary evidence now drives one exact instance-long-field pair:
 
-1. NewObjectArray/GetObjectArrayElement/SetObjectArrayElement;
+1. GetLongField/SetLongField over logical jobject + existing InstanceField IDs;
 2. remaining reference lifetime, including weak/local-frame behavior when
    balanced evidence exists;
-3. remaining string APIs, including UTF-16/length/region behavior;
-4. remaining primitive-array families and broader object-array semantics beyond
-   the bounded logical identity model;
+3. remaining object/method invocation and exception behavior;
+4. remaining string/primitive-array/field families beyond the currently
+   evidence-backed seams;
 5. pending exception state and exception operations;
 6. object creation and method-call families;
 7. remaining instance/static field operations;

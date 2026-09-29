@@ -1319,3 +1319,26 @@ reference counts.
 This slice does not implement Java class assignability, ArrayStoreException,
 inheritance, object construction, local frames, or general garbage collection.
 
+## L32-C046 — ARM32 JNI bounded instance long fields
+
+Supplied ARMv7 machine code identifies JNIEnv GetLongField at slot 101 / byte
+offset `0x194` and SetLongField at slot 110 / `0x1b8`. Each entry targets a
+distinct private ARM service stub.
+
+The bounded registry may associate one signed 64-bit value with an exact
+logical jobject identity and an existing InstanceField jfieldID. The object
+identity must exist in the generic reference ledger and the field handle must
+resolve to an InstanceField member. Existing pairs update deterministically and
+new pairs obey the configured member limit.
+
+At service time the jobject must be live through at least one local/global JNI
+reference. GetLongField returns an existing value as ARM32 jlong bits in r0
+(low word) and r1 (high word), and fails when the value state is absent.
+
+SetLongField follows AAPCS32 alignment: JNIEnv, jobject, and jfieldID occupy
+r0-r2, while the jlong value is decoded from guest `[sp]` / `[sp+4]` as
+little-endian low/high words before the pair is created or updated.
+
+This slice does not infer jobject class membership, Java field offsets/layout,
+inheritance, volatile semantics, reflection, or other field families.
+
