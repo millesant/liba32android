@@ -3,24 +3,24 @@ change = "post-roadmap-a32-jni-instance-long-fields"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Record supplied libmla GetLongField/SetLongField slots and exact ARM32 jlong ABI."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Implement bounded logical-object/InstanceField long values plus GetLongField/SetLongField services."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Add focused host regressions for exact table/stub/ABI/value/error behavior."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Converge accepted spec/architecture/state/evidence and pass exact-head validation."

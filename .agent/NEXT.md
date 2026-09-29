@@ -10,22 +10,22 @@ at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c. Licensing is no longer an OSS-readi
 
 ## Active JNI track
 
-Continue `post-roadmap-a32-jni-instance-long-fields`.
+Continue `post-roadmap-a32-jni-throw-new`.
 
-The object-array slice is complete at
-`42d542ab8a14ae11ff534c6f7734f972280741c1` with 11/11 checks green.
+The instance-long-field slice is complete at
+`114d9d104ee82d1e30aa78fa785c8b389e8630db` with 11/11 checks green.
 
-Direct ARMv7 `libmla.so` evidence drives the next exact field pair:
+Direct ARMv7 `libmla.so` evidence drives the next bounded exception seam:
 
-1. GetLongField at JNIEnv slot 101 / offset `0x194`;
-2. SetLongField at slot 110 / `0x1b8`;
-3. bounded signed int64 values keyed by logical jobject + existing
-   InstanceField jfieldID;
-4. live-reference validation for service calls;
-5. GetLongField returns exact jlong bits through ARM32 r0/r1;
-6. SetLongField decodes the aligned value from guest `[sp]` / `[sp+4]`;
-7. focused coverage for negative values, updates, missing state, wrong member
-   kind, dead/unknown objects, and unreadable stack words.
+1. ThrowNew at JNIEnv slot 14 / offset `0x38`;
+2. one pending logical exception as registered class + owned bounded message;
+3. live jclass validation and bounded guest message reads;
+4. first ThrowNew returns JNI_OK and records state;
+5. duplicate ThrowNew returns JNI_ERR without overwriting the original;
+6. host-side clear enables a future ExceptionClear/embedding boundary;
+7. focused coverage for table/stub bytes, liveness, bounds, unreadable memory,
+   duplicate preservation, clear, and rethrow.
 
-Do not infer Java object class membership, field layout/offsets, inheritance,
-volatile behavior, reflection, or other field families into this slice.
+Do not infer Throwable jobjects, stack traces, Java unwinding,
+ExceptionOccurred/Check/Clear/Describe, or broad pending-exception restrictions
+into this slice.

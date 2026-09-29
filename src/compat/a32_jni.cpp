@@ -24,6 +24,7 @@ constexpr std::size_t kJniEnvBytes = 4U;
 constexpr std::size_t kNativeTableWords = 216U;
 constexpr std::size_t kNativeTableBytes = kNativeTableWords * 4U;
 constexpr std::size_t kFindClassSlot = 6U;
+constexpr std::size_t kThrowNewSlot = 14U;
 constexpr std::size_t kNewGlobalRefSlot = 21U;
 constexpr std::size_t kDeleteGlobalRefSlot = 22U;
 constexpr std::size_t kDeleteLocalRefSlot = 23U;
@@ -348,6 +349,9 @@ bool A32JniClassRegistry::valid() const noexcept {
            limits_.max_strings <= kA32JniHardMaxStrings &&
            limits_.max_modified_utf8_bytes > 0U &&
            limits_.max_modified_utf8_bytes <= kA32JniHardMaxStringBytes &&
+           limits_.max_exception_message_bytes > 0U &&
+           limits_.max_exception_message_bytes <=
+                kA32JniHardMaxStringBytes &&
            limits_.dynamic_string_handle_base != 0U &&
            limits_.dynamic_string_handle_stride != 0U &&
            static_cast<std::uint64_t>(
@@ -1007,6 +1011,31 @@ A32JniClassRegistry::instance_long_field_value(
     return std::nullopt;
 }
 
+A32JniRegistryError A32JniClassRegistry::set_pending_exception(
+    std::uint32_t class_handle,
+    std::string_view message) {
+    if (!valid()) {
+        return A32JniRegistryError::InvalidLimits;
+    }
+    const ClassEntry* class_entry = find_class_entry(class_handle);
+    if (class_entry == nullptr) {
+        return A32JniRegistryError::UnknownClass;
+    }
+    if (message.size() > limits_.max_exception_message_bytes) {
+        return A32JniRegistryError::InvalidStringValue;
+    }
+    if (pending_exception_.has_value()) {
+        return A32JniRegistryError::ExceptionPending;
+    }
+
+    A32JniPendingException pending;
+    pending.class_handle = class_handle;
+    pending.class_name = class_entry->name;
+    pending.message.assign(message);
+    pending_exception_ = std::move(pending);
+    return A32JniRegistryError::None;
+}
+
 const A32JniRegisteredNative* A32JniClassRegistry::find_native(
     std::uint32_t class_handle,
     std::string_view name,
@@ -1105,7 +1134,7 @@ bool A32JniVmService::layout_valid() const noexcept {
             kA32JniHardMaxLongArrayElements * 8U) {
         return false;
     }
-    const std::array<AddressRange, 31> ranges{{
+    const std::array<AddressRange, 32> ranges{{
         {layout_.java_vm_address, kJavaVmBytes},
         {layout_.invoke_table_address, kInvokeTableBytes},
         {layout_.jni_env_address, kJniEnvBytes},
@@ -1139,6 +1168,7 @@ bool A32JniVmService::layout_valid() const noexcept {
         {layout_.set_object_array_element_stub_address, kServiceStubBytes},
         {layout_.get_long_field_stub_address, kServiceStubBytes},
         {layout_.set_long_field_stub_address, kServiceStubBytes},
+        {layout_.throw_new_stub_address, kServiceStubBytes},
     }};
 
     for (const AddressRange& range : ranges) {
@@ -1165,7 +1195,7 @@ A32JniVmInstallResult A32JniVmService::install(
         return {.error = A32JniVmInstallError::InvalidLayout};
     }
 
-    std::array<InstallRegion, 29> regions{{
+    std::array<InstallRegion, 30> regions{{
         {.address = layout_.java_vm_address, .size = kJavaVmBytes},
         {.address = layout_.invoke_table_address,
          .size = kInvokeTableBytes},
@@ -1222,6 +1252,8 @@ A32JniVmInstallResult A32JniVmService::install(
          .size = kServiceStubBytes},
         {.address = layout_.set_long_field_stub_address,
          .size = kServiceStubBytes},
+        {.address = layout_.throw_new_stub_address,
+         .size = kServiceStubBytes},
     }};
 
     write_u32(
@@ -1248,6 +1280,10 @@ A32JniVmInstallResult A32JniVmService::install(
         regions[3].desired,
         kFindClassSlot * 4U,
         layout_.find_class_stub_address);
+    write_u32(
+        regions[3].desired,
+        kThrowNewSlot * 4U,
+        layout_.throw_new_stub_address);
     write_u32(
         regions[3].desired,
         kNewGlobalRefSlot * 4U,
@@ -1408,6 +1444,9 @@ A32JniVmInstallResult A32JniVmService::install(
     write_service_stub(
         regions[28].desired,
         kA32JniSetLongFieldSvcImmediate);
+    write_service_stub(
+        regions[29].desired,
+        kA32JniThrowNewSvcImmediate);
 
     for (InstallRegion& region : regions) {
         if (!memory.read(
@@ -1485,7 +1524,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         svc_immediate == kA32JniGetObjectArrayElementSvcImmediate ||
         svc_immediate == kA32JniSetObjectArrayElementSvcImmediate ||
         svc_immediate == kA32JniGetLongFieldSvcImmediate ||
-        svc_immediate == kA32JniSetLongFieldSvcImmediate;
+        svc_immediate == kA32JniSetLongFieldSvcImmediate ||
+        svc_immediate == kA32JniThrowNewSvcImmediate;
     if (!known_service) {
         return runtime::A32HostServiceDisposition::Unhandled;
     }
@@ -1921,6 +1961,42 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             return runtime::A32HostServiceDisposition::Failed;
         }
         regs[0] = *length;
+        return runtime::A32HostServiceDisposition::Handled;
+    }
+
+    if (svc_immediate == kA32JniThrowNewSvcImmediate) {
+        if (registry_ == nullptr || !registry_->valid()) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        if (!registry_->contains_class_handle(regs[1])) {
+            regs[0] = jint_bits(kA32JniErr);
+            return runtime::A32HostServiceDisposition::Handled;
+        }
+        const auto class_counts =
+            registry_->reference_counts(regs[1]);
+        if (!class_counts.has_value() ||
+            (class_counts->local == 0U &&
+             class_counts->global == 0U)) {
+            regs[0] = jint_bits(kA32JniErr);
+            return runtime::A32HostServiceDisposition::Handled;
+        }
+
+        std::string message;
+        if (!read_guest_c_string(
+                memory,
+                regs[2],
+                registry_->limits().max_exception_message_bytes,
+                message)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        const A32JniRegistryError thrown =
+            registry_->set_pending_exception(
+                regs[1],
+                message);
+        regs[0] = jint_bits(
+            thrown == A32JniRegistryError::None
+                ? kA32JniOk
+                : kA32JniErr);
         return runtime::A32HostServiceDisposition::Handled;
     }
 
@@ -2483,6 +2559,8 @@ const char* to_string(
         return "string_handle_exhausted";
     case A32JniRegistryError::ArrayHandleExhausted:
         return "array_handle_exhausted";
+    case A32JniRegistryError::ExceptionPending:
+        return "exception_pending";
     }
     return "unknown";
 }

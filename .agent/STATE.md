@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-instance-long-fields` — ACTIVE; add the
-  supplied ARMv7-evidenced GetLongField/SetLongField pair with bounded
-  APK-agnostic logical jobject + InstanceField long-value state.
+- `post-roadmap-a32-jni-throw-new` — ACTIVE; add the supplied
+  ARMv7-evidenced ThrowNew slot with one bounded logical pending-exception
+  record and host-side clear boundary.
 
 ## Phase
 
@@ -123,12 +123,17 @@ slots 172/173/174 with bounded owned logical jobject vectors, generic
 GetArrayLength integration, local-reference return semantics, and zero leaked
 array references in the real ARM32 fixture. All 11 exact-head checks passed.
 
-The active instance-field slice is direct evidence from supplied `libmla.so`:
-GetLongField uses slot 101 / `0x194` and SetLongField uses slot 110 /
-`0x1b8`. SetLongField's aligned jlong value is passed through guest
-`[sp]`/`[sp+4]`, while GetLongField returns the 64-bit bits through r0/r1.
-State remains generic: values are keyed only by logical jobject + existing
-InstanceField ID, with no APK-specific object layout or host pointer identity.
+The bounded instance-long-field slice is DONE at
+`114d9d104ee82d1e30aa78fa785c8b389e8630db`. GetLongField and
+SetLongField are implemented at observed slots 101/110 with exact ARM32 r0/r1
+jlong return bits, aligned guest `[sp]`/`[sp+4]` SetLongField decoding, and
+bounded values keyed by logical jobject + existing InstanceField ID. All 11
+exact-head checks passed.
+
+The active exception slice is direct evidence from supplied `libmla.so`:
+ThrowNew uses JNIEnv slot 14 / offset `0x38`. The runtime keeps one bounded
+logical pending exception as registered class identity plus owned message bytes;
+it does not create Throwable host objects or APK-specific exception policy.
 
 ## Public repository readiness
 

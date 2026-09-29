@@ -1342,3 +1342,26 @@ little-endian low/high words before the pair is created or updated.
 This slice does not infer jobject class membership, Java field offsets/layout,
 inheritance, volatile semantics, reflection, or other field families.
 
+## L32-C047 — ARM32 JNI bounded ThrowNew pending state
+
+Supplied ARMv7 machine code identifies JNIEnv ThrowNew at slot 14 / byte offset
+`0x38`. The guest JNIEnv table publishes that exact entry through one distinct
+private ARM service stub.
+
+The bounded registry stores at most one pending logical exception containing a
+registered class handle, owned class name, and owned message bytes. Exception
+message length has one explicit hard-capped ceiling.
+
+ThrowNew requires a live logical jclass reference and one readable bounded
+NUL-terminated guest message. When no exception is pending, it copies and
+records the class/message then returns JNI_OK. When one is already pending, it
+returns JNI_ERR and preserves the original state.
+
+The registry exposes a host-side clear operation so an embedding boundary or a
+future ExceptionClear implementation can consume/reset pending state without
+inventing a guest API.
+
+This slice does not create Throwable jobject identity, stack traces, Java
+unwinding, automatic propagation through all JNI calls, or
+ExceptionOccurred/ExceptionCheck/ExceptionClear/ExceptionDescribe.
+

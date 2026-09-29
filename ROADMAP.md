@@ -24,13 +24,14 @@ Implemented and regression-tested foundations include:
 
 The first registration, observed member-ID, bounded JavaVM attach/detach,
 strong/local-reference, seeded GetArrayLength, GetStaticIntField,
-modified-UTF-8 string, jlong-array, and object-array steps are complete. Direct
-supplied-binary evidence now drives one exact instance-long-field pair:
+modified-UTF-8 string, jlong-array, object-array, and instance-long-field steps
+are complete. Direct supplied-binary evidence now drives one bounded exception
+seam:
 
-1. GetLongField/SetLongField over logical jobject + existing InstanceField IDs;
+1. ThrowNew pending state over a live logical jclass plus owned message;
 2. remaining reference lifetime, including weak/local-frame behavior when
    balanced evidence exists;
-3. remaining object/method invocation and exception behavior;
+3. object construction/method invocation and broader exception APIs;
 4. remaining string/primitive-array/field families beyond the currently
    evidence-backed seams;
 5. pending exception state and exception operations;

@@ -52,6 +52,7 @@ using liba32android::compat::kA32JniGetObjectArrayElementSvcImmediate;
 using liba32android::compat::kA32JniSetObjectArrayElementSvcImmediate;
 using liba32android::compat::kA32JniGetLongFieldSvcImmediate;
 using liba32android::compat::kA32JniSetLongFieldSvcImmediate;
+using liba32android::compat::kA32JniThrowNewSvcImmediate;
 using liba32android::compat::kA32JniOk;
 using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
@@ -172,6 +173,7 @@ A32JniVmLayout layout() {
         .set_object_array_element_stub_address = 0x1ac0U,
         .get_long_field_stub_address = 0x1ae0U,
         .set_long_field_stub_address = 0x1b00U,
+        .throw_new_stub_address = 0x1b20U,
     };
 }
 
@@ -225,6 +227,8 @@ int test_vm_install_and_getenv() {
             configured.native_table_address ||
         read_u32(memory, configured.native_table_address + 6U * 4U) !=
             configured.find_class_stub_address ||
+        read_u32(memory, configured.native_table_address + 14U * 4U) !=
+            configured.throw_new_stub_address ||
         read_u32(memory, configured.native_table_address + 21U * 4U) !=
             configured.new_global_ref_stub_address ||
         read_u32(memory, configured.native_table_address + 22U * 4U) !=
@@ -282,6 +286,7 @@ int test_vm_install_and_getenv() {
     }
     for (std::uint32_t index = 0U; index < 216U; ++index) {
         if (index == 6U ||
+            index == 14U ||
             index == 21U ||
             index == 22U ||
             index == 23U ||
@@ -312,7 +317,7 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::array<std::uint8_t, 8>, 25> expected_stubs{{
+    constexpr std::array<std::array<std::uint8_t, 8>, 26> expected_stubs{{
         {{0xD7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD8U, 0x00U, 0x00U, 0xEFU,
@@ -363,8 +368,10 @@ int test_vm_install_and_getenv() {
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xEFU, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xF0U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    const std::array<std::uint32_t, 25> stub_addresses{{
+    const std::array<std::uint32_t, 26> stub_addresses{{
         configured.get_env_stub_address,
         configured.find_class_stub_address,
         configured.register_natives_stub_address,
@@ -390,6 +397,7 @@ int test_vm_install_and_getenv() {
         configured.set_object_array_element_stub_address,
         configured.get_long_field_stub_address,
         configured.set_long_field_stub_address,
+        configured.throw_new_stub_address,
     }};
     for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
         std::array<std::uint8_t, 8> observed_stub{};
@@ -580,7 +588,7 @@ int test_vm_install_and_getenv() {
     regs = {};
     if (service.handle(
             memory,
-            kA32JniSetLongFieldSvcImmediate + 1U,
+            kA32JniThrowNewSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
@@ -1868,6 +1876,155 @@ int test_instance_long_field_value() {
     return 0;
 }
 
+int test_throw_new_pending_exception() {
+    LinearGuestMemory memory{0x1000U, 0x1000U};
+    const A32JniRegistryLimits limits{
+        .max_classes = 2U,
+        .max_registered_methods = 2U,
+        .max_methods_per_registration = 2U,
+        .max_member_ids = 2U,
+        .max_reference_handles = 4U,
+        .max_reference_count_per_handle = 4U,
+        .max_arrays = 2U,
+        .max_long_array_elements = 4U,
+        .max_object_array_elements = 4U,
+        .max_strings = 2U,
+        .max_modified_utf8_bytes = 8U,
+        .max_exception_message_bytes = 8U,
+        .max_class_name_bytes = 32U,
+        .max_method_name_bytes = 32U,
+        .max_signature_bytes = 32U,
+    };
+    A32JniClassRegistry registry{limits};
+    constexpr std::uint32_t kClass = 0x44550000U;
+    constexpr std::uint32_t kDeadClass = 0x44550004U;
+    if (registry.add_class(
+            kClass,
+            "java/lang/IllegalStateException") !=
+            A32JniRegistryError::None ||
+        registry.add_class(
+            kDeadClass,
+            "java/lang/IllegalArgumentException") !=
+            A32JniRegistryError::None ||
+        !registry.retain_local_reference(kClass)) {
+        return fail("could not seed JNI ThrowNew classes");
+    }
+
+    const auto configured = layout();
+    A32JniVmService service{configured, &registry};
+    if (!service.install(memory)) {
+        return fail("JNI ThrowNew service did not install");
+    }
+
+    constexpr std::uint32_t kBoom = 0x1600U;
+    constexpr std::uint32_t kLater = 0x1620U;
+    constexpr std::uint32_t kTooLong = 0x1640U;
+    if (!write_c_string(memory, kBoom, "boom") ||
+        !write_c_string(memory, kLater, "later") ||
+        !write_c_string(memory, kTooLong, "123456789")) {
+        return fail("could not stage JNI ThrowNew messages");
+    }
+
+    std::uint32_t cpsr{};
+    std::array<std::uint32_t, 16> regs{};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    regs[2] = kBoom;
+    if (service.handle(
+            memory,
+            kA32JniThrowNewSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniOk)) {
+        return fail("JNI ThrowNew rejected first pending exception");
+    }
+    const auto* pending = registry.pending_exception();
+    if (pending == nullptr ||
+        pending->class_handle != kClass ||
+        pending->class_name != "java/lang/IllegalStateException" ||
+        pending->message != "boom") {
+        return fail("JNI ThrowNew stored wrong pending exception");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    regs[2] = kLater;
+    if (service.handle(
+            memory,
+            kA32JniThrowNewSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniErr) ||
+        registry.pending_exception() == nullptr ||
+        registry.pending_exception()->message != "boom") {
+        return fail("JNI ThrowNew overwrote existing pending exception");
+    }
+
+    registry.clear_pending_exception();
+    if (registry.pending_exception() != nullptr) {
+        return fail("JNI pending-exception host clear failed");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kDeadClass;
+    regs[2] = kBoom;
+    if (service.handle(
+            memory,
+            kA32JniThrowNewSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniErr) ||
+        registry.pending_exception() != nullptr) {
+        return fail("JNI ThrowNew accepted dead jclass reference");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    regs[2] = kTooLong;
+    if (service.handle(
+            memory,
+            kA32JniThrowNewSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        registry.pending_exception() != nullptr) {
+        return fail("JNI ThrowNew accepted over-limit message");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    regs[2] = 0x3000U;
+    if (service.handle(
+            memory,
+            kA32JniThrowNewSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        registry.pending_exception() != nullptr) {
+        return fail("JNI ThrowNew accepted unreadable message");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    regs[2] = kLater;
+    if (service.handle(
+            memory,
+            kA32JniThrowNewSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniOk) ||
+        registry.pending_exception() == nullptr ||
+        registry.pending_exception()->message != "later") {
+        return fail("JNI ThrowNew did not work after host clear");
+    }
+    registry.clear_pending_exception();
+
+    return 0;
+}
+
 int test_observed_member_id_lookup() {
     LinearGuestMemory memory{0x1000U, 0x1000U};
     const A32JniRegistryLimits limits{
@@ -2542,6 +2699,10 @@ int main() {
         return status;
     }
     if (const int status = test_instance_long_field_value();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_throw_new_pending_exception();
         status != 0) {
         return status;
     }

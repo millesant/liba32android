@@ -163,9 +163,9 @@ For ownership/dependency rules, see
 The public roadmap is in [ROADMAP.md](ROADMAP.md). The immediate compatibility
 track has completed the first class/native-registration, member-ID,
 JavaVM attach/detach, strong/local-reference, seeded GetArrayLength,
-GetStaticIntField, modified-UTF-8 string, jlong-array, and object-array seams.
-Current work is adding the observed GetLongField/SetLongField pair before
-broader object/method, exception, weak-reference, and remaining field behavior.
+GetStaticIntField, modified-UTF-8 string, jlong-array, object-array, and
+instance-long-field seams. Current work is adding bounded ThrowNew pending state
+before broader object/method, weak-reference, and remaining exception behavior.
 
 ## Contributing
 

@@ -13,8 +13,8 @@ limitations = "Object/class assignability, field layout, inheritance, volatile s
 [[evidence]]
 id = "focused-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host regressions prove bounded instance-long state, exact table/stub publication, ARM32 r0/r1 return bits, aligned stack decoding, updates, and error boundaries."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending exact-head execution."
+source = "GitHub exact-head checks at 114d9d104ee82d1e30aa78fa785c8b389e8630db"
+result = "All 11 required exact-head checks concluded success. The focused Linux A32 regression validated negative and full-width jlong return bits, aligned [sp]/[sp+4] SetLongField decoding, deterministic updates, missing state, dead/unknown objects, wrong field kinds, and unreadable stack data."
+limitations = ""

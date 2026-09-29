@@ -25,6 +25,7 @@
 #define LIBA32ANDROID_A32_JNI_SET_OBJECT_ARRAY_ELEMENT_SVC 0xED
 #define LIBA32ANDROID_A32_JNI_GET_LONG_FIELD_SVC 0xEE
 #define LIBA32ANDROID_A32_JNI_SET_LONG_FIELD_SVC 0xEF
+#define LIBA32ANDROID_A32_JNI_THROW_NEW_SVC 0xF0
 
 #ifdef __cplusplus
 
@@ -94,6 +95,8 @@ inline constexpr std::uint32_t kA32JniGetLongFieldSvcImmediate =
     LIBA32ANDROID_A32_JNI_GET_LONG_FIELD_SVC;
 inline constexpr std::uint32_t kA32JniSetLongFieldSvcImmediate =
     LIBA32ANDROID_A32_JNI_SET_LONG_FIELD_SVC;
+inline constexpr std::uint32_t kA32JniThrowNewSvcImmediate =
+    LIBA32ANDROID_A32_JNI_THROW_NEW_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -146,6 +149,7 @@ struct A32JniRegistryLimits {
     std::uint32_t dynamic_array_handle_stride{4U};
     std::size_t max_strings{256U};
     std::size_t max_modified_utf8_bytes{1024U};
+    std::size_t max_exception_message_bytes{1024U};
     std::uint32_t dynamic_string_handle_base{0x74000000U};
     std::uint32_t dynamic_string_handle_stride{4U};
     std::size_t max_class_name_bytes{256U};
@@ -182,6 +186,7 @@ enum class A32JniRegistryError : std::uint8_t {
     StringLimitExceeded,
     StringHandleExhausted,
     ArrayHandleExhausted,
+    ExceptionPending,
 };
 
 enum class A32JniMemberKind : std::uint8_t {
@@ -234,6 +239,12 @@ struct A32JniObjectArrayInfo {
     std::uint32_t handle{};
     std::uint32_t element_class_handle{};
     std::vector<std::uint32_t> elements;
+};
+
+struct A32JniPendingException {
+    std::uint32_t class_handle{};
+    std::string class_name;
+    std::string message;
 };
 
 struct A32JniRegisteredNative {
@@ -330,6 +341,20 @@ public:
     [[nodiscard]] std::optional<std::int64_t> instance_long_field_value(
         std::uint32_t object_handle,
         std::uint32_t field_handle) const noexcept;
+
+    [[nodiscard]] A32JniRegistryError set_pending_exception(
+        std::uint32_t class_handle,
+        std::string_view message);
+    [[nodiscard]] const A32JniPendingException* pending_exception()
+        const noexcept {
+        return pending_exception_.has_value()
+            ? &*pending_exception_
+            : nullptr;
+    }
+    void clear_pending_exception() noexcept {
+        pending_exception_.reset();
+    }
+
     [[nodiscard]] const A32JniRegisteredNative* find_native(
         std::uint32_t class_handle,
         std::string_view name,
@@ -385,6 +410,7 @@ private:
     std::vector<A32JniMemberId> members_;
     std::vector<A32JniStaticIntFieldValue> static_int_fields_;
     std::vector<A32JniInstanceLongFieldValue> instance_long_fields_;
+    std::optional<A32JniPendingException> pending_exception_;
     std::vector<A32JniRegisteredNative> natives_;
 
     friend class A32JniVmService;
@@ -424,6 +450,7 @@ struct A32JniVmLayout {
     std::uint32_t set_object_array_element_stub_address{};
     std::uint32_t get_long_field_stub_address{};
     std::uint32_t set_long_field_stub_address{};
+    std::uint32_t throw_new_stub_address{};
 };
 
 enum class A32JniVmInstallError : std::uint8_t {

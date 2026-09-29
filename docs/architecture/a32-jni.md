@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: object arrays validated; evidence-backed instance-long-field slice in progress
+Status: instance-long fields validated; evidence-backed ThrowNew slice in progress
 
 ## Goal
 
@@ -26,6 +26,7 @@ The JNIEnv native table spans slots 0 through 215. Current evidence-backed
 entries include:
 
 - `FindClass` — slot 6 / byte offset `0x18`;
+- `ThrowNew` — slot 14 / byte offset `0x38`;
 - `NewGlobalRef` — slot 21 / byte offset `0x54`;
 - `DeleteGlobalRef` — slot 22 / byte offset `0x58`;
 - `DeleteLocalRef` — slot 23 / byte offset `0x5c`;
@@ -92,7 +93,8 @@ The current private guest/host service immediates are:
 - `0xEC` — JNIEnv::GetObjectArrayElement;
 - `0xED` — JNIEnv::SetObjectArrayElement;
 - `0xEE` — JNIEnv::GetLongField;
-- `0xEF` — JNIEnv::SetLongField.
+- `0xEF` — JNIEnv::SetLongField;
+- `0xF0` — JNIEnv::ThrowNew.
 
 Each guest stub is a minimal ARM `svc; bx lr` sequence. Unknown SVC immediates
 remain unhandled.
@@ -343,6 +345,28 @@ and reflection remain outside this slice.
 
 See
 [ARM32 JNI instance-long-field evidence](../research/evidence/arm32-jni-instance-long-field-entrypoints-2026-09-29.md).
+
+Exact-head validation at
+`114d9d104ee82d1e30aa78fa785c8b389e8630db` passed all 11 required checks.
+
+## Pending ThrowNew state
+
+Supplied ARMv7 `libmla.so` directly identifies ThrowNew at JNIEnv slot 14 /
+offset `0x38`.
+
+The bounded registry stores at most one pending logical exception: registered
+class handle, owned class name, and owned bounded message bytes. ThrowNew
+requires a live logical jclass reference. The first throw records state and
+returns JNI_OK; a second throw returns JNI_ERR and preserves the first pending
+exception. A host-side clear method provides the embedding/future
+ExceptionClear boundary.
+
+This is deliberately not a Java Throwable runtime. No Throwable jobject, stack
+trace, Java-frame unwinding, global JNI pending-exception restrictions, or
+ExceptionOccurred/Check/Clear/Describe behavior is claimed here.
+
+See
+[ARM32 JNI ThrowNew evidence](../research/evidence/arm32-jni-throw-new-entrypoint-2026-09-29.md).
 
 ## Reverse native dispatch
 
