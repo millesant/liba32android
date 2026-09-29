@@ -1891,7 +1891,7 @@ int test_throw_new_pending_exception() {
         .max_strings = 2U,
         .max_modified_utf8_bytes = 8U,
         .max_exception_message_bytes = 8U,
-        .max_class_name_bytes = 32U,
+        .max_class_name_bytes = 64U,
         .max_method_name_bytes = 32U,
         .max_signature_bytes = 32U,
     };
