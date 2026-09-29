@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: VM/GetEnv/JNI_OnLoad + FindClass/RegisterNatives + no-arg reverse dispatch implemented and validated
+Status: registration bootstrap validated; evidence-backed GetMethodID/GetFieldID/GetStaticFieldID slice in progress
 
 ## Goal
 
@@ -102,6 +102,23 @@ the registry.
 
 Accepted metadata owns copies of class/name/signature strings while preserving
 the native function as a logical 32-bit guest function pointer.
+
+## Observed member-ID lookup
+
+The next bounded identity surface is driven by supplied ARMv7 `libmla.so`
+machine code rather than the complete JNI table. Direct wrappers load:
+
+- GetMethodID from slot 33 / byte offset `0x84`;
+- GetFieldID from slot 94 / byte offset `0x178`;
+- GetStaticFieldID from slot 144 / byte offset `0x240`.
+
+The active slice models those IDs as caller-seeded logical 32-bit handles in
+the existing bounded registry. Lookup is exact over class, member kind, name,
+and signature. It does not imply Java method invocation, field access,
+inheritance, or object/reference lifetime.
+
+See
+[ARM32 JNI member-ID entrypoint evidence](../research/evidence/arm32-jni-member-id-entrypoints-2026-09-28.md).
 
 ## Reverse native dispatch
 

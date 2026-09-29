@@ -21,6 +21,9 @@ constexpr std::size_t kJniEnvBytes = 4U;
 constexpr std::size_t kNativeTableWords = 216U;
 constexpr std::size_t kNativeTableBytes = kNativeTableWords * 4U;
 constexpr std::size_t kFindClassSlot = 6U;
+constexpr std::size_t kGetMethodIdSlot = 33U;
+constexpr std::size_t kGetFieldIdSlot = 94U;
+constexpr std::size_t kGetStaticFieldIdSlot = 144U;
 constexpr std::size_t kRegisterNativesSlot = 215U;
 constexpr std::size_t kJniNativeMethodBytes = 12U;
 constexpr std::size_t kServiceStubBytes = 8U;
@@ -217,6 +220,8 @@ bool A32JniClassRegistry::valid() const noexcept {
                kA32JniHardMaxMethodsPerRegistration &&
            limits_.max_methods_per_registration <=
                limits_.max_registered_methods &&
+           limits_.max_member_ids > 0U &&
+           limits_.max_member_ids <= kA32JniHardMaxMemberIds &&
            limits_.max_class_name_bytes > 0U &&
            limits_.max_class_name_bytes <=
                kA32JniHardMaxStringBytes &&
@@ -281,6 +286,76 @@ A32JniClassRegistry::find_class_entry(
     for (const ClassEntry& entry : classes_) {
         if (entry.handle == handle) {
             return &entry;
+        }
+    }
+    return nullptr;
+}
+
+A32JniRegistryError A32JniClassRegistry::add_member(
+    std::uint32_t class_handle,
+    A32JniMemberKind kind,
+    std::uint32_t handle,
+    std::string_view name,
+    std::string_view signature) {
+    if (!valid()) {
+        return A32JniRegistryError::InvalidLimits;
+    }
+    const ClassEntry* class_entry = find_class_entry(class_handle);
+    if (class_entry == nullptr) {
+        return A32JniRegistryError::UnknownClass;
+    }
+    if (handle == 0U ||
+        handle == std::numeric_limits<std::uint32_t>::max()) {
+        return A32JniRegistryError::InvalidMemberHandle;
+    }
+    if (kind != A32JniMemberKind::InstanceMethod &&
+        kind != A32JniMemberKind::InstanceField &&
+        kind != A32JniMemberKind::StaticField) {
+        return A32JniRegistryError::InvalidMemberKind;
+    }
+    if (name.empty() ||
+        name.size() > limits_.max_method_name_bytes ||
+        signature.empty() ||
+        signature.size() > limits_.max_signature_bytes) {
+        return A32JniRegistryError::InvalidMethod;
+    }
+    for (const A32JniMemberId& member : members_) {
+        if (member.handle == handle) {
+            return A32JniRegistryError::DuplicateMemberHandle;
+        }
+        if (member.class_handle == class_handle &&
+            member.kind == kind &&
+            member.name == name &&
+            member.signature == signature) {
+            return A32JniRegistryError::DuplicateMember;
+        }
+    }
+    if (members_.size() >= limits_.max_member_ids) {
+        return A32JniRegistryError::MemberLimitExceeded;
+    }
+
+    A32JniMemberId member;
+    member.class_handle = class_handle;
+    member.handle = handle;
+    member.kind = kind;
+    member.class_name = class_entry->name;
+    member.name.assign(name);
+    member.signature.assign(signature);
+    members_.push_back(std::move(member));
+    return A32JniRegistryError::None;
+}
+
+const A32JniMemberId* A32JniClassRegistry::find_member(
+    std::uint32_t class_handle,
+    A32JniMemberKind kind,
+    std::string_view name,
+    std::string_view signature) const noexcept {
+    for (const A32JniMemberId& member : members_) {
+        if (member.class_handle == class_handle &&
+            member.kind == kind &&
+            member.name == name &&
+            member.signature == signature) {
+            return &member;
         }
     }
     return nullptr;
@@ -374,7 +449,7 @@ A32JniRegistryError A32JniClassRegistry::register_natives(
 }
 
 bool A32JniVmService::layout_valid() const noexcept {
-    const std::array<AddressRange, 7> ranges{{
+    const std::array<AddressRange, 10> ranges{{
         {layout_.java_vm_address, kJavaVmBytes},
         {layout_.invoke_table_address, kInvokeTableBytes},
         {layout_.jni_env_address, kJniEnvBytes},
@@ -382,6 +457,9 @@ bool A32JniVmService::layout_valid() const noexcept {
         {layout_.get_env_stub_address, kServiceStubBytes},
         {layout_.find_class_stub_address, kServiceStubBytes},
         {layout_.register_natives_stub_address, kServiceStubBytes},
+        {layout_.get_method_id_stub_address, kServiceStubBytes},
+        {layout_.get_field_id_stub_address, kServiceStubBytes},
+        {layout_.get_static_field_id_stub_address, kServiceStubBytes},
     }};
 
     for (const AddressRange& range : ranges) {
@@ -408,7 +486,7 @@ A32JniVmInstallResult A32JniVmService::install(
         return {.error = A32JniVmInstallError::InvalidLayout};
     }
 
-    std::array<InstallRegion, 7> regions{{
+    std::array<InstallRegion, 10> regions{{
         {.address = layout_.java_vm_address, .size = kJavaVmBytes},
         {.address = layout_.invoke_table_address,
          .size = kInvokeTableBytes},
@@ -420,6 +498,12 @@ A32JniVmInstallResult A32JniVmService::install(
         {.address = layout_.find_class_stub_address,
          .size = kServiceStubBytes},
         {.address = layout_.register_natives_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.get_method_id_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.get_field_id_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.get_static_field_id_stub_address,
          .size = kServiceStubBytes},
     }};
 
@@ -441,6 +525,18 @@ A32JniVmInstallResult A32JniVmService::install(
         layout_.find_class_stub_address);
     write_u32(
         regions[3].desired,
+        kGetMethodIdSlot * 4U,
+        layout_.get_method_id_stub_address);
+    write_u32(
+        regions[3].desired,
+        kGetFieldIdSlot * 4U,
+        layout_.get_field_id_stub_address);
+    write_u32(
+        regions[3].desired,
+        kGetStaticFieldIdSlot * 4U,
+        layout_.get_static_field_id_stub_address);
+    write_u32(
+        regions[3].desired,
         kRegisterNativesSlot * 4U,
         layout_.register_natives_stub_address);
 
@@ -453,6 +549,15 @@ A32JniVmInstallResult A32JniVmService::install(
     write_service_stub(
         regions[6].desired,
         kA32JniRegisterNativesSvcImmediate);
+    write_service_stub(
+        regions[7].desired,
+        kA32JniGetMethodIdSvcImmediate);
+    write_service_stub(
+        regions[8].desired,
+        kA32JniGetFieldIdSvcImmediate);
+    write_service_stub(
+        regions[9].desired,
+        kA32JniGetStaticFieldIdSvcImmediate);
 
     for (InstallRegion& region : regions) {
         if (!memory.read(
@@ -505,7 +610,10 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
     const bool known_service =
         svc_immediate == kA32JniGetEnvSvcImmediate ||
         svc_immediate == kA32JniFindClassSvcImmediate ||
-        svc_immediate == kA32JniRegisterNativesSvcImmediate;
+        svc_immediate == kA32JniRegisterNativesSvcImmediate ||
+        svc_immediate == kA32JniGetMethodIdSvcImmediate ||
+        svc_immediate == kA32JniGetFieldIdSvcImmediate ||
+        svc_immediate == kA32JniGetStaticFieldIdSvcImmediate;
     if (!known_service) {
         return runtime::A32HostServiceDisposition::Unhandled;
     }
@@ -561,6 +669,61 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
         const auto found = registry_->find_class(name);
         regs[0] = found.value_or(0U);
+        return runtime::A32HostServiceDisposition::Handled;
+    }
+
+    const bool member_lookup =
+        svc_immediate == kA32JniGetMethodIdSvcImmediate ||
+        svc_immediate == kA32JniGetFieldIdSvcImmediate ||
+        svc_immediate == kA32JniGetStaticFieldIdSvcImmediate;
+    if (member_lookup) {
+        if (registry_ == nullptr) {
+            regs[0] = 0U;
+            return runtime::A32HostServiceDisposition::Handled;
+        }
+        if (!registry_->valid()) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        if (!registry_->contains_class_handle(regs[1])) {
+            regs[0] = 0U;
+            return runtime::A32HostServiceDisposition::Handled;
+        }
+
+        const A32JniRegistryLimits limits = registry_->limits();
+        std::string name;
+        std::string signature;
+        if (!read_guest_c_string(
+                memory,
+                regs[2],
+                limits.max_method_name_bytes,
+                name) ||
+            !read_guest_c_string(
+                memory,
+                regs[3],
+                limits.max_signature_bytes,
+                signature)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        if (name.empty() || signature.empty()) {
+            regs[0] = 0U;
+            return runtime::A32HostServiceDisposition::Handled;
+        }
+
+        A32JniMemberKind kind = A32JniMemberKind::InstanceMethod;
+        if (svc_immediate == kA32JniGetFieldIdSvcImmediate) {
+            kind = A32JniMemberKind::InstanceField;
+        } else if (
+            svc_immediate ==
+            kA32JniGetStaticFieldIdSvcImmediate) {
+            kind = A32JniMemberKind::StaticField;
+        }
+        const A32JniMemberId* member =
+            registry_->find_member(
+                regs[1],
+                kind,
+                name,
+                signature);
+        regs[0] = member != nullptr ? member->handle : 0U;
         return runtime::A32HostServiceDisposition::Handled;
     }
 
@@ -952,6 +1115,16 @@ const char* to_string(
         return "method_limit_exceeded";
     case A32JniRegistryError::DuplicateMethod:
         return "duplicate_method";
+    case A32JniRegistryError::InvalidMemberHandle:
+        return "invalid_member_handle";
+    case A32JniRegistryError::InvalidMemberKind:
+        return "invalid_member_kind";
+    case A32JniRegistryError::MemberLimitExceeded:
+        return "member_limit_exceeded";
+    case A32JniRegistryError::DuplicateMemberHandle:
+        return "duplicate_member_handle";
+    case A32JniRegistryError::DuplicateMember:
+        return "duplicate_member";
     }
     return "unknown";
 }

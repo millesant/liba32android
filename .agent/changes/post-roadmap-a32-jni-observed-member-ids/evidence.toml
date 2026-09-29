@@ -1,0 +1,29 @@
+schema = 1
+change = "post-roadmap-a32-jni-observed-member-ids"
+
+[[evidence]]
+id = "supplied-libmla-member-id-slots"
+kind = "artifact"
+status = "observed"
+claim = "Supplied ARMv7 libmla machine code directly identifies JNIEnv GetMethodID, GetFieldID, and GetStaticFieldID table offsets."
+source = "docs/research/evidence/arm32-jni-member-id-entrypoints-2026-09-28.md"
+result = "Observed wrappers load byte offsets 0x84, 0x178, and 0x240, corresponding to slots 33, 94, and 144."
+limitations = "The evidence does not establish GetStaticMethodID, GetObjectClass, IsInstanceOf, Java invocation, field access, inheritance, or general object/reference semantics."
+
+[[evidence]]
+id = "focused-host-regressions"
+kind = "test"
+status = "pending"
+claim = "Focused JNI host regressions prove table/stub publication, bounded member registry identity, exact member lookup, miss behavior, and failure boundaries."
+source = "tests/compat/a32_jni.cpp"
+result = ""
+limitations = "Pending exact-head execution."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "pending"
+claim = "The observed member-ID slice passes the required exact-head check matrix."
+source = "GitHub commit checks"
+result = ""
+limitations = "Pending exact-head execution."

@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- none. `post-roadmap-a32-jni-register-natives` is DONE with exact-head
-  validation at `dbbcb06d5a9e0225b9e0a9c3515b646c0fff6503`. The next JNI
-  class/member-identity slice has not yet been opened.
+- `post-roadmap-a32-jni-observed-member-ids` — ACTIVE; implement the smallest
+  evidence-backed member-ID surface observed in supplied ARMv7 `libmla.so`:
+  GetMethodID, GetFieldID, and GetStaticFieldID.
 
 ## Phase
 
@@ -68,6 +68,12 @@ dispatches that registered native with return value 42. Exact-head validation
 at `dbbcb06d5a9e0225b9e0a9c3515b646c0fff6503` passed all 11 required
 check-runs, including ARM32 JNI registration integration check
 `109225192284`.
+
+The active member-ID slice is deliberately narrower than the full class/member
+roadmap bucket. Supplied `libmla.so` machine code directly loads JNIEnv offsets
+`0x84`, `0x178`, and `0x240`, proving GetMethodID slot 33, GetFieldID
+slot 94, and GetStaticFieldID slot 144. GetStaticMethodID, GetObjectClass, and
+IsInstanceOf remain outside this slice until separately evidenced.
 
 ## Public repository readiness
 

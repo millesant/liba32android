@@ -1,0 +1,28 @@
+schema = 1
+id = "post-roadmap-a32-jni-observed-member-ids"
+kind = "feature"
+size = "S2"
+status = "active"
+workflow = "feature"
+control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
+base_revision = "8b364f0862f1365e51b05a774811b45bdbedc016"
+acceptance = [
+  "supplied ARMv7 libmla evidence records GetMethodID at slot 33, GetFieldID at slot 94, and GetStaticFieldID at slot 144",
+  "the guest JNINativeInterface publishes only those three new evidence-backed entries at their exact slots while existing supported entries remain unchanged and other unsupported slots remain null",
+  "the caller-owned JNI registry stores bounded member identities with explicit method/field kind, unique logical 32-bit handles, exact class/name/signature identity, and owned strings",
+  "GetMethodID, GetFieldID, and GetStaticFieldID require the exact JNIEnv/class identity, decode bounded guest name/signature strings, return exact logical handles on hits, and null on semantic misses",
+  "focused regressions cover table/stub bytes, registry limits/duplicates, kind separation, exact lookup, wrong env/class, miss behavior, and guest-string failures",
+  "GetStaticMethodID, GetObjectClass, IsInstanceOf, Java invocation/field access, reference lifetime, inheritance, framework classes, and broader JNI remain outside this slice",
+  "accepted spec/architecture/state/evidence converge and exact-head required checks pass"
+]
+
+[convergence]
+requirements = "aligned"
+specs = "aligned"
+implementation = "aligned"
+tests = "pending"
+documentation = "aligned"
+decisions = "not_applicable"
+tasks = "aligned"
+evidence = "pending"
+repository = "aligned"

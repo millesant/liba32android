@@ -4,6 +4,7 @@
 #include <iostream>
 #include <span>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "compat/a32_jni.h"
@@ -14,6 +15,7 @@
 namespace {
 
 using liba32android::compat::A32JniClassRegistry;
+using liba32android::compat::A32JniMemberKind;
 using liba32android::compat::A32JniNativeInvokeError;
 using liba32android::compat::A32JniNativeInvokeOptions;
 using liba32android::compat::A32JniOnLoadError;
@@ -27,6 +29,9 @@ using liba32android::compat::kA32JniEversion;
 using liba32android::compat::kA32JniErr;
 using liba32android::compat::kA32JniFindClassSvcImmediate;
 using liba32android::compat::kA32JniGetEnvSvcImmediate;
+using liba32android::compat::kA32JniGetFieldIdSvcImmediate;
+using liba32android::compat::kA32JniGetMethodIdSvcImmediate;
+using liba32android::compat::kA32JniGetStaticFieldIdSvcImmediate;
 using liba32android::compat::kA32JniOk;
 using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
@@ -102,6 +107,9 @@ A32JniVmLayout layout() {
         .get_env_stub_address = 0x1500U,
         .find_class_stub_address = 0x1520U,
         .register_natives_stub_address = 0x1540U,
+        .get_method_id_stub_address = 0x1560U,
+        .get_field_id_stub_address = 0x1580U,
+        .get_static_field_id_stub_address = 0x15a0U,
     };
 }
 
@@ -151,6 +159,12 @@ int test_vm_install_and_getenv() {
             configured.native_table_address ||
         read_u32(memory, configured.native_table_address + 6U * 4U) !=
             configured.find_class_stub_address ||
+        read_u32(memory, configured.native_table_address + 33U * 4U) !=
+            configured.get_method_id_stub_address ||
+        read_u32(memory, configured.native_table_address + 94U * 4U) !=
+            configured.get_field_id_stub_address ||
+        read_u32(memory, configured.native_table_address + 144U * 4U) !=
+            configured.get_static_field_id_stub_address ||
         read_u32(memory, configured.native_table_address + 215U * 4U) !=
             configured.register_natives_stub_address) {
         return fail("JNI VM pointer tables contain wrong guest pointers");
@@ -167,7 +181,11 @@ int test_vm_install_and_getenv() {
         }
     }
     for (std::uint32_t index = 0U; index < 216U; ++index) {
-        if (index == 6U || index == 215U) {
+        if (index == 6U ||
+            index == 33U ||
+            index == 94U ||
+            index == 144U ||
+            index == 215U) {
             continue;
         }
         if (read_u32(
@@ -177,18 +195,27 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::array<std::uint8_t, 8>, 3> expected_stubs{{
+    constexpr std::array<std::array<std::uint8_t, 8>, 6> expected_stubs{{
         {{0xD7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD8U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD9U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xDAU, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xDBU, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xDCU, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    const std::array<std::uint32_t, 3> stub_addresses{{
+    const std::array<std::uint32_t, 6> stub_addresses{{
         configured.get_env_stub_address,
         configured.find_class_stub_address,
         configured.register_natives_stub_address,
+        configured.get_method_id_stub_address,
+        configured.get_field_id_stub_address,
+        configured.get_static_field_id_stub_address,
     }};
     for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
         std::array<std::uint8_t, 8> observed_stub{};
@@ -313,11 +340,194 @@ int test_vm_install_and_getenv() {
     regs = {};
     if (service.handle(
             memory,
-            kA32JniRegisterNativesSvcImmediate + 1U,
+            kA32JniGetStaticFieldIdSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
     }
+    return 0;
+}
+
+int test_observed_member_id_lookup() {
+    LinearGuestMemory memory{0x1000U, 0x1000U};
+    const A32JniRegistryLimits limits{
+        .max_classes = 2U,
+        .max_registered_methods = 2U,
+        .max_methods_per_registration = 2U,
+        .max_member_ids = 3U,
+        .max_class_name_bytes = 32U,
+        .max_method_name_bytes = 32U,
+        .max_signature_bytes = 32U,
+    };
+    A32JniClassRegistry registry{limits};
+    constexpr std::uint32_t kClassHandle = 0x44550000U;
+    constexpr std::uint32_t kMethodHandle = 0x44551000U;
+    constexpr std::uint32_t kFieldHandle = 0x44552000U;
+    constexpr std::uint32_t kStaticFieldHandle = 0x44553000U;
+    if (registry.add_class(
+            kClassHandle,
+            "org/videolan/Fixture") !=
+            A32JniRegistryError::None ||
+        registry.add_member(
+            kClassHandle,
+            A32JniMemberKind::InstanceMethod,
+            kMethodHandle,
+            "member",
+            "()I") != A32JniRegistryError::None ||
+        registry.add_member(
+            kClassHandle,
+            A32JniMemberKind::InstanceField,
+            kFieldHandle,
+            "member",
+            "I") != A32JniRegistryError::None ||
+        registry.add_member(
+            kClassHandle,
+            A32JniMemberKind::StaticField,
+            kStaticFieldHandle,
+            "member",
+            "I") != A32JniRegistryError::None ||
+        registry.member_count() != 3U) {
+        return fail("could not seed bounded JNI member identities");
+    }
+
+    const auto* method = registry.find_member(
+        kClassHandle,
+        A32JniMemberKind::InstanceMethod,
+        "member",
+        "()I");
+    const auto* field = registry.find_member(
+        kClassHandle,
+        A32JniMemberKind::InstanceField,
+        "member",
+        "I");
+    const auto* static_field = registry.find_member(
+        kClassHandle,
+        A32JniMemberKind::StaticField,
+        "member",
+        "I");
+    if (method == nullptr ||
+        field == nullptr ||
+        static_field == nullptr ||
+        method->handle != kMethodHandle ||
+        field->handle != kFieldHandle ||
+        static_field->handle != kStaticFieldHandle ||
+        method->class_name != "org/videolan/Fixture") {
+        return fail("JNI member registry lost exact identity");
+    }
+
+    if (registry.add_member(
+            kClassHandle,
+            A32JniMemberKind::InstanceMethod,
+            kFieldHandle,
+            "other",
+            "()V") !=
+            A32JniRegistryError::DuplicateMemberHandle ||
+        registry.add_member(
+            kClassHandle,
+            A32JniMemberKind::InstanceMethod,
+            0x44554000U,
+            "member",
+            "()I") !=
+            A32JniRegistryError::MemberLimitExceeded) {
+        return fail("JNI member registry limits/identity were not enforced");
+    }
+
+    const auto configured = layout();
+    A32JniVmService service{configured, &registry};
+    if (!service.install(memory)) {
+        return fail("JNI member lookup service did not install");
+    }
+
+    constexpr std::uint32_t kMethodName = 0x1600U;
+    constexpr std::uint32_t kMethodSignature = 0x1620U;
+    constexpr std::uint32_t kFieldName = 0x1640U;
+    constexpr std::uint32_t kFieldSignature = 0x1660U;
+    constexpr std::uint32_t kMissingName = 0x1680U;
+    if (!write_c_string(memory, kMethodName, "member") ||
+        !write_c_string(memory, kMethodSignature, "()I") ||
+        !write_c_string(memory, kFieldName, "member") ||
+        !write_c_string(memory, kFieldSignature, "I") ||
+        !write_c_string(memory, kMissingName, "missing")) {
+        return fail("could not stage JNI member lookup strings");
+    }
+
+    std::uint32_t cpsr{};
+    const std::array<std::pair<std::uint32_t, std::uint32_t>, 3> lookups{{
+        {kA32JniGetMethodIdSvcImmediate, kMethodHandle},
+        {kA32JniGetFieldIdSvcImmediate, kFieldHandle},
+        {kA32JniGetStaticFieldIdSvcImmediate, kStaticFieldHandle},
+    }};
+    for (const auto& [svc, expected] : lookups) {
+        std::array<std::uint32_t, 16> regs{};
+        regs[0] = configured.jni_env_address;
+        regs[1] = kClassHandle;
+        regs[2] = svc == kA32JniGetMethodIdSvcImmediate
+            ? kMethodName
+            : kFieldName;
+        regs[3] = svc == kA32JniGetMethodIdSvcImmediate
+            ? kMethodSignature
+            : kFieldSignature;
+        if (service.handle(memory, svc, regs, cpsr) !=
+                A32HostServiceDisposition::Handled ||
+            regs[0] != expected) {
+            return fail("JNI member service missed exact identity");
+        }
+    }
+
+    std::array<std::uint32_t, 16> regs{};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClassHandle;
+    regs[2] = kMissingName;
+    regs[3] = kFieldSignature;
+    if (service.handle(
+            memory,
+            kA32JniGetFieldIdSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI member semantic miss did not return null");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = 0x99887766U;
+    regs[2] = kFieldName;
+    regs[3] = kFieldSignature;
+    if (service.handle(
+            memory,
+            kA32JniGetFieldIdSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI member lookup accepted unknown class");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address + 4U;
+    regs[1] = kClassHandle;
+    regs[2] = kFieldName;
+    regs[3] = kFieldSignature;
+    if (service.handle(
+            memory,
+            kA32JniGetFieldIdSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI member lookup accepted wrong JNIEnv pointer");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClassHandle;
+    regs[2] = 0x3000U;
+    regs[3] = kFieldSignature;
+    if (service.handle(
+            memory,
+            kA32JniGetFieldIdSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI member lookup accepted unreadable name");
+    }
+
     return 0;
 }
 
@@ -784,6 +994,10 @@ int test_exact_object_onload_and_version_validation() {
 
 int main() {
     if (const int status = test_vm_install_and_getenv();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_observed_member_id_lookup();
         status != 0) {
         return status;
     }

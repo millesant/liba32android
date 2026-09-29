@@ -1105,3 +1105,37 @@ General argument marshalling, member IDs, reference lifetime, strings/arrays,
 exceptions, Java method/field calls, thread attach/detach, framework classes,
 graphics, and audio remain separate slices.
 
+## L32-C038 — ARM32 JNI observed member-ID lookup
+
+The next bounded JNI identity surface is selected from direct supplied ARMv7
+machine-code evidence rather than from the complete native-interface table.
+
+The guest JNIEnv table publishes these additional entries at their observed
+Android JNI positions:
+
+- GetMethodID — slot 33 / byte offset `0x84`;
+- GetFieldID — slot 94 / byte offset `0x178`;
+- GetStaticFieldID — slot 144 / byte offset `0x240`.
+
+Each entry targets a distinct private ARM `svc; bx lr` service stub. Existing
+GetEnv, FindClass, and RegisterNatives entries remain unchanged and unsupported
+JNIEnv slots remain zero.
+
+The caller-owned `A32JniClassRegistry` may seed a bounded collection of member
+identities. Each member has one registered class, explicit member kind
+(instance method, instance field, or static field), caller-selected unique
+nonzero logical 32-bit handle, owned name/signature strings, and no host-pointer
+identity. Member count, name length, and signature length obey explicit
+configurable ceilings capped by hard limits.
+
+GetMethodID, GetFieldID, and GetStaticFieldID require the exact configured
+JNIEnv pointer and a registered logical class handle. Each copies bounded
+NUL-terminated guest name/signature strings through GuestMemory. An exact
+class/kind/name/signature match returns the configured logical handle. Unknown
+class/member identity is a semantic miss and returns null. Unreadable or
+unterminated guest strings fail the service.
+
+This slice does not implement GetStaticMethodID, GetObjectClass, IsInstanceOf,
+Java method invocation, field access, inheritance, Java object/reference
+lifetime, strings/arrays/exceptions, or Android framework classes.
+

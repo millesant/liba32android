@@ -3,6 +3,9 @@
 #define LIBA32ANDROID_A32_JNI_GET_ENV_SVC 0xD7
 #define LIBA32ANDROID_A32_JNI_FIND_CLASS_SVC 0xD8
 #define LIBA32ANDROID_A32_JNI_REGISTER_NATIVES_SVC 0xD9
+#define LIBA32ANDROID_A32_JNI_GET_METHOD_ID_SVC 0xDA
+#define LIBA32ANDROID_A32_JNI_GET_FIELD_ID_SVC 0xDB
+#define LIBA32ANDROID_A32_JNI_GET_STATIC_FIELD_ID_SVC 0xDC
 
 #ifdef __cplusplus
 
@@ -28,6 +31,12 @@ inline constexpr std::uint32_t kA32JniFindClassSvcImmediate =
     LIBA32ANDROID_A32_JNI_FIND_CLASS_SVC;
 inline constexpr std::uint32_t kA32JniRegisterNativesSvcImmediate =
     LIBA32ANDROID_A32_JNI_REGISTER_NATIVES_SVC;
+inline constexpr std::uint32_t kA32JniGetMethodIdSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_METHOD_ID_SVC;
+inline constexpr std::uint32_t kA32JniGetFieldIdSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_FIELD_ID_SVC;
+inline constexpr std::uint32_t kA32JniGetStaticFieldIdSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_STATIC_FIELD_ID_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -41,6 +50,7 @@ inline constexpr std::int32_t kA32JniEversion = -3;
 inline constexpr std::size_t kA32JniHardMaxClasses = 1024U;
 inline constexpr std::size_t kA32JniHardMaxRegisteredMethods = 4096U;
 inline constexpr std::size_t kA32JniHardMaxMethodsPerRegistration = 1024U;
+inline constexpr std::size_t kA32JniHardMaxMemberIds = 4096U;
 inline constexpr std::size_t kA32JniHardMaxStringBytes = 4096U;
 
 // Android/Dalvik GetEnv accepts the inclusive numeric JNI 1.1..1.6
@@ -62,6 +72,7 @@ struct A32JniRegistryLimits {
     std::size_t max_classes{64U};
     std::size_t max_registered_methods{256U};
     std::size_t max_methods_per_registration{64U};
+    std::size_t max_member_ids{512U};
     std::size_t max_class_name_bytes{256U};
     std::size_t max_method_name_bytes{256U};
     std::size_t max_signature_bytes{256U};
@@ -79,6 +90,26 @@ enum class A32JniRegistryError : std::uint8_t {
     InvalidMethod,
     MethodLimitExceeded,
     DuplicateMethod,
+    InvalidMemberHandle,
+    InvalidMemberKind,
+    MemberLimitExceeded,
+    DuplicateMemberHandle,
+    DuplicateMember,
+};
+
+enum class A32JniMemberKind : std::uint8_t {
+    InstanceMethod = 0,
+    InstanceField,
+    StaticField,
+};
+
+struct A32JniMemberId {
+    std::uint32_t class_handle{};
+    std::uint32_t handle{};
+    A32JniMemberKind kind{A32JniMemberKind::InstanceMethod};
+    std::string class_name;
+    std::string name;
+    std::string signature;
 };
 
 struct A32JniRegisteredNative {
@@ -106,6 +137,17 @@ public:
         std::string_view name) const noexcept;
     [[nodiscard]] bool contains_class_handle(
         std::uint32_t handle) const noexcept;
+    [[nodiscard]] A32JniRegistryError add_member(
+        std::uint32_t class_handle,
+        A32JniMemberKind kind,
+        std::uint32_t handle,
+        std::string_view name,
+        std::string_view signature);
+    [[nodiscard]] const A32JniMemberId* find_member(
+        std::uint32_t class_handle,
+        A32JniMemberKind kind,
+        std::string_view name,
+        std::string_view signature) const noexcept;
     [[nodiscard]] const A32JniRegisteredNative* find_native(
         std::uint32_t class_handle,
         std::string_view name,
@@ -113,6 +155,9 @@ public:
 
     [[nodiscard]] std::size_t class_count() const noexcept {
         return classes_.size();
+    }
+    [[nodiscard]] std::size_t member_count() const noexcept {
+        return members_.size();
     }
     [[nodiscard]] std::size_t registered_native_count() const noexcept {
         return natives_.size();
@@ -135,6 +180,7 @@ private:
 
     A32JniRegistryLimits limits_;
     std::vector<ClassEntry> classes_;
+    std::vector<A32JniMemberId> members_;
     std::vector<A32JniRegisteredNative> natives_;
 
     friend class A32JniVmService;
@@ -148,6 +194,9 @@ struct A32JniVmLayout {
     std::uint32_t get_env_stub_address{};
     std::uint32_t find_class_stub_address{};
     std::uint32_t register_natives_stub_address{};
+    std::uint32_t get_method_id_stub_address{};
+    std::uint32_t get_field_id_stub_address{};
+    std::uint32_t get_static_field_id_stub_address{};
 };
 
 enum class A32JniVmInstallError : std::uint8_t {
