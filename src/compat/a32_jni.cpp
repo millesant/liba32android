@@ -24,6 +24,9 @@ constexpr std::size_t kJniEnvBytes = 4U;
 constexpr std::size_t kNativeTableWords = 216U;
 constexpr std::size_t kNativeTableBytes = kNativeTableWords * 4U;
 constexpr std::size_t kFindClassSlot = 6U;
+constexpr std::size_t kNewGlobalRefSlot = 21U;
+constexpr std::size_t kDeleteGlobalRefSlot = 22U;
+constexpr std::size_t kDeleteLocalRefSlot = 23U;
 constexpr std::size_t kGetMethodIdSlot = 33U;
 constexpr std::size_t kGetFieldIdSlot = 94U;
 constexpr std::size_t kGetStaticFieldIdSlot = 144U;
@@ -225,6 +228,12 @@ bool A32JniClassRegistry::valid() const noexcept {
                limits_.max_registered_methods &&
            limits_.max_member_ids > 0U &&
            limits_.max_member_ids <= kA32JniHardMaxMemberIds &&
+           limits_.max_reference_handles > 0U &&
+           limits_.max_reference_handles <=
+                kA32JniHardMaxReferenceHandles &&
+           limits_.max_reference_count_per_handle > 0U &&
+           limits_.max_reference_count_per_handle <=
+                kA32JniHardMaxReferenceCountPerHandle &&
            limits_.max_class_name_bytes > 0U &&
            limits_.max_class_name_bytes <=
                kA32JniHardMaxStringBytes &&
@@ -261,6 +270,13 @@ A32JniRegistryError A32JniClassRegistry::add_class(
         }
     }
 
+    if (find_reference_entry(handle) == nullptr) {
+        if (references_.size() >= limits_.max_reference_handles) {
+            return A32JniRegistryError::ReferenceLimitExceeded;
+        }
+        references_.push_back(ReferenceEntry{.handle = handle});
+    }
+
     ClassEntry entry;
     entry.handle = handle;
     entry.name.assign(name);
@@ -281,6 +297,113 @@ std::optional<std::uint32_t> A32JniClassRegistry::find_class(
 bool A32JniClassRegistry::contains_class_handle(
     std::uint32_t handle) const noexcept {
     return find_class_entry(handle) != nullptr;
+}
+
+A32JniRegistryError A32JniClassRegistry::add_reference_identity(
+    std::uint32_t handle) {
+    if (!valid()) {
+        return A32JniRegistryError::InvalidLimits;
+    }
+    if (handle == 0U) {
+        return A32JniRegistryError::InvalidReferenceHandle;
+    }
+    if (find_reference_entry(handle) != nullptr) {
+        return A32JniRegistryError::DuplicateReferenceHandle;
+    }
+    if (references_.size() >= limits_.max_reference_handles) {
+        return A32JniRegistryError::ReferenceLimitExceeded;
+    }
+    references_.push_back(ReferenceEntry{.handle = handle});
+    return A32JniRegistryError::None;
+}
+
+bool A32JniClassRegistry::retain_local_reference(
+    std::uint32_t handle) noexcept {
+    ReferenceEntry* entry = find_reference_entry(handle);
+    if (entry == nullptr ||
+        entry->local_count >=
+            limits_.max_reference_count_per_handle) {
+        return false;
+    }
+    ++entry->local_count;
+    return true;
+}
+
+std::uint32_t A32JniClassRegistry::new_global_reference(
+    std::uint32_t handle) noexcept {
+    if (handle == 0U) {
+        return 0U;
+    }
+    ReferenceEntry* entry = find_reference_entry(handle);
+    if (entry == nullptr ||
+        (entry->local_count == 0U && entry->global_count == 0U) ||
+        entry->global_count >=
+            limits_.max_reference_count_per_handle) {
+        return 0U;
+    }
+    ++entry->global_count;
+    return handle;
+}
+
+bool A32JniClassRegistry::delete_local_reference(
+    std::uint32_t handle) noexcept {
+    if (handle == 0U) {
+        return true;
+    }
+    ReferenceEntry* entry = find_reference_entry(handle);
+    if (entry == nullptr || entry->local_count == 0U) {
+        return false;
+    }
+    --entry->local_count;
+    return true;
+}
+
+bool A32JniClassRegistry::delete_global_reference(
+    std::uint32_t handle) noexcept {
+    if (handle == 0U) {
+        return true;
+    }
+    ReferenceEntry* entry = find_reference_entry(handle);
+    if (entry == nullptr || entry->global_count == 0U) {
+        return false;
+    }
+    --entry->global_count;
+    return true;
+}
+
+std::optional<A32JniReferenceCounts>
+A32JniClassRegistry::reference_counts(
+    std::uint32_t handle) const noexcept {
+    const ReferenceEntry* entry = find_reference_entry(handle);
+    if (entry == nullptr) {
+        return std::nullopt;
+    }
+    return A32JniReferenceCounts{
+        .local = entry->local_count,
+        .global = entry->global_count,
+    };
+}
+
+const A32JniClassRegistry::ReferenceEntry*
+A32JniClassRegistry::find_reference_entry(
+    std::uint32_t handle) const noexcept {
+    for (const ReferenceEntry& entry : references_) {
+        if (entry.handle == handle) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
+A32JniClassRegistry::ReferenceEntry*
+A32JniClassRegistry::find_reference_entry(
+    std::uint32_t handle) noexcept {
+    for (ReferenceEntry& entry : references_) {
+        if (entry.handle == handle) {
+            return &entry;
+        }
+    }
+    return nullptr;
 }
 
 const A32JniClassRegistry::ClassEntry*
@@ -452,7 +575,7 @@ A32JniRegistryError A32JniClassRegistry::register_natives(
 }
 
 bool A32JniVmService::layout_valid() const noexcept {
-    const std::array<AddressRange, 12> ranges{{
+    const std::array<AddressRange, 15> ranges{{
         {layout_.java_vm_address, kJavaVmBytes},
         {layout_.invoke_table_address, kInvokeTableBytes},
         {layout_.jni_env_address, kJniEnvBytes},
@@ -465,6 +588,9 @@ bool A32JniVmService::layout_valid() const noexcept {
         {layout_.get_static_field_id_stub_address, kServiceStubBytes},
         {layout_.attach_current_thread_stub_address, kServiceStubBytes},
         {layout_.detach_current_thread_stub_address, kServiceStubBytes},
+        {layout_.new_global_ref_stub_address, kServiceStubBytes},
+        {layout_.delete_global_ref_stub_address, kServiceStubBytes},
+        {layout_.delete_local_ref_stub_address, kServiceStubBytes},
     }};
 
     for (const AddressRange& range : ranges) {
@@ -491,7 +617,7 @@ A32JniVmInstallResult A32JniVmService::install(
         return {.error = A32JniVmInstallError::InvalidLayout};
     }
 
-    std::array<InstallRegion, 12> regions{{
+    std::array<InstallRegion, 15> regions{{
         {.address = layout_.java_vm_address, .size = kJavaVmBytes},
         {.address = layout_.invoke_table_address,
          .size = kInvokeTableBytes},
@@ -513,6 +639,12 @@ A32JniVmInstallResult A32JniVmService::install(
         {.address = layout_.attach_current_thread_stub_address,
          .size = kServiceStubBytes},
         {.address = layout_.detach_current_thread_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.new_global_ref_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.delete_global_ref_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.delete_local_ref_stub_address,
          .size = kServiceStubBytes},
     }};
 
@@ -540,6 +672,18 @@ A32JniVmInstallResult A32JniVmService::install(
         regions[3].desired,
         kFindClassSlot * 4U,
         layout_.find_class_stub_address);
+    write_u32(
+        regions[3].desired,
+        kNewGlobalRefSlot * 4U,
+        layout_.new_global_ref_stub_address);
+    write_u32(
+        regions[3].desired,
+        kDeleteGlobalRefSlot * 4U,
+        layout_.delete_global_ref_stub_address);
+    write_u32(
+        regions[3].desired,
+        kDeleteLocalRefSlot * 4U,
+        layout_.delete_local_ref_stub_address);
     write_u32(
         regions[3].desired,
         kGetMethodIdSlot * 4U,
@@ -581,6 +725,15 @@ A32JniVmInstallResult A32JniVmService::install(
     write_service_stub(
         regions[11].desired,
         kA32JniDetachCurrentThreadSvcImmediate);
+    write_service_stub(
+        regions[12].desired,
+        kA32JniNewGlobalRefSvcImmediate);
+    write_service_stub(
+        regions[13].desired,
+        kA32JniDeleteGlobalRefSvcImmediate);
+    write_service_stub(
+        regions[14].desired,
+        kA32JniDeleteLocalRefSvcImmediate);
 
     for (InstallRegion& region : regions) {
         if (!memory.read(
@@ -639,7 +792,10 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         svc_immediate == kA32JniGetFieldIdSvcImmediate ||
         svc_immediate == kA32JniGetStaticFieldIdSvcImmediate ||
         svc_immediate == kA32JniAttachCurrentThreadSvcImmediate ||
-        svc_immediate == kA32JniDetachCurrentThreadSvcImmediate;
+        svc_immediate == kA32JniDetachCurrentThreadSvcImmediate ||
+        svc_immediate == kA32JniNewGlobalRefSvcImmediate ||
+        svc_immediate == kA32JniDeleteGlobalRefSvcImmediate ||
+        svc_immediate == kA32JniDeleteLocalRefSvcImmediate;
     if (!known_service) {
         return runtime::A32HostServiceDisposition::Unhandled;
     }
@@ -712,7 +868,42 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             return runtime::A32HostServiceDisposition::Failed;
         }
         const auto found = registry_->find_class(name);
-        regs[0] = found.value_or(0U);
+        if (!found.has_value()) {
+            regs[0] = 0U;
+            return runtime::A32HostServiceDisposition::Handled;
+        }
+        if (!registry_->retain_local_reference(*found)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        regs[0] = *found;
+        return runtime::A32HostServiceDisposition::Handled;
+    }
+
+    const bool reference_service =
+        svc_immediate == kA32JniNewGlobalRefSvcImmediate ||
+        svc_immediate == kA32JniDeleteGlobalRefSvcImmediate ||
+        svc_immediate == kA32JniDeleteLocalRefSvcImmediate;
+    if (reference_service) {
+        if (registry_ == nullptr) {
+            regs[0] = 0U;
+            return runtime::A32HostServiceDisposition::Handled;
+        }
+        if (!registry_->valid()) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        const std::uint32_t reference = regs[1];
+        if (svc_immediate == kA32JniNewGlobalRefSvcImmediate) {
+            regs[0] = registry_->new_global_reference(reference);
+            return runtime::A32HostServiceDisposition::Handled;
+        }
+        const bool deleted =
+            svc_immediate == kA32JniDeleteGlobalRefSvcImmediate
+                ? registry_->delete_global_reference(reference)
+                : registry_->delete_local_reference(reference);
+        if (!deleted) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        regs[0] = 0U;
         return runtime::A32HostServiceDisposition::Handled;
     }
 
@@ -1169,6 +1360,14 @@ const char* to_string(
         return "duplicate_member_handle";
     case A32JniRegistryError::DuplicateMember:
         return "duplicate_member";
+    case A32JniRegistryError::InvalidReferenceHandle:
+        return "invalid_reference_handle";
+    case A32JniRegistryError::ReferenceLimitExceeded:
+        return "reference_limit_exceeded";
+    case A32JniRegistryError::DuplicateReferenceHandle:
+        return "duplicate_reference_handle";
+    case A32JniRegistryError::ReferenceCountExceeded:
+        return "reference_count_exceeded";
     }
     return "unknown";
 }

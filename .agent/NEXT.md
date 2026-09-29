@@ -10,20 +10,21 @@ at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c. Licensing is no longer an OSS-readi
 
 ## Active JNI track
 
-Continue `post-roadmap-a32-jni-thread-attach-detach`.
+Continue `post-roadmap-a32-jni-strong-references`.
 
-The member-ID slice is complete at
-`f073092cf631a98e274bce9cdb54d0f73ad7099d` with 11/11 checks green.
+The JavaVM AttachCurrentThread/DetachCurrentThread slice is complete at
+`35168f13294de7f88ed7b7054f0b08f1c9f5e7e9` with 11/11 checks green.
 
-Direct ARMv7 `libmla.so` evidence now drives the next bounded JavaVM seam:
+Direct ARMv7 `libmla.so` evidence drives the next bounded reference seam:
 
-1. AttachCurrentThread at invocation slot 4 / offset `0x10`;
-2. DetachCurrentThread at slot 5 / offset `0x14`;
-3. GetEnv remains at slot 6 / offset `0x18`;
-4. model one attached/detached guest JNI context only;
-5. return JNI_EDETACHED from GetEnv without touching output while detached;
-6. keep AttachCurrentThreadAsDaemon, multi-thread state, JavaVMAttachArgs
-   semantics, and thread-local reference lifetime out of this slice.
+1. NewGlobalRef at JNIEnv slot 21 / offset `0x54`;
+2. DeleteGlobalRef at slot 22 / `0x58`;
+3. DeleteLocalRef at slot 23 / `0x5c`;
+4. bounded APK-agnostic logical object identities with separate local/global
+   counts;
+5. FindClass establishes one local reference for its returned class handle;
+6. real ARM32 JNI_OnLoad fixture promotes the class to global, deletes the local,
+   registers the native through the global handle, then releases the global.
 
-After exact-head validation, reassess the supplied binaries again before
-selecting the next JNI surface.
+Defer weak references, NewLocalRef, IsSameObject, local frames, GC, and general
+object lifetime until a balanced evidence-backed boundary exists.

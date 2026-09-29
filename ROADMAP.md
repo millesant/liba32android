@@ -22,11 +22,11 @@ Implemented and regression-tested foundations include:
 
 ## Active track: JNI compatibility
 
-The first registration and observed member-ID steps are complete. Direct
-supplied-binary evidence has pulled a small JavaVM thread-state seam forward:
-AttachCurrentThread/DetachCurrentThread is active now. After that, continue with:
+The first registration, observed member-ID, and bounded JavaVM attach/detach
+steps are complete. Direct supplied-binary evidence now drives a smaller
+strong/local-reference step:
 
-1. local/global/weak reference lifetime;
+1. NewGlobalRef/DeleteGlobalRef/DeleteLocalRef bookkeeping;
 3. strings and modified UTF-8 APIs;
 4. primitive/object arrays;
 5. pending exception state and exception operations;

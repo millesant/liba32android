@@ -1,0 +1,38 @@
+schema = 1
+change = "post-roadmap-a32-jni-strong-references"
+
+[[evidence]]
+id = "supplied-libmla-reference-slots"
+kind = "artifact"
+status = "observed"
+claim = "Supplied ARMv7 libmla machine code directly identifies JNIEnv NewGlobalRef, DeleteGlobalRef, and DeleteLocalRef offsets."
+source = "docs/research/evidence/arm32-jni-reference-entrypoints-2026-09-29.md"
+result = "Observed wrappers load offsets 0x54, 0x58, and 0x5c, corresponding to JNIEnv slots 21, 22, and 23. NewWeakGlobalRef exists at slot 226, but the targeted symbol pass found no DeleteWeakGlobalRef wrapper."
+limitations = "Weak references, local frames, GC, and universal object/reference lifetime are outside this slice."
+
+[[evidence]]
+id = "arm32-reference-fixture"
+kind = "integration"
+status = "pending"
+claim = "The pinned-NDK ARM32 JNI fixture promotes a FindClass local reference to global, releases the local, registers the native through the global handle, releases the global, and leaves zero live class references."
+source = "ARM32 JNI integration workflow"
+result = ""
+limitations = "Pending exact-head execution."
+
+[[evidence]]
+id = "focused-host-regressions"
+kind = "test"
+status = "pending"
+claim = "Focused host regressions prove table/stub publication, bounded generic reference identities, FindClass local retention, global promotion, per-kind deletion, null behavior, count limits, and dead-reference behavior."
+source = "tests/compat/a32_jni.cpp"
+result = ""
+limitations = "Pending exact-head execution."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "pending"
+claim = "The strong/local reference slice passes the required exact-head check matrix."
+source = "GitHub commit checks"
+result = ""
+limitations = "Pending exact-head execution."

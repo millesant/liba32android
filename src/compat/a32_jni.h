@@ -8,6 +8,9 @@
 #define LIBA32ANDROID_A32_JNI_GET_STATIC_FIELD_ID_SVC 0xDC
 #define LIBA32ANDROID_A32_JNI_ATTACH_CURRENT_THREAD_SVC 0xDD
 #define LIBA32ANDROID_A32_JNI_DETACH_CURRENT_THREAD_SVC 0xDE
+#define LIBA32ANDROID_A32_JNI_NEW_GLOBAL_REF_SVC 0xDF
+#define LIBA32ANDROID_A32_JNI_DELETE_GLOBAL_REF_SVC 0xE0
+#define LIBA32ANDROID_A32_JNI_DELETE_LOCAL_REF_SVC 0xE1
 
 #ifdef __cplusplus
 
@@ -43,6 +46,12 @@ inline constexpr std::uint32_t kA32JniAttachCurrentThreadSvcImmediate =
     LIBA32ANDROID_A32_JNI_ATTACH_CURRENT_THREAD_SVC;
 inline constexpr std::uint32_t kA32JniDetachCurrentThreadSvcImmediate =
     LIBA32ANDROID_A32_JNI_DETACH_CURRENT_THREAD_SVC;
+inline constexpr std::uint32_t kA32JniNewGlobalRefSvcImmediate =
+    LIBA32ANDROID_A32_JNI_NEW_GLOBAL_REF_SVC;
+inline constexpr std::uint32_t kA32JniDeleteGlobalRefSvcImmediate =
+    LIBA32ANDROID_A32_JNI_DELETE_GLOBAL_REF_SVC;
+inline constexpr std::uint32_t kA32JniDeleteLocalRefSvcImmediate =
+    LIBA32ANDROID_A32_JNI_DELETE_LOCAL_REF_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -58,6 +67,8 @@ inline constexpr std::size_t kA32JniHardMaxClasses = 1024U;
 inline constexpr std::size_t kA32JniHardMaxRegisteredMethods = 4096U;
 inline constexpr std::size_t kA32JniHardMaxMethodsPerRegistration = 1024U;
 inline constexpr std::size_t kA32JniHardMaxMemberIds = 4096U;
+inline constexpr std::size_t kA32JniHardMaxReferenceHandles = 4096U;
+inline constexpr std::size_t kA32JniHardMaxReferenceCountPerHandle = 1U << 20U;
 inline constexpr std::size_t kA32JniHardMaxStringBytes = 4096U;
 
 // Android/Dalvik GetEnv accepts the inclusive numeric JNI 1.1..1.6
@@ -80,6 +91,8 @@ struct A32JniRegistryLimits {
     std::size_t max_registered_methods{256U};
     std::size_t max_methods_per_registration{64U};
     std::size_t max_member_ids{512U};
+    std::size_t max_reference_handles{512U};
+    std::size_t max_reference_count_per_handle{4096U};
     std::size_t max_class_name_bytes{256U};
     std::size_t max_method_name_bytes{256U};
     std::size_t max_signature_bytes{256U};
@@ -102,6 +115,10 @@ enum class A32JniRegistryError : std::uint8_t {
     MemberLimitExceeded,
     DuplicateMemberHandle,
     DuplicateMember,
+    InvalidReferenceHandle,
+    ReferenceLimitExceeded,
+    DuplicateReferenceHandle,
+    ReferenceCountExceeded,
 };
 
 enum class A32JniMemberKind : std::uint8_t {
@@ -117,6 +134,11 @@ struct A32JniMemberId {
     std::string class_name;
     std::string name;
     std::string signature;
+};
+
+struct A32JniReferenceCounts {
+    std::uint32_t local{};
+    std::uint32_t global{};
 };
 
 struct A32JniRegisteredNative {
@@ -143,6 +165,19 @@ public:
     [[nodiscard]] std::optional<std::uint32_t> find_class(
         std::string_view name) const noexcept;
     [[nodiscard]] bool contains_class_handle(
+        std::uint32_t handle) const noexcept;
+
+    [[nodiscard]] A32JniRegistryError add_reference_identity(
+        std::uint32_t handle);
+    [[nodiscard]] bool retain_local_reference(
+        std::uint32_t handle) noexcept;
+    [[nodiscard]] std::uint32_t new_global_reference(
+        std::uint32_t handle) noexcept;
+    [[nodiscard]] bool delete_local_reference(
+        std::uint32_t handle) noexcept;
+    [[nodiscard]] bool delete_global_reference(
+        std::uint32_t handle) noexcept;
+    [[nodiscard]] std::optional<A32JniReferenceCounts> reference_counts(
         std::uint32_t handle) const noexcept;
     [[nodiscard]] A32JniRegistryError add_member(
         std::uint32_t class_handle,
@@ -178,7 +213,16 @@ private:
         std::uint32_t handle{};
         std::string name;
     };
+    struct ReferenceEntry {
+        std::uint32_t handle{};
+        std::uint32_t local_count{};
+        std::uint32_t global_count{};
+    };
 
+    [[nodiscard]] const ReferenceEntry* find_reference_entry(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] ReferenceEntry* find_reference_entry(
+        std::uint32_t handle) noexcept;
     [[nodiscard]] const ClassEntry* find_class_entry(
         std::uint32_t handle) const noexcept;
     [[nodiscard]] A32JniRegistryError register_natives(
@@ -187,6 +231,7 @@ private:
 
     A32JniRegistryLimits limits_;
     std::vector<ClassEntry> classes_;
+    std::vector<ReferenceEntry> references_;
     std::vector<A32JniMemberId> members_;
     std::vector<A32JniRegisteredNative> natives_;
 
@@ -206,6 +251,9 @@ struct A32JniVmLayout {
     std::uint32_t get_static_field_id_stub_address{};
     std::uint32_t attach_current_thread_stub_address{};
     std::uint32_t detach_current_thread_stub_address{};
+    std::uint32_t new_global_ref_stub_address{};
+    std::uint32_t delete_global_ref_stub_address{};
+    std::uint32_t delete_local_ref_stub_address{};
 };
 
 enum class A32JniVmInstallError : std::uint8_t {

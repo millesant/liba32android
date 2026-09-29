@@ -19,7 +19,11 @@ struct JNINativeInterface {
     void* get_version;
     void* define_class;
     jclass (*FindClass)(JNIEnv*, const char*);
-    void* reserved7_to_214[208];
+    void* reserved7_to_20[14];
+    jobject (*NewGlobalRef)(JNIEnv*, jobject);
+    void (*DeleteGlobalRef)(JNIEnv*, jobject);
+    void (*DeleteLocalRef)(JNIEnv*, jobject);
+    void* reserved24_to_214[191];
     jint (*RegisterNatives)(
         JNIEnv*,
         jclass,
@@ -67,6 +71,7 @@ __attribute__((visibility("default"), noinline))
 jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     JNIEnv* env = (JNIEnv*)0;
     jclass fixture_class;
+    jobject global_class;
     JNINativeMethod method;
 
     if (vm == (JavaVM*)0 || reserved != (void*)0) {
@@ -88,16 +93,26 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     if (fixture_class == (jclass)0) {
         return JNI_ERR;
     }
+
+    global_class = env->functions->NewGlobalRef(
+        env,
+        fixture_class);
+    if (global_class == (jobject)0) {
+        return JNI_ERR;
+    }
+    env->functions->DeleteLocalRef(env, fixture_class);
+
     method.name = "nativePing";
     method.signature = "()I";
     method.fnPtr = (void*)native_ping;
     if (env->functions->RegisterNatives(
             env,
-            fixture_class,
+            (jclass)global_class,
             &method,
             1) != JNI_OK) {
         return JNI_ERR;
     }
+    env->functions->DeleteGlobalRef(env, global_class);
 
     return JNI_VERSION_1_6;
 }

@@ -60,8 +60,8 @@ O runtime atual inclui:
   sincronização no estilo pthread, `__aeabi_atexit` / `__cxa_finalize` e
   serviços relacionados;
 - bootstrap JNI VM/GetEnv/JNI_OnLoad, mais FindClass, RegisterNatives,
-  identificação limitada de membros e despacho reverso de natives sem
-  argumentos Java;
+  identificação limitada de membros, estado de attach/detach da JavaVM e
+  despacho reverso de natives sem argumentos Java;
 - fixtures Android ARMv7 reproduzíveis, além de probes de espaço de
   endereçamento/runtime no Android.
 
@@ -170,10 +170,10 @@ Para regras de ownership/dependências, veja
 ## Roadmap
 
 O roadmap público está em [ROADMAP.md](ROADMAP.md). A trilha imediata de
-compatibilidade já concluiu as primeiras etapas de registro de natives e IDs de
-membros guiadas por evidência. O trabalho atual adiciona a fronteira observada
-de attach/detach da JavaVM antes de voltar para referências, strings/arrays,
-exceções e chamadas de métodos/campos.
+compatibilidade já concluiu as primeiras etapas de registro de natives, IDs de
+membros e attach/detach da JavaVM guiadas por evidência. O trabalho atual
+adiciona bookkeeping limitado de referências local/global antes de
+strings/arrays, exceções e chamadas de métodos/campos.
 
 ## Contribuindo
 

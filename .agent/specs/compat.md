@@ -1168,3 +1168,31 @@ This slice does not implement multiple host threads, JavaVMAttachArgs contents,
 AttachCurrentThreadAsDaemon, Java thread objects, or thread-local reference
 lifetime.
 
+## L32-C040 — ARM32 JNI strong/local reference bookkeeping
+
+Supplied ARMv7 machine code identifies JNIEnv NewGlobalRef at slot 21 / byte
+offset `0x54`, DeleteGlobalRef at slot 22 / `0x58`, and DeleteLocalRef at
+slot 23 / `0x5c`. Each entry targets a distinct private guest ARM service stub
+while unsupported JNIEnv entries remain zero.
+
+The bounded JNI registry stores opaque logical object identities with separate
+local/global reference counts under explicit identity/count ceilings. No host
+pointer becomes a jobject. Class registration creates a reference identity with
+zero live counts; successful FindClass retains one local reference before
+returning the existing logical class handle.
+
+NewGlobalRef on null returns null. For a known live non-null identity it
+increments the global count and returns the same opaque logical handle.
+DeleteLocalRef and DeleteGlobalRef accept null as a no-op and otherwise decrement
+only the matching reference count when present. Reference counts cannot exceed
+the configured hard-capped per-handle ceiling.
+
+The registry retains object identity metadata after counts reach zero so a later
+producer such as FindClass can establish a fresh local reference. This slice
+does not yet make every class/member operation a universal reference-liveness
+check.
+
+Weak references, NewLocalRef, IsSameObject, local frames, garbage collection,
+cross-thread local-reference ownership, general object allocation, and full
+lifetime enforcement across all JNI entrypoints remain separate.
+

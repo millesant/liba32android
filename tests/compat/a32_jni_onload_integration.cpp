@@ -224,6 +224,9 @@ int main(int argc, char** argv) {
         .get_static_field_id_stub_address = *stub_page + 0xa0U,
         .attach_current_thread_stub_address = *stub_page + 0xc0U,
         .detach_current_thread_stub_address = *stub_page + 0xe0U,
+        .new_global_ref_stub_address = *stub_page + 0x100U,
+        .delete_global_ref_stub_address = *stub_page + 0x120U,
+        .delete_local_ref_stub_address = *stub_page + 0x140U,
     };
     constexpr std::uint32_t kFixtureClassHandle = 0x44550000U;
     A32JniClassRegistry registry;
@@ -266,7 +269,7 @@ int main(int argc, char** argv) {
         .stack_top = stack_top,
         .return_pc = *stop,
         .max_instructions = 1024U,
-        .max_service_calls = 3U,
+        .max_service_calls = 6U,
         .symbols = symbol_options(),
         .execution_context = &execution_context,
     };
@@ -281,7 +284,7 @@ int main(int argc, char** argv) {
         result.returned_version != kA32JniVersion16 ||
         !result.execution.has_value() ||
         !result.execution->stop_pc_reached ||
-        result.execution->services_handled != 3U ||
+        result.execution->services_handled != 6U ||
         !handler.saw_expected_context() ||
         execution_context.object_index.has_value()) {
         const std::uint32_t failing_svc =
@@ -296,6 +299,14 @@ int main(int argc, char** argv) {
             " svc=" + std::to_string(failing_svc) +
             " handled=" +
             std::to_string(handled_services));
+    }
+
+    const auto reference_counts =
+        registry.reference_counts(kFixtureClassHandle);
+    if (!reference_counts.has_value() ||
+        reference_counts->local != 0U ||
+        reference_counts->global != 0U) {
+        return fail("ARM32 JNI_OnLoad did not release fixture references");
     }
 
     const auto* registered = registry.find_native(
@@ -352,6 +363,10 @@ int main(int argc, char** argv) {
         << std::hex << registered->function << '\n'
         << "fixture.jni.native_return="
         << std::dec << native_result.returned_value << '\n'
+        << "fixture.jni.local_refs="
+        << reference_counts->local << '\n'
+        << "fixture.jni.global_refs="
+        << reference_counts->global << '\n'
         << "fixture.jni.status=PASS\n";
     return 0;
 }

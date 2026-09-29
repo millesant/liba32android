@@ -74,10 +74,12 @@ jobs:
             tee build-fixtures/jni-integration-evidence.txt
 
           grep -F 'fixture.jni.object_count=1' build-fixtures/jni-integration-evidence.txt
-          grep -F 'fixture.jni.service_calls=3' build-fixtures/jni-integration-evidence.txt
+          grep -F 'fixture.jni.service_calls=6' build-fixtures/jni-integration-evidence.txt
           grep -F 'fixture.jni.version=0x10006' build-fixtures/jni-integration-evidence.txt
           grep -E '^fixture\.jni\.registered_function=0x[1-9a-f][0-9a-f]*$' build-fixtures/jni-integration-evidence.txt
           grep -F 'fixture.jni.native_return=42' build-fixtures/jni-integration-evidence.txt
+          grep -F 'fixture.jni.local_refs=0' build-fixtures/jni-integration-evidence.txt
+          grep -F 'fixture.jni.global_refs=0' build-fixtures/jni-integration-evidence.txt
           grep -F 'fixture.jni.status=PASS' build-fixtures/jni-integration-evidence.txt
 
       - name: Upload JNI registration evidence

@@ -35,6 +35,9 @@ using liba32android::compat::kA32JniGetMethodIdSvcImmediate;
 using liba32android::compat::kA32JniGetStaticFieldIdSvcImmediate;
 using liba32android::compat::kA32JniAttachCurrentThreadSvcImmediate;
 using liba32android::compat::kA32JniDetachCurrentThreadSvcImmediate;
+using liba32android::compat::kA32JniNewGlobalRefSvcImmediate;
+using liba32android::compat::kA32JniDeleteGlobalRefSvcImmediate;
+using liba32android::compat::kA32JniDeleteLocalRefSvcImmediate;
 using liba32android::compat::kA32JniOk;
 using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
@@ -115,6 +118,9 @@ A32JniVmLayout layout() {
         .get_static_field_id_stub_address = 0x15a0U,
         .attach_current_thread_stub_address = 0x15c0U,
         .detach_current_thread_stub_address = 0x15e0U,
+        .new_global_ref_stub_address = 0x1900U,
+        .delete_global_ref_stub_address = 0x1920U,
+        .delete_local_ref_stub_address = 0x1940U,
     };
 }
 
@@ -168,6 +174,12 @@ int test_vm_install_and_getenv() {
             configured.native_table_address ||
         read_u32(memory, configured.native_table_address + 6U * 4U) !=
             configured.find_class_stub_address ||
+        read_u32(memory, configured.native_table_address + 21U * 4U) !=
+            configured.new_global_ref_stub_address ||
+        read_u32(memory, configured.native_table_address + 22U * 4U) !=
+            configured.delete_global_ref_stub_address ||
+        read_u32(memory, configured.native_table_address + 23U * 4U) !=
+            configured.delete_local_ref_stub_address ||
         read_u32(memory, configured.native_table_address + 33U * 4U) !=
             configured.get_method_id_stub_address ||
         read_u32(memory, configured.native_table_address + 94U * 4U) !=
@@ -191,6 +203,9 @@ int test_vm_install_and_getenv() {
     }
     for (std::uint32_t index = 0U; index < 216U; ++index) {
         if (index == 6U ||
+            index == 21U ||
+            index == 22U ||
+            index == 23U ||
             index == 33U ||
             index == 94U ||
             index == 144U ||
@@ -204,7 +219,7 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::array<std::uint8_t, 8>, 8> expected_stubs{{
+    constexpr std::array<std::array<std::uint8_t, 8>, 11> expected_stubs{{
         {{0xD7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD8U, 0x00U, 0x00U, 0xEFU,
@@ -221,8 +236,14 @@ int test_vm_install_and_getenv() {
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xDEU, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xDFU, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xE0U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xE1U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    const std::array<std::uint32_t, 8> stub_addresses{{
+    const std::array<std::uint32_t, 11> stub_addresses{{
         configured.get_env_stub_address,
         configured.find_class_stub_address,
         configured.register_natives_stub_address,
@@ -231,6 +252,9 @@ int test_vm_install_and_getenv() {
         configured.get_static_field_id_stub_address,
         configured.attach_current_thread_stub_address,
         configured.detach_current_thread_stub_address,
+        configured.new_global_ref_stub_address,
+        configured.delete_global_ref_stub_address,
+        configured.delete_local_ref_stub_address,
     }};
     for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
         std::array<std::uint8_t, 8> observed_stub{};
@@ -421,11 +445,211 @@ int test_vm_install_and_getenv() {
     regs = {};
     if (service.handle(
             memory,
-            kA32JniDetachCurrentThreadSvcImmediate + 1U,
+            kA32JniDeleteLocalRefSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
     }
+    return 0;
+}
+
+int test_strong_reference_lifetime() {
+    LinearGuestMemory memory{0x1000U, 0x1000U};
+    const A32JniRegistryLimits limits{
+        .max_classes = 2U,
+        .max_registered_methods = 2U,
+        .max_methods_per_registration = 2U,
+        .max_member_ids = 2U,
+        .max_reference_handles = 2U,
+        .max_reference_count_per_handle = 2U,
+        .max_class_name_bytes = 32U,
+        .max_method_name_bytes = 32U,
+        .max_signature_bytes = 32U,
+    };
+    A32JniClassRegistry registry{limits};
+    constexpr std::uint32_t kClassHandle = 0x44550000U;
+    constexpr std::uint32_t kObjectHandle = 0x44560000U;
+    if (registry.add_class(
+            kClassHandle,
+            "org/videolan/Fixture") !=
+            A32JniRegistryError::None ||
+        registry.add_reference_identity(kObjectHandle) !=
+            A32JniRegistryError::None ||
+        registry.add_reference_identity(0x44570000U) !=
+            A32JniRegistryError::ReferenceLimitExceeded ||
+        !registry.retain_local_reference(kObjectHandle)) {
+        return fail("could not seed bounded JNI reference identities");
+    }
+
+    auto class_counts = registry.reference_counts(kClassHandle);
+    auto object_counts = registry.reference_counts(kObjectHandle);
+    if (!class_counts.has_value() ||
+        class_counts->local != 0U ||
+        class_counts->global != 0U ||
+        !object_counts.has_value() ||
+        object_counts->local != 1U ||
+        object_counts->global != 0U) {
+        return fail("JNI reference ledger seeded wrong counts");
+    }
+
+    const auto configured = layout();
+    A32JniVmService service{configured, &registry};
+    if (!service.install(memory)) {
+        return fail("JNI reference service did not install");
+    }
+
+    constexpr std::uint32_t kClassName = 0x1600U;
+    if (!write_c_string(
+            memory,
+            kClassName,
+            "org/videolan/Fixture")) {
+        return fail("could not stage JNI reference class name");
+    }
+
+    std::uint32_t cpsr{};
+    std::array<std::uint32_t, 16> regs{};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClassName;
+    if (service.handle(
+            memory,
+            kA32JniFindClassSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != kClassHandle) {
+        return fail("JNI FindClass did not create local class reference");
+    }
+    class_counts = registry.reference_counts(kClassHandle);
+    if (!class_counts.has_value() ||
+        class_counts->local != 1U ||
+        class_counts->global != 0U) {
+        return fail("JNI FindClass retained wrong local reference count");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClassHandle;
+    if (service.handle(
+            memory,
+            kA32JniNewGlobalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != kClassHandle) {
+        return fail("JNI NewGlobalRef did not preserve opaque handle");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClassHandle;
+    if (service.handle(
+            memory,
+            kA32JniDeleteLocalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("JNI DeleteLocalRef rejected live local reference");
+    }
+    class_counts = registry.reference_counts(kClassHandle);
+    if (!class_counts.has_value() ||
+        class_counts->local != 0U ||
+        class_counts->global != 1U) {
+        return fail("JNI reference kinds were not tracked independently");
+    }
+
+    for (std::size_t index = 0U; index < 2U; ++index) {
+        regs = {};
+        regs[0] = configured.jni_env_address;
+        regs[1] = kClassHandle;
+        const auto disposition = service.handle(
+            memory,
+            kA32JniNewGlobalRefSvcImmediate,
+            regs,
+            cpsr);
+        if (disposition != A32HostServiceDisposition::Handled) {
+            return fail("JNI NewGlobalRef service failed");
+        }
+        if (index == 0U && regs[0] != kClassHandle) {
+            return fail("JNI NewGlobalRef rejected live global reference");
+        }
+        if (index == 1U && regs[0] != 0U) {
+            return fail("JNI NewGlobalRef exceeded reference count limit");
+        }
+    }
+
+    for (std::size_t index = 0U; index < 2U; ++index) {
+        regs = {};
+        regs[0] = configured.jni_env_address;
+        regs[1] = kClassHandle;
+        if (service.handle(
+                memory,
+                kA32JniDeleteGlobalRefSvcImmediate,
+                regs,
+                cpsr) != A32HostServiceDisposition::Handled) {
+            return fail("JNI DeleteGlobalRef rejected live global reference");
+        }
+    }
+    class_counts = registry.reference_counts(kClassHandle);
+    if (!class_counts.has_value() ||
+        class_counts->local != 0U ||
+        class_counts->global != 0U) {
+        return fail("JNI reference deletion did not reach dead state");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClassHandle;
+    if (service.handle(
+            memory,
+            kA32JniNewGlobalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI NewGlobalRef revived dead reference");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = 0U;
+    if (service.handle(
+            memory,
+            kA32JniNewGlobalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI NewGlobalRef null behavior is wrong");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = 0U;
+    if (service.handle(
+            memory,
+            kA32JniDeleteLocalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("JNI DeleteLocalRef rejected null");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kObjectHandle;
+    if (service.handle(
+            memory,
+            kA32JniNewGlobalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != kObjectHandle) {
+        return fail("JNI reference service was class-specific");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = 0x99887766U;
+    if (service.handle(
+            memory,
+            kA32JniDeleteGlobalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI DeleteGlobalRef accepted unknown reference");
+    }
+
     return 0;
 }
 
@@ -1075,6 +1299,10 @@ int test_exact_object_onload_and_version_validation() {
 
 int main() {
     if (const int status = test_vm_install_and_getenv();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_strong_reference_lifetime();
         status != 0) {
         return status;
     }

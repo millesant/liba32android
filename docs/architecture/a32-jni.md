@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: member IDs validated; evidence-backed JavaVM AttachCurrentThread/DetachCurrentThread slice in progress
+Status: member IDs + JavaVM attach/detach validated; evidence-backed strong/local reference slice in progress
 
 ## Goal
 
@@ -22,10 +22,16 @@ The JavaVM invocation table follows the Android ABI and now publishes
 AttachCurrentThread at slot 4 / byte offset `0x10`, DetachCurrentThread at
 slot 5 / byte offset `0x14`, and GetEnv at slot 6 / byte offset `0x18`.
 
-The JNIEnv native table now spans slots 0 through 215 so the first two
-evidence-backed entries can be published at their real positions:
+The JNIEnv native table spans slots 0 through 215. Current evidence-backed
+entries include:
 
 - `FindClass` — slot 6 / byte offset `0x18`;
+- `NewGlobalRef` — slot 21 / byte offset `0x54`;
+- `DeleteGlobalRef` — slot 22 / byte offset `0x58`;
+- `DeleteLocalRef` — slot 23 / byte offset `0x5c`;
+- `GetMethodID` — slot 33 / byte offset `0x84`;
+- `GetFieldID` — slot 94 / byte offset `0x178`;
+- `GetStaticFieldID` — slot 144 / byte offset `0x240`;
 - `RegisterNatives` — slot 215 / byte offset `0x35c`.
 
 Unsupported entries remain null.
@@ -55,7 +61,10 @@ The current private guest/host service immediates are:
 - `0xDB` — JNIEnv::GetFieldID;
 - `0xDC` — JNIEnv::GetStaticFieldID;
 - `0xDD` — JavaVM::AttachCurrentThread;
-- `0xDE` — JavaVM::DetachCurrentThread.
+- `0xDE` — JavaVM::DetachCurrentThread;
+- `0xDF` — JNIEnv::NewGlobalRef;
+- `0xE0` — JNIEnv::DeleteGlobalRef;
+- `0xE1` — JNIEnv::DeleteLocalRef.
 
 Each guest stub is a minimal ARM `svc; bx lr` sequence. Unknown SVC immediates
 remain unhandled.
@@ -83,13 +92,34 @@ general host-thread registry. Installation starts attached. Detach transitions
 the context to detached; GetEnv then returns JNI_EDETACHED for supported
 versions without touching `*env`. AttachCurrentThread writes the configured
 logical JNIEnv pointer and restores attached state. JNIEnv-native services are
-rejected while detached.
+rejected while detached. Exact-head validation at
+`35168f13294de7f88ed7b7054f0b08f1c9f5e7e9` passed all 11 required checks.
 
 AttachCurrentThreadAsDaemon, JavaVMAttachArgs semantics, multiple host threads,
 and thread-local Java reference state remain outside this slice.
 
 See
 [ARM32 JNI JavaVM thread entrypoint evidence](../research/evidence/arm32-jni-thread-entrypoints-2026-09-29.md).
+
+## Strong/local reference bookkeeping
+
+Supplied ARMv7 `libmla.so` wrappers directly identify NewGlobalRef at JNIEnv
+slot 21 / offset `0x54`, DeleteGlobalRef at slot 22 / `0x58`, and
+DeleteLocalRef at slot 23 / `0x5c`.
+
+The bounded registry keeps opaque logical object identities with independent
+local/global counts. Class registration establishes an identity with zero live
+counts; successful FindClass retains one local reference. NewGlobalRef promotes
+a known live identity by incrementing the global count and returns the same
+opaque logical handle. DeleteLocalRef/DeleteGlobalRef release only their
+respective counts. Null follows JNI no-op/null semantics.
+
+The representation is intentionally APK-agnostic and never exposes host
+pointers. Full GC, weak refs, local frames, cross-thread local refs, and
+universal liveness enforcement are separate work.
+
+See
+[ARM32 JNI reference entrypoint evidence](../research/evidence/arm32-jni-reference-entrypoints-2026-09-29.md).
 
 ## Class registry and FindClass
 

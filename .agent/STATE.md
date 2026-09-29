@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-thread-attach-detach` — ACTIVE; add the supplied
-  ARMv7-evidenced JavaVM AttachCurrentThread/DetachCurrentThread state seam while
-  preserving bounded single-context semantics.
+- `post-roadmap-a32-jni-strong-references` — ACTIVE; add the supplied
+  ARMv7-evidenced NewGlobalRef/DeleteGlobalRef/DeleteLocalRef seam with bounded
+  APK-agnostic logical reference bookkeeping.
 
 ## Phase
 
@@ -76,10 +76,18 @@ GetStaticFieldID slot 144; the implementation publishes those exact entries and
 uses caller-seeded logical member handles with exact class/kind/name/signature
 lookup. All 11 exact-head checks passed.
 
-The active JavaVM thread slice is likewise evidence-driven: the same supplied
-ARMv7 library loads AttachCurrentThread from slot 4 / offset `0x10` and
-DetachCurrentThread from slot 5 / offset `0x14`, beside the existing GetEnv
-slot 6 / offset `0x18`.
+The bounded JavaVM thread slice is DONE at
+`35168f13294de7f88ed7b7054f0b08f1c9f5e7e9`. The supplied ARMv7 library
+proved AttachCurrentThread slot 4 / offset `0x10` and DetachCurrentThread slot
+5 / offset `0x14`; the implementation models one attached/detached guest JNI
+context, returns JNI_EDETACHED from GetEnv while detached, and passed all 11
+exact-head checks.
+
+The active reference slice is again driven by supplied `libmla.so`: machine
+code loads NewGlobalRef from slot 21 / offset `0x54`, DeleteGlobalRef from slot
+22 / `0x58`, and DeleteLocalRef from slot 23 / `0x5c`. The same library
+contains NewWeakGlobalRef at slot 226, but no matching DeleteWeakGlobalRef
+wrapper was found in the targeted pass, so weak references remain deferred.
 
 ## Public repository readiness
 
