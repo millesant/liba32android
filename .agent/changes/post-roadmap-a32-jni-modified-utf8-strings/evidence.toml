@@ -1,0 +1,20 @@
+schema = 1
+change = "post-roadmap-a32-jni-modified-utf8-strings"
+
+[[evidence]]
+id = "libmla-string-slots"
+kind = "artifact"
+status = "observed"
+claim = "Supplied ARMv7 libmla directly uses NewStringUTF/GetStringUTFChars/ReleaseStringUTFChars."
+source = "docs/research/evidence/arm32-jni-modified-utf8-entrypoints-2026-09-29.md"
+result = "JNIEnv offsets 0x29c, 0x2a4, 0x2a8 map to slots 167, 169, 170."
+limitations = "UTF-16 and broader String behavior are outside this slice."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "pending"
+claim = "The string slice passes focused and exact-head validation."
+source = "GitHub commit checks"
+result = ""
+limitations = "Pending exact-head execution."

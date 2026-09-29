@@ -3,6 +3,8 @@ typedef void* jobject;
 typedef jobject jclass;
 typedef jobject jarray;
 typedef jobject jfieldID;
+typedef jobject jstring;
+typedef unsigned char jboolean;
 
 typedef struct JNIEnv_ JNIEnv;
 typedef struct JavaVM_ JavaVM;
@@ -30,7 +32,11 @@ struct JNINativeInterface {
         JNIEnv*, jclass, const char*, const char*);
     void* reserved145_to_149[5];
     jint (*GetStaticIntField)(JNIEnv*, jclass, jfieldID);
-    void* reserved151_to_170[20];
+    void* reserved151_to_166[16];
+    jstring (*NewStringUTF)(JNIEnv*, const char*);
+    void* reserved168;
+    const char* (*GetStringUTFChars)(JNIEnv*, jstring, jboolean*);
+    void (*ReleaseStringUTFChars)(JNIEnv*, jstring, const char*);
     jint (*GetArrayLength)(JNIEnv*, jarray);
     void* reserved172_to_214[43];
     jint (*RegisterNatives)(
@@ -82,6 +88,8 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     jclass fixture_class;
     jobject global_class;
     jfieldID answer_field;
+    jstring message;
+    const char* message_chars;
     JNINativeMethod method;
 
     if (vm == (JavaVM*)0 || reserved != (void*)0) {
@@ -121,6 +129,29 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
             answer_field) != 42) {
         return JNI_ERR;
     }
+
+    message = env->functions->NewStringUTF(env, "hello");
+    if (message == (jstring)0) {
+        return JNI_ERR;
+    }
+    message_chars = env->functions->GetStringUTFChars(
+        env,
+        message,
+        (jboolean*)0);
+    if (message_chars == (const char*)0 ||
+        message_chars[0] != 'h' ||
+        message_chars[1] != 'e' ||
+        message_chars[2] != 'l' ||
+        message_chars[3] != 'l' ||
+        message_chars[4] != 'o' ||
+        message_chars[5] != '\0') {
+        return JNI_ERR;
+    }
+    env->functions->ReleaseStringUTFChars(
+        env,
+        message,
+        message_chars);
+    env->functions->DeleteLocalRef(env, message);
 
     global_class = env->functions->NewGlobalRef(
         env,

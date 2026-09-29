@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: seeded GetArrayLength validated; evidence-backed GetStaticIntField slice in progress
+Status: GetStaticIntField validated; evidence-backed modified-UTF-8 string slice in progress
 
 ## Goal
 
@@ -33,6 +33,9 @@ entries include:
 - `GetFieldID` — slot 94 / byte offset `0x178`;
 - `GetStaticFieldID` — slot 144 / byte offset `0x240`;
 - `GetStaticIntField` — slot 150 / byte offset `0x258`;
+- `NewStringUTF` — slot 167 / byte offset `0x29c`;
+- `GetStringUTFChars` — slot 169 / byte offset `0x2a4`;
+- `ReleaseStringUTFChars` — slot 170 / byte offset `0x2a8`;
 - `GetArrayLength` — slot 171 / byte offset `0x2ac`;
 - `RegisterNatives` — slot 215 / byte offset `0x35c`.
 
@@ -68,7 +71,10 @@ The current private guest/host service immediates are:
 - `0xE0` — JNIEnv::DeleteGlobalRef;
 - `0xE1` — JNIEnv::DeleteLocalRef;
 - `0xE2` — JNIEnv::GetArrayLength;
-- `0xE3` — JNIEnv::GetStaticIntField.
+- `0xE3` — JNIEnv::GetStaticIntField;
+- `0xE4` — JNIEnv::NewStringUTF;
+- `0xE5` — JNIEnv::GetStringUTFChars;
+- `0xE6` — JNIEnv::ReleaseStringUTFChars.
 
 Each guest stub is a minimal ARM `svc; bx lr` sequence. Unknown SVC immediates
 remain unhandled.
@@ -220,6 +226,30 @@ framework behavior are encoded in `src/compat`.
 
 See
 [ARM32 JNI GetStaticIntField evidence](../research/evidence/arm32-jni-static-int-field-entrypoint-2026-09-29.md).
+
+## Modified-UTF-8 strings
+
+Supplied ARMv7 `libmla.so` directly identifies NewStringUTF at JNIEnv slot
+167 / offset `0x29c`, GetStringUTFChars at slot 169 / `0x2a4`, and
+ReleaseStringUTFChars at slot 170 / `0x2a8`.
+
+NewStringUTF copies one bounded guest byte payload into owned registry storage
+and allocates a synthetic logical jstring handle from a caller-configurable
+range. The handle participates in the generic local/global reference ledger;
+host string pointers are never guest-visible.
+
+GetStringUTFChars copies the stored bytes plus NUL into one caller-owned mapped
+guest scratch region and reports JNI_TRUE through non-null `isCopy`. This
+bounded slice allows one outstanding UTF-char lease at a time.
+ReleaseStringUTFChars requires the exact leased string/scratch pair and closes
+that lease.
+
+The slice preserves byte payloads as supplied. UTF-16 conversion, full
+modified-UTF-8 validation, GetStringUTFLength, region APIs, and multiple
+simultaneous leases remain separate.
+
+See
+[ARM32 JNI modified-UTF-8 evidence](../research/evidence/arm32-jni-modified-utf8-entrypoints-2026-09-29.md).
 
 ## Reverse native dispatch
 

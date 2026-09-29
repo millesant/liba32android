@@ -230,6 +230,11 @@ int main(int argc, char** argv) {
         .delete_local_ref_stub_address = *stub_page + 0x140U,
         .get_array_length_stub_address = *stub_page + 0x160U,
         .get_static_int_field_stub_address = *stub_page + 0x180U,
+        .new_string_utf_stub_address = *stub_page + 0x1a0U,
+        .get_string_utf_chars_stub_address = *stub_page + 0x1c0U,
+        .release_string_utf_chars_stub_address = *stub_page + 0x1e0U,
+        .string_utf_scratch_address = *data_page + 0x800U,
+        .string_utf_scratch_bytes = 128U,
     };
     constexpr std::uint32_t kFixtureClassHandle = 0x44550000U;
     constexpr std::uint32_t kFixtureStaticFieldHandle = 0x44551000U;
@@ -285,7 +290,7 @@ int main(int argc, char** argv) {
         .stack_top = stack_top,
         .return_pc = *stop,
         .max_instructions = 1024U,
-        .max_service_calls = 9U,
+        .max_service_calls = 13U,
         .symbols = symbol_options(),
         .execution_context = &execution_context,
     };
@@ -300,7 +305,7 @@ int main(int argc, char** argv) {
         result.returned_version != kA32JniVersion16 ||
         !result.execution.has_value() ||
         !result.execution->stop_pc_reached ||
-        result.execution->services_handled != 9U ||
+        result.execution->services_handled != 13U ||
         !handler.saw_expected_context() ||
         execution_context.object_index.has_value()) {
         const std::uint32_t failing_svc =
@@ -328,6 +333,11 @@ int main(int argc, char** argv) {
             kFixtureStaticFieldHandle);
     if (!static_int.has_value() || *static_int != 42) {
         return fail("ARM32 JNI_OnLoad lost seeded static-int value");
+    }
+
+    if (registry.string_count() != 1U ||
+        vm.utf_chars_lease_active()) {
+        return fail("ARM32 JNI_OnLoad lost/released string state incorrectly");
     }
 
     const auto reference_counts =
@@ -400,6 +410,10 @@ int main(int argc, char** argv) {
         << *array_length << '\n'
         << "fixture.jni.static_int="
         << *static_int << '\n'
+        << "fixture.jni.string_count="
+        << registry.string_count() << '\n'
+        << "fixture.jni.utf_lease="
+        << (vm.utf_chars_lease_active() ? 1 : 0) << '\n'
         << "fixture.jni.status=PASS\n";
     return 0;
 }

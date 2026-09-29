@@ -40,6 +40,9 @@ using liba32android::compat::kA32JniDeleteGlobalRefSvcImmediate;
 using liba32android::compat::kA32JniDeleteLocalRefSvcImmediate;
 using liba32android::compat::kA32JniGetArrayLengthSvcImmediate;
 using liba32android::compat::kA32JniGetStaticIntFieldSvcImmediate;
+using liba32android::compat::kA32JniNewStringUtfSvcImmediate;
+using liba32android::compat::kA32JniGetStringUtfCharsSvcImmediate;
+using liba32android::compat::kA32JniReleaseStringUtfCharsSvcImmediate;
 using liba32android::compat::kA32JniOk;
 using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
@@ -125,6 +128,11 @@ A32JniVmLayout layout() {
         .delete_local_ref_stub_address = 0x1940U,
         .get_array_length_stub_address = 0x1960U,
         .get_static_int_field_stub_address = 0x1980U,
+        .new_string_utf_stub_address = 0x19a0U,
+        .get_string_utf_chars_stub_address = 0x19c0U,
+        .release_string_utf_chars_stub_address = 0x19e0U,
+        .string_utf_scratch_address = 0x1c00U,
+        .string_utf_scratch_bytes = 64U,
     };
 }
 
@@ -192,6 +200,12 @@ int test_vm_install_and_getenv() {
             configured.get_static_field_id_stub_address ||
         read_u32(memory, configured.native_table_address + 150U * 4U) !=
             configured.get_static_int_field_stub_address ||
+        read_u32(memory, configured.native_table_address + 167U * 4U) !=
+            configured.new_string_utf_stub_address ||
+        read_u32(memory, configured.native_table_address + 169U * 4U) !=
+            configured.get_string_utf_chars_stub_address ||
+        read_u32(memory, configured.native_table_address + 170U * 4U) !=
+            configured.release_string_utf_chars_stub_address ||
         read_u32(memory, configured.native_table_address + 171U * 4U) !=
             configured.get_array_length_stub_address ||
         read_u32(memory, configured.native_table_address + 215U * 4U) !=
@@ -218,6 +232,9 @@ int test_vm_install_and_getenv() {
             index == 94U ||
             index == 144U ||
             index == 150U ||
+            index == 167U ||
+            index == 169U ||
+            index == 170U ||
             index == 171U ||
             index == 215U) {
             continue;
@@ -229,7 +246,7 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::array<std::uint8_t, 8>, 13> expected_stubs{{
+    constexpr std::array<std::array<std::uint8_t, 8>, 16> expected_stubs{{
         {{0xD7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD8U, 0x00U, 0x00U, 0xEFU,
@@ -256,8 +273,14 @@ int test_vm_install_and_getenv() {
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xE3U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xE4U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xE5U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xE6U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    const std::array<std::uint32_t, 13> stub_addresses{{
+    const std::array<std::uint32_t, 16> stub_addresses{{
         configured.get_env_stub_address,
         configured.find_class_stub_address,
         configured.register_natives_stub_address,
@@ -271,6 +294,9 @@ int test_vm_install_and_getenv() {
         configured.delete_local_ref_stub_address,
         configured.get_array_length_stub_address,
         configured.get_static_int_field_stub_address,
+        configured.new_string_utf_stub_address,
+        configured.get_string_utf_chars_stub_address,
+        configured.release_string_utf_chars_stub_address,
     }};
     for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
         std::array<std::uint8_t, 8> observed_stub{};
@@ -461,7 +487,7 @@ int test_vm_install_and_getenv() {
     regs = {};
     if (service.handle(
             memory,
-            kA32JniGetStaticIntFieldSvcImmediate + 1U,
+            kA32JniReleaseStringUtfCharsSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
@@ -900,6 +926,198 @@ int test_static_int_field_value() {
             42) != A32JniRegistryError::None ||
         registry.static_int_field_value(kStaticField).value_or(0) != 42) {
         return fail("JNI static-int field update was not deterministic");
+    }
+
+    return 0;
+}
+
+int test_modified_utf8_strings() {
+    LinearGuestMemory memory{0x1000U, 0x1000U};
+    const A32JniRegistryLimits limits{
+        .max_classes = 2U,
+        .max_registered_methods = 2U,
+        .max_methods_per_registration = 2U,
+        .max_member_ids = 2U,
+        .max_reference_handles = 4U,
+        .max_reference_count_per_handle = 4U,
+        .max_arrays = 2U,
+        .max_strings = 2U,
+        .max_modified_utf8_bytes = 8U,
+        .dynamic_string_handle_base = 0x44570000U,
+        .dynamic_string_handle_stride = 4U,
+        .max_class_name_bytes = 32U,
+        .max_method_name_bytes = 32U,
+        .max_signature_bytes = 32U,
+    };
+    A32JniClassRegistry registry{limits};
+    if (registry.add_reference_identity(0x44570000U) !=
+        A32JniRegistryError::None) {
+        return fail("could not seed JNI dynamic-string handle collision");
+    }
+
+    const auto configured = layout();
+    A32JniVmService service{configured, &registry};
+    if (!service.install(memory)) {
+        return fail("JNI modified-UTF8 service did not install");
+    }
+
+    constexpr std::uint32_t kHello = 0x1600U;
+    constexpr std::uint32_t kEmpty = 0x1620U;
+    constexpr std::uint32_t kTooLong = 0x1640U;
+    constexpr std::uint32_t kIsCopy = 0x1680U;
+    if (!write_c_string(memory, kHello, "hello") ||
+        !write_c_string(memory, kEmpty, "") ||
+        !write_c_string(memory, kTooLong, "123456789")) {
+        return fail("could not stage JNI modified-UTF8 inputs");
+    }
+
+    std::uint32_t cpsr{};
+    std::array<std::uint32_t, 16> regs{};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kHello;
+    if (service.handle(
+            memory,
+            kA32JniNewStringUtfSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0x44570004U ||
+        registry.string_count() != 1U) {
+        return fail("JNI NewStringUTF did not allocate bounded logical string");
+    }
+    const std::uint32_t string_handle = regs[0];
+    const auto* info =
+        registry.find_modified_utf8_string(string_handle);
+    const auto counts = registry.reference_counts(string_handle);
+    if (info == nullptr ||
+        info->modified_utf8 != "hello" ||
+        !counts.has_value() ||
+        counts->local != 1U ||
+        counts->global != 0U) {
+        return fail("JNI NewStringUTF lost string/reference metadata");
+    }
+
+    if (!write_u32(memory, kIsCopy, 0U)) {
+        return fail("could not seed JNI isCopy output");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = string_handle;
+    regs[2] = kIsCopy;
+    if (service.handle(
+            memory,
+            kA32JniGetStringUtfCharsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != configured.string_utf_scratch_address ||
+        !service.utf_chars_lease_active()) {
+        return fail("JNI GetStringUTFChars did not publish scratch copy");
+    }
+    std::array<std::uint8_t, 6> observed{};
+    const std::array<std::uint8_t, 6> expected{{
+        'h', 'e', 'l', 'l', 'o', 0U,
+    }};
+    std::array<std::uint8_t, 1> is_copy{};
+    if (!memory.read(configured.string_utf_scratch_address, observed) ||
+        observed != expected ||
+        !memory.read(kIsCopy, is_copy) ||
+        is_copy[0] != 1U) {
+        return fail("JNI GetStringUTFChars published wrong bytes/isCopy");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = string_handle;
+    if (service.handle(
+            memory,
+            kA32JniGetStringUtfCharsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI GetStringUTFChars allowed overlapping scratch lease");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = string_handle;
+    regs[2] = configured.string_utf_scratch_address + 4U;
+    if (service.handle(
+            memory,
+            kA32JniReleaseStringUtfCharsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        !service.utf_chars_lease_active()) {
+        return fail("JNI ReleaseStringUTFChars accepted wrong pointer");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = string_handle;
+    regs[2] = configured.string_utf_scratch_address;
+    if (service.handle(
+            memory,
+            kA32JniReleaseStringUtfCharsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        service.utf_chars_lease_active()) {
+        return fail("JNI ReleaseStringUTFChars did not release lease");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = string_handle;
+    if (service.handle(
+            memory,
+            kA32JniDeleteLocalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("JNI string local reference could not be deleted");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = string_handle;
+    if (service.handle(
+            memory,
+            kA32JniGetStringUtfCharsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI GetStringUTFChars revived dead string reference");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kTooLong;
+    if (service.handle(
+            memory,
+            kA32JniNewStringUtfSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI NewStringUTF accepted over-limit input");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kEmpty;
+    if (service.handle(
+            memory,
+            kA32JniNewStringUtfSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] == 0U ||
+        registry.string_count() != 2U) {
+        return fail("JNI NewStringUTF rejected empty modified-UTF8 string");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kHello;
+    if (service.handle(
+            memory,
+            kA32JniNewStringUtfSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI NewStringUTF exceeded bounded string count");
     }
 
     return 0;
@@ -1563,6 +1781,10 @@ int main() {
         return status;
     }
     if (const int status = test_static_int_field_value();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_modified_utf8_strings();
         status != 0) {
         return status;
     }

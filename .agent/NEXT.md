@@ -10,20 +10,20 @@ at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c. Licensing is no longer an OSS-readi
 
 ## Active JNI track
 
-Continue `post-roadmap-a32-jni-static-int-field`.
+Continue `post-roadmap-a32-jni-modified-utf8-strings`.
 
-The seeded GetArrayLength slice is complete at
-`db558233a50eb79c21e65792dea4a4b74bd72d89` with 11/11 checks green.
+The GetStaticIntField slice is complete at
+`2aeb574f67dcd2b01e6593ed9947f50b528b9a76` with 11/11 checks green.
 
-Direct ARMv7 `libmla.so` evidence drives the next minimal Java-state seam:
+Direct ARMv7 `libmla.so` evidence drives the next bounded string seam:
 
-1. GetStaticIntField at JNIEnv slot 150 / offset `0x258`;
-2. caller-seeded signed 32-bit values attached only to existing StaticField
-   member IDs;
-3. exact class/field-kind/field-handle validation;
-4. real ARM32 JNI_OnLoad fixture path through GetStaticFieldID ->
-   GetStaticIntField with value 42;
-5. no package/class-specific runtime policy.
+1. NewStringUTF at JNIEnv slot 167 / offset `0x29c`;
+2. GetStringUTFChars at slot 169 / `0x2a4`;
+3. ReleaseStringUTFChars at slot 170 / `0x2a8`;
+4. bounded synthetic logical jstring handles and owned byte payloads;
+5. one caller-owned guest scratch region and one outstanding UTF-char lease;
+6. real pinned-NDK ARM32 JNI_OnLoad round-trip of `"hello"`.
 
-Do not infer SetStaticIntField, instance field values, Java method invocation,
-reflection, inheritance, or framework state into this slice.
+Do not infer UTF-16 APIs, GetStringUTFLength, region APIs, multiple simultaneous
+leases, Unicode normalization, or a complete Java String runtime into this
+slice.

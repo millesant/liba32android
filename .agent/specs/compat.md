@@ -1237,3 +1237,28 @@ SetStaticIntField, instance field access, Java method invocation, object
 construction, inheritance, reflection, and framework-specific state remain
 separate.
 
+## L32-C043 — ARM32 JNI bounded modified-UTF-8 strings
+
+Supplied ARMv7 machine code identifies JNIEnv NewStringUTF at slot 167 / byte
+offset `0x29c`, GetStringUTFChars at slot 169 / `0x2a4`, and
+ReleaseStringUTFChars at slot 170 / `0x2a8`. The guest JNIEnv table publishes
+those exact entries through distinct private ARM service stubs.
+
+The bounded JNI registry owns a finite set of logical jstring entries. A
+NewStringUTF call reads one bounded NUL-terminated guest byte sequence, copies
+the payload into owned storage, allocates a collision-free logical 32-bit handle
+from a caller-configurable base/stride range, and retains one local reference.
+Exhaustion returns null rather than exposing host identity.
+
+The VM layout includes one caller-owned mapped writable guest scratch region for
+UTF chars. GetStringUTFChars requires a known live string and no outstanding
+lease, copies the stored bytes plus NUL into that region, writes JNI_TRUE through
+a non-null isCopy pointer, returns the logical scratch address, and records the
+leased string handle. ReleaseStringUTFChars succeeds only for the exact leased
+string and exact scratch pointer, then clears the lease.
+
+The slice preserves input bytes as supplied. It does not claim full
+modified-UTF-8 validation or normalization, UTF-16 conversion, GetStringUTFLength,
+region APIs, multiple simultaneous UTF-char leases, pinning semantics, or a
+complete Java String implementation.
+

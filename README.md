@@ -162,9 +162,10 @@ For ownership/dependency rules, see
 
 The public roadmap is in [ROADMAP.md](ROADMAP.md). The immediate compatibility
 track has completed the first class/native-registration, member-ID,
-JavaVM attach/detach, strong/local-reference, and seeded GetArrayLength seams.
-Current work is adding the observed GetStaticIntField boundary before broader
-field/method, string/array, and exception behavior.
+JavaVM attach/detach, strong/local-reference, seeded GetArrayLength, and
+GetStaticIntField seams. Current work is adding the observed
+NewStringUTF/GetStringUTFChars/ReleaseStringUTFChars boundary before broader
+string/array, field/method, and exception behavior.
 
 ## Contributing
 

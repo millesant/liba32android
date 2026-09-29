@@ -23,13 +23,14 @@ Implemented and regression-tested foundations include:
 ## Active track: JNI compatibility
 
 The first registration, observed member-ID, bounded JavaVM attach/detach,
-strong/local-reference, and seeded GetArrayLength steps are complete. Direct
-supplied-binary evidence now drives a minimal static field-value step:
+strong/local-reference, seeded GetArrayLength, and GetStaticIntField steps are
+complete. Direct supplied-binary evidence now drives a bounded modified-UTF-8
+string step:
 
-1. GetStaticIntField over caller-seeded StaticField IDs/values;
+1. NewStringUTF/GetStringUTFChars/ReleaseStringUTFChars;
 2. remaining reference lifetime, including weak/local-frame behavior when
    balanced evidence exists;
-3. strings and modified UTF-8 APIs;
+3. remaining string APIs, including UTF-16/length/region behavior;
 4. primitive/object arrays beyond seeded length metadata;
 5. pending exception state and exception operations;
 6. object creation and method-call families;

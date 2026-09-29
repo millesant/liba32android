@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-static-int-field` — ACTIVE; add the supplied
-  ARMv7-evidenced GetStaticIntField slot over bounded caller-seeded static-field
-  state.
+- `post-roadmap-a32-jni-modified-utf8-strings` — ACTIVE; add the supplied
+  ARMv7-evidenced NewStringUTF/GetStringUTFChars/ReleaseStringUTFChars seam with
+  bounded APK-agnostic logical strings and one guest UTF scratch lease.
 
 ## Phase
 
@@ -96,10 +96,17 @@ proved slot 171 / offset `0x2ac`; the caller-seeded logical array registry and
 real pinned-NDK ARM32 fixture both observed the exact length 7. All 11
 exact-head checks passed.
 
-The active field-value slice is also direct evidence: supplied `libmla.so`
-loads GetStaticIntField from JNIEnv slot 150 / offset `0x258`. The runtime
-stores only caller-seeded signed 32-bit values against existing StaticField
-member IDs, keeping the compatibility layer APK-agnostic.
+The bounded static-int field slice is DONE at
+`2aeb574f67dcd2b01e6593ed9947f50b528b9a76`. Supplied `libmla.so`
+proved GetStaticIntField slot 150 / offset `0x258`; the runtime stores only
+caller-seeded signed 32-bit values against existing StaticField member IDs, and
+all 11 exact-head checks passed.
+
+The active string slice is direct evidence from the same supplied ARMv7
+library: NewStringUTF uses slot 167 / `0x29c`, GetStringUTFChars uses slot 169 /
+`0x2a4`, and ReleaseStringUTFChars uses slot 170 / `0x2a8`. The runtime
+remains APK-agnostic: string handles are synthetic logical guest identities,
+payloads are bounded owned bytes, and host string pointers are never exposed.
 
 ## Public repository readiness
 
