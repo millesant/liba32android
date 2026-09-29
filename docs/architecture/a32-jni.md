@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: instance-long fields validated; evidence-backed ThrowNew slice in progress
+Status: ThrowNew validated; evidence-backed CallVoidMethodV slice in progress
 
 ## Goal
 
@@ -31,6 +31,7 @@ entries include:
 - `DeleteGlobalRef` — slot 22 / byte offset `0x58`;
 - `DeleteLocalRef` — slot 23 / byte offset `0x5c`;
 - `GetMethodID` — slot 33 / byte offset `0x84`;
+- `CallVoidMethodV` — slot 62 / byte offset `0xf8`;
 - `GetFieldID` — slot 94 / byte offset `0x178`;
 - `GetLongField` — slot 101 / byte offset `0x194`;
 - `SetLongField` — slot 110 / byte offset `0x1b8`;
@@ -94,7 +95,8 @@ The current private guest/host service immediates are:
 - `0xED` — JNIEnv::SetObjectArrayElement;
 - `0xEE` — JNIEnv::GetLongField;
 - `0xEF` — JNIEnv::SetLongField;
-- `0xF0` — JNIEnv::ThrowNew.
+- `0xF0` — JNIEnv::ThrowNew;
+- `0xF1` — JNIEnv::CallVoidMethodV.
 
 Each guest stub is a minimal ARM `svc; bx lr` sequence. Unknown SVC immediates
 remain unhandled.
@@ -368,6 +370,35 @@ ExceptionOccurred/Check/Clear/Describe behavior is claimed here.
 See
 [ARM32 JNI ThrowNew evidence](../research/evidence/arm32-jni-throw-new-entrypoint-2026-09-29.md).
 
+Exact-head validation at
+`361b9ffb044d5ed4a6cdfa080f3e93bec7893c9d` passed all 11 required checks.
+
+## CallVoidMethodV bridge
+
+The supplied VLC ARMv7 `libmla.so` C++ `_JNIEnv::CallVoidMethod(...)`
+wrapper directly loads native-table byte offset `0xf8`, slot 62, then calls
+that function as CallVoidMethodV with JNIEnv, receiver, method ID, and the
+constructed ARM32 `va_list` in r0-r3.
+
+The compatibility service publishes that exact V slot through private SVC
+`0xF1`. It requires a live logical receiver and an existing InstanceMethod ID.
+The method descriptor drives a bounded ARM32 `va_list` decoder: promoted
+32-bit integral values consume one word, jlong/jdouble values use AAPCS32
+8-byte alignment, jfloat is consumed as its C default-promoted double and
+narrowed, and object/array descriptors produce logical reference handles.
+
+Decoded arguments are normalized into typed logical values and passed to a
+caller-owned `A32JniMethodCallBridge`. The bridge is the Java-behavior
+boundary; liba32android does not fabricate a Java VM implementation. Non-null
+reference arguments must already be live in the bounded reference ledger.
+
+Raw variadic CallVoidMethod slot 61, CallVoidMethodA, return-valued/static or
+nonvirtual method families, NewObject, inheritance/virtual dispatch, and Java
+framework behavior remain separate.
+
+See
+[ARM32 JNI CallVoidMethodV evidence](../research/evidence/arm32-jni-call-void-method-v-entrypoint-2026-09-29.md).
+
 ## Reverse native dispatch
 
 `invoke_a32_registered_native_noargs` is the first deliberately narrow
@@ -423,10 +454,12 @@ including the ARM32 JNI registration integration.
 
 ## Limits
 
-The current slice does not provide general Java object/reference lifetime,
-member IDs, strings/arrays, pending exceptions, Java method/field calls,
-general native argument marshalling, thread attach/detach, JNI_OnUnload,
-framework classes, graphics, or audio.
+The current compatibility surface still does not provide a general Java object
+runtime, inheritance/virtual dispatch, raw/A-form or return-valued method-call
+families, general native argument marshalling, JNI_OnUnload, framework classes,
+graphics, or audio. Existing references, members, strings/arrays, fields,
+thread attachment, pending ThrowNew state, and CallVoidMethodV are deliberately
+bounded seams rather than full Java semantics.
 
 ## Continuous JNI roadmap
 

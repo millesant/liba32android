@@ -1,31 +1,28 @@
-# Next Work
-
-The numbered 011-049 roadmap is COMPLETE.
-
-`post-roadmap-oss-readiness` is DONE with exact-head local and GitHub Actions
-validation at `d8564a7a465f1099e8c8b415997f0d1812e2998e`.
-
-Apache-2.0 licensing is DONE with GitHub recognition and exact-head validation
-at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c. Licensing is no longer an OSS-readiness blocker.
+# NEXT
 
 ## Active JNI track
 
-Continue `post-roadmap-a32-jni-throw-new`.
+Continue `post-roadmap-a32-jni-call-void-method-v` from validated ThrowNew
+revision `361b9ffb044d5ed4a6cdfa080f3e93bec7893c9d`.
 
-The instance-long-field slice is complete at
-`114d9d104ee82d1e30aa78fa785c8b389e8630db` with 11/11 checks green.
+The supplied VLC ARMv7 `libmla.so` proves that its C++ variadic
+`_JNIEnv::CallVoidMethod(jobject, jmethodID, ...)` wrapper loads JNIEnv native
+slot 62 / byte offset `0xf8`, i.e. `CallVoidMethodV`, and forwards an ARM32
+`va_list` pointer in `r3`.
 
-Direct ARMv7 `libmla.so` evidence drives the next bounded exception seam:
+Keep this slice bounded to:
 
-1. ThrowNew at JNIEnv slot 14 / offset `0x38`;
-2. one pending logical exception as registered class + owned bounded message;
-3. live jclass validation and bounded guest message reads;
-4. first ThrowNew returns JNI_OK and records state;
-5. duplicate ThrowNew returns JNI_ERR without overwriting the original;
-6. host-side clear enables a future ExceptionClear/embedding boundary;
-7. focused coverage for table/stub bytes, liveness, bounds, unreadable memory,
-   duplicate preservation, clear, and rethrow.
+- publish only the evidence-backed `CallVoidMethodV` table entry;
+- validate a live receiver and an existing instance-method ID;
+- decode bounded JNI descriptors from the guest ARM32 `va_list`, including
+  AAPCS32 8-byte alignment and C default promotion of `jfloat` to `double`;
+- normalize decoded primitive/reference values into one host-call vector;
+- delegate Java-side behavior through a caller-owned method-call bridge;
+- keep raw variadic slot 61, NewObject, return-valued/static/nonvirtual method
+  families, inheritance/dispatch, and a general Java object runtime separate.
 
-Do not infer Throwable jobjects, stack traces, Java unwinding,
-ExceptionOccurred/Check/Clear/Describe, or broad pending-exception restrictions
-into this slice.
+## Validation
+
+After the implementation is committed, use exact-head checks first. Do not
+claim the new slice verified until all required checks for that exact head
+conclude success.

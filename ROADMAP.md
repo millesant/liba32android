@@ -24,18 +24,19 @@ Implemented and regression-tested foundations include:
 
 The first registration, observed member-ID, bounded JavaVM attach/detach,
 strong/local-reference, seeded GetArrayLength, GetStaticIntField,
-modified-UTF-8 string, jlong-array, object-array, and instance-long-field steps
-are complete. Direct supplied-binary evidence now drives one bounded exception
-seam:
+modified-UTF-8 string, jlong-array, object-array, instance-long-field, and
+ThrowNew pending-exception steps are complete. Direct supplied-binary evidence
+now drives the first bounded Java method-call seam:
 
-1. ThrowNew pending state over a live logical jclass plus owned message;
+1. CallVoidMethodV at observed slot 62 / offset `0xf8`, with bounded AAPCS32
+   `va_list` decoding and an embedding-owned call bridge;
 2. remaining reference lifetime, including weak/local-frame behavior when
    balanced evidence exists;
-3. object construction/method invocation and broader exception APIs;
+3. object construction and broader method invocation / exception APIs;
 4. remaining string/primitive-array/field families beyond the currently
    evidence-backed seams;
-5. pending exception state and exception operations;
-6. object creation and method-call families;
+5. remaining exception operations;
+6. remaining object creation and method-call families;
 7. remaining instance/static field operations;
 8. remaining JavaVM/thread calls where evidence requires them;
 9. direct buffers, critical access, and monitors;

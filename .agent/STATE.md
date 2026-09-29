@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-throw-new` — ACTIVE; add the supplied
-  ARMv7-evidenced ThrowNew slot with one bounded logical pending-exception
-  record and host-side clear boundary.
+- `post-roadmap-a32-jni-call-void-method-v` — ACTIVE; add the supplied
+  ARMv7-evidenced CallVoidMethodV slot with bounded AAPCS32 va_list decoding
+  and a caller-owned Java method-call bridge.
 
 ## Phase
 
@@ -130,10 +130,17 @@ jlong return bits, aligned guest `[sp]`/`[sp+4]` SetLongField decoding, and
 bounded values keyed by logical jobject + existing InstanceField ID. All 11
 exact-head checks passed.
 
-The active exception slice is direct evidence from supplied `libmla.so`:
-ThrowNew uses JNIEnv slot 14 / offset `0x38`. The runtime keeps one bounded
-logical pending exception as registered class identity plus owned message bytes;
-it does not create Throwable host objects or APK-specific exception policy.
+The bounded ThrowNew slice is DONE at
+`361b9ffb044d5ed4a6cdfa080f3e93bec7893c9d`. Supplied `libmla.so` proved JNIEnv slot 14 / offset `0x38`;
+the runtime keeps one bounded logical pending exception as registered class
+identity plus owned message bytes, and all 11 exact-head checks passed.
+
+The active method-call slice is direct evidence from the supplied VLC ARMv7
+`libmla.so`: its C++ `_JNIEnv::CallVoidMethod(...)` wrapper loads native
+table offset `0xf8`, slot 62 (`CallVoidMethodV`), and forwards the guest
+`va_list` in r3. The implementation remains APK-agnostic by decoding bounded
+JNI descriptors into logical values and delegating Java-side behavior through
+a caller-owned bridge.
 
 ## Public repository readiness
 

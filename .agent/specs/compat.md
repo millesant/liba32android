@@ -1365,3 +1365,36 @@ This slice does not create Throwable jobject identity, stack traces, Java
 unwinding, automatic propagation through all JNI calls, or
 ExceptionOccurred/ExceptionCheck/ExceptionClear/ExceptionDescribe.
 
+## L32-C048 — ARM32 JNI bounded CallVoidMethodV bridge
+
+Supplied ARMv7 machine code from the VLC `libmla.so` C++ JNI wrapper identifies
+JNIEnv CallVoidMethodV at slot 62 / byte offset `0xf8`. The wrapper accepts
+`CallVoidMethod(jobject, jmethodID, ...)`, constructs an ARM32 `va_list`,
+loads the function pointer at `0xf8`, and forwards JNIEnv, receiver, method ID,
+and the `va_list` pointer in r0-r3. The guest JNIEnv table publishes only that
+evidence-backed V entry in this slice; raw variadic CallVoidMethod slot 61
+remains null.
+
+CallVoidMethodV requires the exact configured JNIEnv, an attached context, a
+currently live non-null logical receiver, an existing InstanceMethod ID, a valid
+void-return JNI method descriptor, and a caller-owned method-call bridge.
+Missing or mismatched logical state fails rather than synthesizing Java
+dispatch.
+
+The guest `va_list` decoder is bounded by an explicit hard/configured argument
+ceiling. JNI boolean/byte/char/short/int arguments consume one 32-bit promoted
+word. Long and double consume 8-byte-aligned little-endian 64-bit values.
+Float consumes the C default-promoted double representation and is narrowed to
+jfloat bits before publication. Object and array descriptors consume one
+logical 32-bit reference handle; non-null reference arguments must be currently
+live. Nested arrays and object descriptors are validated structurally.
+
+Decoded values are normalized into an owned typed vector for one synchronous
+callback. The callback receives copied member metadata plus borrowed argument
+storage; no host pointer is published to the guest and the compatibility layer
+does not invent Java implementation behavior.
+
+Raw variadic CallVoidMethod, CallVoidMethodA, return-valued/static/nonvirtual
+Call families, NewObject, class inheritance/virtual dispatch, Java frames, and
+framework method implementations remain separate slices.
+

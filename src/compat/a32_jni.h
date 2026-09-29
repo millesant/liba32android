@@ -26,6 +26,7 @@
 #define LIBA32ANDROID_A32_JNI_GET_LONG_FIELD_SVC 0xEE
 #define LIBA32ANDROID_A32_JNI_SET_LONG_FIELD_SVC 0xEF
 #define LIBA32ANDROID_A32_JNI_THROW_NEW_SVC 0xF0
+#define LIBA32ANDROID_A32_JNI_CALL_VOID_METHOD_V_SVC 0xF1
 
 #ifdef __cplusplus
 
@@ -33,6 +34,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -97,6 +99,8 @@ inline constexpr std::uint32_t kA32JniSetLongFieldSvcImmediate =
     LIBA32ANDROID_A32_JNI_SET_LONG_FIELD_SVC;
 inline constexpr std::uint32_t kA32JniThrowNewSvcImmediate =
     LIBA32ANDROID_A32_JNI_THROW_NEW_SVC;
+inline constexpr std::uint32_t kA32JniCallVoidMethodVSvcImmediate =
+    LIBA32ANDROID_A32_JNI_CALL_VOID_METHOD_V_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -119,6 +123,7 @@ inline constexpr std::size_t kA32JniHardMaxLongArrayElements = 65536U;
 inline constexpr std::size_t kA32JniHardMaxObjectArrayElements = 65536U;
 inline constexpr std::size_t kA32JniHardMaxStrings = 4096U;
 inline constexpr std::size_t kA32JniHardMaxStringBytes = 4096U;
+inline constexpr std::size_t kA32JniHardMaxMethodArguments = 128U;
 
 // Android/Dalvik GetEnv accepts the inclusive numeric JNI 1.1..1.6
 // range. JNI_OnLoad is stricter and accepts only 1.2, 1.4, or 1.6.
@@ -155,6 +160,7 @@ struct A32JniRegistryLimits {
     std::size_t max_class_name_bytes{256U};
     std::size_t max_method_name_bytes{256U};
     std::size_t max_signature_bytes{256U};
+    std::size_t max_method_arguments{64U};
 };
 
 enum class A32JniRegistryError : std::uint8_t {
@@ -202,6 +208,35 @@ struct A32JniMemberId {
     std::string class_name;
     std::string name;
     std::string signature;
+};
+
+enum class A32JniValueKind : std::uint8_t {
+    Boolean = 0,
+    Byte,
+    Char,
+    Short,
+    Int,
+    Long,
+    Float,
+    Double,
+    Reference,
+};
+
+struct A32JniValue {
+    A32JniValueKind kind{A32JniValueKind::Int};
+    std::uint64_t bits{};
+};
+
+// Embedding-owned Java-call boundary. Argument storage is borrowed only for the
+// synchronous callback and contains logical JNI values, never host pointers.
+class A32JniMethodCallBridge {
+public:
+    virtual ~A32JniMethodCallBridge() = default;
+
+    [[nodiscard]] virtual bool call_void_method(
+        std::uint32_t receiver,
+        const A32JniMemberId& method,
+        std::span<const A32JniValue> arguments) = 0;
 };
 
 struct A32JniReferenceCounts {
@@ -451,6 +486,7 @@ struct A32JniVmLayout {
     std::uint32_t get_long_field_stub_address{};
     std::uint32_t set_long_field_stub_address{};
     std::uint32_t throw_new_stub_address{};
+    std::uint32_t call_void_method_v_stub_address{};
 };
 
 enum class A32JniVmInstallError : std::uint8_t {
@@ -478,9 +514,11 @@ class A32JniVmService final : public runtime::A32HostServiceHandler {
 public:
     explicit A32JniVmService(
         A32JniVmLayout layout,
-        A32JniClassRegistry* registry = nullptr) noexcept
+        A32JniClassRegistry* registry = nullptr,
+        A32JniMethodCallBridge* method_call_bridge = nullptr) noexcept
         : layout_(layout),
-          registry_(registry) {}
+          registry_(registry),
+          method_call_bridge_(method_call_bridge) {}
 
     [[nodiscard]] A32JniVmInstallResult install(
         memory::GuestMemory& memory);
@@ -520,6 +558,7 @@ private:
 
     A32JniVmLayout layout_;
     A32JniClassRegistry* registry_{};
+    A32JniMethodCallBridge* method_call_bridge_{};
     bool installed_{};
     bool attached_{};
     std::optional<std::uint32_t> active_utf_chars_string_;

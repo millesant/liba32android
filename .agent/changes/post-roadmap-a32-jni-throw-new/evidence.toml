@@ -13,8 +13,8 @@ limitations = "Throwable objects, stack traces, Java unwinding, and the rest of 
 [[evidence]]
 id = "focused-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host regressions prove exact ThrowNew table/stub publication plus bounded pending-exception state, duplicate preservation, class liveness, message bounds, host clear, and rethrow."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending exact-head execution."
+source = "GitHub exact-head checks at 361b9ffb044d5ed4a6cdfa080f3e93bec7893c9d"
+result = "All 11 required exact-head checks concluded success for the validated ThrowNew result revision."
+limitations = ""
