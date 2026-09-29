@@ -250,7 +250,8 @@ bool A32JniClassRegistry::valid() const noexcept {
            static_cast<std::uint64_t>(
                limits_.dynamic_string_handle_base) +
                    static_cast<std::uint64_t>(
-                       limits_.max_strings - 1U) *
+                       limits_.max_strings +
+                       limits_.max_reference_handles - 1U) *
                        limits_.dynamic_string_handle_stride <=
                std::numeric_limits<std::uint32_t>::max() &&
            limits_.max_class_name_bytes > 0U &&
@@ -475,8 +476,11 @@ A32JniRegistryError A32JniClassRegistry::create_modified_utf8_string(
         return A32JniRegistryError::ReferenceLimitExceeded;
     }
 
+    const std::size_t candidate_count =
+        limits_.max_strings +
+        limits_.max_reference_handles;
     for (std::size_t index = 0U;
-         index < limits_.max_strings;
+         index < candidate_count;
          ++index) {
         const std::uint64_t candidate64 =
             static_cast<std::uint64_t>(
