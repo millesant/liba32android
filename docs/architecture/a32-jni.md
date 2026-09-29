@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: registration bootstrap validated; evidence-backed GetMethodID/GetFieldID/GetStaticFieldID slice in progress
+Status: member IDs validated; evidence-backed JavaVM AttachCurrentThread/DetachCurrentThread slice in progress
 
 ## Goal
 
@@ -18,8 +18,9 @@ only when native binaries prove they need it.
 function tables. All published pointers are logical 32-bit guest addresses; the
 caller owns mappings and permission changes.
 
-The JavaVM invocation table follows the Android ABI and publishes GetEnv at
-slot 6 / byte offset `0x18`.
+The JavaVM invocation table follows the Android ABI and now publishes
+AttachCurrentThread at slot 4 / byte offset `0x10`, DetachCurrentThread at
+slot 5 / byte offset `0x14`, and GetEnv at slot 6 / byte offset `0x18`.
 
 The JNIEnv native table now spans slots 0 through 215 so the first two
 evidence-backed entries can be published at their real positions:
@@ -49,7 +50,12 @@ The current private guest/host service immediates are:
 
 - `0xD7` — JavaVM::GetEnv;
 - `0xD8` — JNIEnv::FindClass;
-- `0xD9` — JNIEnv::RegisterNatives.
+- `0xD9` — JNIEnv::RegisterNatives;
+- `0xDA` — JNIEnv::GetMethodID;
+- `0xDB` — JNIEnv::GetFieldID;
+- `0xDC` — JNIEnv::GetStaticFieldID;
+- `0xDD` — JavaVM::AttachCurrentThread;
+- `0xDE` — JavaVM::DetachCurrentThread.
 
 Each guest stub is a minimal ARM `svc; bx lr` sequence. Unknown SVC immediates
 remain unhandled.
@@ -62,7 +68,28 @@ through 1.6 range succeeds, while an out-of-range value returns JNI_EVERSION
 without modifying the output slot.
 
 For an accepted version the output slot must be writable, receives the logical
-guest JNIEnv pointer, and the call returns JNI_OK.
+guest JNIEnv pointer, and the call returns JNI_OK. While the modeled context is
+detached, GetEnv instead returns JNI_EDETACHED without modifying the output
+slot.
+
+## JavaVM thread attachment
+
+Supplied ARMv7 `libmla.so` wrappers directly identify AttachCurrentThread at
+JavaVM slot 4 / offset `0x10` and DetachCurrentThread at slot 5 / offset
+`0x14`.
+
+The service continues to model one bounded guest JNI context rather than a
+general host-thread registry. Installation starts attached. Detach transitions
+the context to detached; GetEnv then returns JNI_EDETACHED for supported
+versions without touching `*env`. AttachCurrentThread writes the configured
+logical JNIEnv pointer and restores attached state. JNIEnv-native services are
+rejected while detached.
+
+AttachCurrentThreadAsDaemon, JavaVMAttachArgs semantics, multiple host threads,
+and thread-local Java reference state remain outside this slice.
+
+See
+[ARM32 JNI JavaVM thread entrypoint evidence](../research/evidence/arm32-jni-thread-entrypoints-2026-09-29.md).
 
 ## Class registry and FindClass
 
@@ -112,10 +139,12 @@ machine code rather than the complete JNI table. Direct wrappers load:
 - GetFieldID from slot 94 / byte offset `0x178`;
 - GetStaticFieldID from slot 144 / byte offset `0x240`.
 
-The active slice models those IDs as caller-seeded logical 32-bit handles in
-the existing bounded registry. Lookup is exact over class, member kind, name,
-and signature. It does not imply Java method invocation, field access,
-inheritance, or object/reference lifetime.
+The implemented slice models those IDs as caller-seeded logical 32-bit handles
+in the existing bounded registry. Lookup is exact over class, member kind, name,
+and signature. Exact-head validation at
+`f073092cf631a98e274bce9cdb54d0f73ad7099d` passed all 11 required checks.
+It does not imply Java method invocation, field access, inheritance, or
+object/reference lifetime.
 
 See
 [ARM32 JNI member-ID entrypoint evidence](../research/evidence/arm32-jni-member-id-entrypoints-2026-09-28.md).

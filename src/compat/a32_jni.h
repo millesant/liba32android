@@ -6,6 +6,8 @@
 #define LIBA32ANDROID_A32_JNI_GET_METHOD_ID_SVC 0xDA
 #define LIBA32ANDROID_A32_JNI_GET_FIELD_ID_SVC 0xDB
 #define LIBA32ANDROID_A32_JNI_GET_STATIC_FIELD_ID_SVC 0xDC
+#define LIBA32ANDROID_A32_JNI_ATTACH_CURRENT_THREAD_SVC 0xDD
+#define LIBA32ANDROID_A32_JNI_DETACH_CURRENT_THREAD_SVC 0xDE
 
 #ifdef __cplusplus
 
@@ -37,6 +39,10 @@ inline constexpr std::uint32_t kA32JniGetFieldIdSvcImmediate =
     LIBA32ANDROID_A32_JNI_GET_FIELD_ID_SVC;
 inline constexpr std::uint32_t kA32JniGetStaticFieldIdSvcImmediate =
     LIBA32ANDROID_A32_JNI_GET_STATIC_FIELD_ID_SVC;
+inline constexpr std::uint32_t kA32JniAttachCurrentThreadSvcImmediate =
+    LIBA32ANDROID_A32_JNI_ATTACH_CURRENT_THREAD_SVC;
+inline constexpr std::uint32_t kA32JniDetachCurrentThreadSvcImmediate =
+    LIBA32ANDROID_A32_JNI_DETACH_CURRENT_THREAD_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -45,6 +51,7 @@ inline constexpr std::uint32_t kA32JniVersion16 = 0x00010006U;
 
 inline constexpr std::int32_t kA32JniOk = 0;
 inline constexpr std::int32_t kA32JniErr = -1;
+inline constexpr std::int32_t kA32JniEdetached = -2;
 inline constexpr std::int32_t kA32JniEversion = -3;
 
 inline constexpr std::size_t kA32JniHardMaxClasses = 1024U;
@@ -197,6 +204,8 @@ struct A32JniVmLayout {
     std::uint32_t get_method_id_stub_address{};
     std::uint32_t get_field_id_stub_address{};
     std::uint32_t get_static_field_id_stub_address{};
+    std::uint32_t attach_current_thread_stub_address{};
+    std::uint32_t detach_current_thread_stub_address{};
 };
 
 enum class A32JniVmInstallError : std::uint8_t {
@@ -215,9 +224,11 @@ struct A32JniVmInstallResult {
     }
 };
 
-// One currently-attached guest JNI context. The caller owns all guest mappings.
-// install() publishes only logical 32-bit guest pointers and ARM SVC stubs; it
-// never maps, unmaps, or changes page permissions.
+// One bounded guest JNI context. install() begins attached; observed JavaVM
+// AttachCurrentThread/DetachCurrentThread services can transition that state.
+// The caller owns all guest mappings. install() publishes only logical 32-bit
+// guest pointers and ARM SVC stubs; it never maps, unmaps, or changes page
+// permissions.
 class A32JniVmService final : public runtime::A32HostServiceHandler {
 public:
     explicit A32JniVmService(
@@ -242,6 +253,9 @@ public:
     [[nodiscard]] bool installed() const noexcept {
         return installed_;
     }
+    [[nodiscard]] bool attached() const noexcept {
+        return attached_;
+    }
 
     [[nodiscard]] A32JniClassRegistry* registry() noexcept {
         return registry_;
@@ -256,6 +270,7 @@ private:
     A32JniVmLayout layout_;
     A32JniClassRegistry* registry_{};
     bool installed_{};
+    bool attached_{};
 };
 
 struct A32JniOnLoadOptions {

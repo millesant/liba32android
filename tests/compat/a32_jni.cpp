@@ -25,6 +25,7 @@ using liba32android::compat::A32JniRegistryLimits;
 using liba32android::compat::A32JniVmInstallError;
 using liba32android::compat::A32JniVmLayout;
 using liba32android::compat::A32JniVmService;
+using liba32android::compat::kA32JniEdetached;
 using liba32android::compat::kA32JniEversion;
 using liba32android::compat::kA32JniErr;
 using liba32android::compat::kA32JniFindClassSvcImmediate;
@@ -32,6 +33,8 @@ using liba32android::compat::kA32JniGetEnvSvcImmediate;
 using liba32android::compat::kA32JniGetFieldIdSvcImmediate;
 using liba32android::compat::kA32JniGetMethodIdSvcImmediate;
 using liba32android::compat::kA32JniGetStaticFieldIdSvcImmediate;
+using liba32android::compat::kA32JniAttachCurrentThreadSvcImmediate;
+using liba32android::compat::kA32JniDetachCurrentThreadSvcImmediate;
 using liba32android::compat::kA32JniOk;
 using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
@@ -110,6 +113,8 @@ A32JniVmLayout layout() {
         .get_method_id_stub_address = 0x1560U,
         .get_field_id_stub_address = 0x1580U,
         .get_static_field_id_stub_address = 0x15a0U,
+        .attach_current_thread_stub_address = 0x15c0U,
+        .detach_current_thread_stub_address = 0x15e0U,
     };
 }
 
@@ -153,6 +158,10 @@ int test_vm_install_and_getenv() {
     const auto configured = layout();
     if (read_u32(memory, configured.java_vm_address) !=
             configured.invoke_table_address ||
+        read_u32(memory, configured.invoke_table_address + 4U * 4U) !=
+            configured.attach_current_thread_stub_address ||
+        read_u32(memory, configured.invoke_table_address + 5U * 4U) !=
+            configured.detach_current_thread_stub_address ||
         read_u32(memory, configured.invoke_table_address + 6U * 4U) !=
             configured.get_env_stub_address ||
         read_u32(memory, configured.jni_env_address) !=
@@ -171,7 +180,7 @@ int test_vm_install_and_getenv() {
     }
 
     for (std::uint32_t index = 0U; index < 8U; ++index) {
-        if (index == 6U) {
+        if (index == 4U || index == 5U || index == 6U) {
             continue;
         }
         if (read_u32(
@@ -195,7 +204,7 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::array<std::uint8_t, 8>, 6> expected_stubs{{
+    constexpr std::array<std::array<std::uint8_t, 8>, 8> expected_stubs{{
         {{0xD7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD8U, 0x00U, 0x00U, 0xEFU,
@@ -208,14 +217,20 @@ int test_vm_install_and_getenv() {
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xDCU, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xDDU, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xDEU, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    const std::array<std::uint32_t, 6> stub_addresses{{
+    const std::array<std::uint32_t, 8> stub_addresses{{
         configured.get_env_stub_address,
         configured.find_class_stub_address,
         configured.register_natives_stub_address,
         configured.get_method_id_stub_address,
         configured.get_field_id_stub_address,
         configured.get_static_field_id_stub_address,
+        configured.attach_current_thread_stub_address,
+        configured.detach_current_thread_stub_address,
     }};
     for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
         std::array<std::uint8_t, 8> observed_stub{};
@@ -338,9 +353,75 @@ int test_vm_install_and_getenv() {
     }
 
     regs = {};
+    regs[0] = configured.java_vm_address;
     if (service.handle(
             memory,
-            kA32JniGetStaticFieldIdSvcImmediate + 1U,
+            kA32JniDetachCurrentThreadSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniOk) ||
+        service.attached()) {
+        return fail("JNI DetachCurrentThread did not detach context");
+    }
+
+    if (!write_u32(memory, 0x1200U, 0xdeadbeefU)) {
+        return fail("could not seed detached GetEnv output");
+    }
+    regs = {};
+    regs[0] = configured.java_vm_address;
+    regs[1] = 0x1200U;
+    regs[2] = kA32JniVersion16;
+    if (service.handle(
+            memory,
+            kA32JniGetEnvSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniEdetached) ||
+        read_u32(memory, 0x1200U) != 0xdeadbeefU) {
+        return fail("JNI GetEnv did not report detached context");
+    }
+
+    regs = {};
+    regs[0] = configured.java_vm_address;
+    if (service.handle(
+            memory,
+            kA32JniDetachCurrentThreadSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniErr)) {
+        return fail("JNI DetachCurrentThread accepted detached context");
+    }
+
+    regs = {};
+    regs[0] = configured.java_vm_address;
+    regs[1] = 0x1200U;
+    regs[2] = 0U;
+    if (service.handle(
+            memory,
+            kA32JniAttachCurrentThreadSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniOk) ||
+        read_u32(memory, 0x1200U) != configured.jni_env_address ||
+        !service.attached()) {
+        return fail("JNI AttachCurrentThread did not restore context");
+    }
+
+    regs = {};
+    regs[0] = configured.java_vm_address + 4U;
+    regs[1] = 0x1200U;
+    if (service.handle(
+            memory,
+            kA32JniAttachCurrentThreadSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI AttachCurrentThread accepted wrong JavaVM pointer");
+    }
+
+    regs = {};
+    if (service.handle(
+            memory,
+            kA32JniDetachCurrentThreadSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");

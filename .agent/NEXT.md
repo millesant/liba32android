@@ -10,20 +10,20 @@ at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c. Licensing is no longer an OSS-readi
 
 ## Active JNI track
 
-Continue `post-roadmap-a32-jni-observed-member-ids`.
+Continue `post-roadmap-a32-jni-thread-attach-detach`.
 
-Direct ARMv7 `libmla.so` evidence narrows this slice to:
+The member-ID slice is complete at
+`f073092cf631a98e274bce9cdb54d0f73ad7099d` with 11/11 checks green.
 
-1. GetMethodID at JNIEnv slot 33 / offset `0x84`;
-2. GetFieldID at slot 94 / offset `0x178`;
-3. GetStaticFieldID at slot 144 / offset `0x240`;
-4. bounded caller-seeded logical member IDs with exact
-   class/kind/name/signature lookup;
-5. focused host regressions and exact-head validation.
+Direct ARMv7 `libmla.so` evidence now drives the next bounded JavaVM seam:
 
-Do not add GetStaticMethodID, GetObjectClass, IsInstanceOf, Java method
-invocation, field access, reference lifetime, or inheritance semantics without a
-separate evidence-backed contract.
+1. AttachCurrentThread at invocation slot 4 / offset `0x10`;
+2. DetachCurrentThread at slot 5 / offset `0x14`;
+3. GetEnv remains at slot 6 / offset `0x18`;
+4. model one attached/detached guest JNI context only;
+5. return JNI_EDETACHED from GetEnv without touching output while detached;
+6. keep AttachCurrentThreadAsDaemon, multi-thread state, JavaVMAttachArgs
+   semantics, and thread-local reference lifetime out of this slice.
 
-After this slice, reassess supplied binaries before selecting the next JNI
-surface rather than implementing the roadmap mechanically.
+After exact-head validation, reassess the supplied binaries again before
+selecting the next JNI surface.

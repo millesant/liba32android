@@ -17,6 +17,9 @@ namespace {
 constexpr std::size_t kJavaVmBytes = 4U;
 constexpr std::size_t kInvokeTableWords = 8U;
 constexpr std::size_t kInvokeTableBytes = kInvokeTableWords * 4U;
+constexpr std::size_t kAttachCurrentThreadSlot = 4U;
+constexpr std::size_t kDetachCurrentThreadSlot = 5U;
+constexpr std::size_t kGetEnvSlot = 6U;
 constexpr std::size_t kJniEnvBytes = 4U;
 constexpr std::size_t kNativeTableWords = 216U;
 constexpr std::size_t kNativeTableBytes = kNativeTableWords * 4U;
@@ -449,7 +452,7 @@ A32JniRegistryError A32JniClassRegistry::register_natives(
 }
 
 bool A32JniVmService::layout_valid() const noexcept {
-    const std::array<AddressRange, 10> ranges{{
+    const std::array<AddressRange, 12> ranges{{
         {layout_.java_vm_address, kJavaVmBytes},
         {layout_.invoke_table_address, kInvokeTableBytes},
         {layout_.jni_env_address, kJniEnvBytes},
@@ -460,6 +463,8 @@ bool A32JniVmService::layout_valid() const noexcept {
         {layout_.get_method_id_stub_address, kServiceStubBytes},
         {layout_.get_field_id_stub_address, kServiceStubBytes},
         {layout_.get_static_field_id_stub_address, kServiceStubBytes},
+        {layout_.attach_current_thread_stub_address, kServiceStubBytes},
+        {layout_.detach_current_thread_stub_address, kServiceStubBytes},
     }};
 
     for (const AddressRange& range : ranges) {
@@ -486,7 +491,7 @@ A32JniVmInstallResult A32JniVmService::install(
         return {.error = A32JniVmInstallError::InvalidLayout};
     }
 
-    std::array<InstallRegion, 10> regions{{
+    std::array<InstallRegion, 12> regions{{
         {.address = layout_.java_vm_address, .size = kJavaVmBytes},
         {.address = layout_.invoke_table_address,
          .size = kInvokeTableBytes},
@@ -505,6 +510,10 @@ A32JniVmInstallResult A32JniVmService::install(
          .size = kServiceStubBytes},
         {.address = layout_.get_static_field_id_stub_address,
          .size = kServiceStubBytes},
+        {.address = layout_.attach_current_thread_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.detach_current_thread_stub_address,
+         .size = kServiceStubBytes},
     }};
 
     write_u32(
@@ -513,7 +522,15 @@ A32JniVmInstallResult A32JniVmService::install(
         layout_.invoke_table_address);
     write_u32(
         regions[1].desired,
-        6U * 4U,
+        kAttachCurrentThreadSlot * 4U,
+        layout_.attach_current_thread_stub_address);
+    write_u32(
+        regions[1].desired,
+        kDetachCurrentThreadSlot * 4U,
+        layout_.detach_current_thread_stub_address);
+    write_u32(
+        regions[1].desired,
+        kGetEnvSlot * 4U,
         layout_.get_env_stub_address);
     write_u32(
         regions[2].desired,
@@ -558,6 +575,12 @@ A32JniVmInstallResult A32JniVmService::install(
     write_service_stub(
         regions[9].desired,
         kA32JniGetStaticFieldIdSvcImmediate);
+    write_service_stub(
+        regions[10].desired,
+        kA32JniAttachCurrentThreadSvcImmediate);
+    write_service_stub(
+        regions[11].desired,
+        kA32JniDetachCurrentThreadSvcImmediate);
 
     for (InstallRegion& region : regions) {
         if (!memory.read(
@@ -599,6 +622,7 @@ A32JniVmInstallResult A32JniVmService::install(
     }
 
     installed_ = true;
+    attached_ = true;
     return {};
 }
 
@@ -613,7 +637,9 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         svc_immediate == kA32JniRegisterNativesSvcImmediate ||
         svc_immediate == kA32JniGetMethodIdSvcImmediate ||
         svc_immediate == kA32JniGetFieldIdSvcImmediate ||
-        svc_immediate == kA32JniGetStaticFieldIdSvcImmediate;
+        svc_immediate == kA32JniGetStaticFieldIdSvcImmediate ||
+        svc_immediate == kA32JniAttachCurrentThreadSvcImmediate ||
+        svc_immediate == kA32JniDetachCurrentThreadSvcImmediate;
     if (!known_service) {
         return runtime::A32HostServiceDisposition::Unhandled;
     }
@@ -621,31 +647,49 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         return runtime::A32HostServiceDisposition::Failed;
     }
 
-    if (svc_immediate == kA32JniGetEnvSvcImmediate) {
+    const bool vm_service =
+        svc_immediate == kA32JniGetEnvSvcImmediate ||
+        svc_immediate == kA32JniAttachCurrentThreadSvcImmediate ||
+        svc_immediate == kA32JniDetachCurrentThreadSvcImmediate;
+    if (vm_service) {
         if (regs[0] != layout_.java_vm_address) {
             return runtime::A32HostServiceDisposition::Failed;
         }
 
-        // Dalvik validates the version before touching *env. Preserve the
-        // caller's output slot on JNI_EVERSION.
-        if (!is_a32_supported_jni_getenv_version(regs[2])) {
-            regs[0] = jint_bits(kA32JniEversion);
+        if (svc_immediate == kA32JniDetachCurrentThreadSvcImmediate) {
+            regs[0] = jint_bits(attached_ ? kA32JniOk : kA32JniErr);
+            attached_ = false;
             return runtime::A32HostServiceDisposition::Handled;
         }
+
+        if (svc_immediate == kA32JniGetEnvSvcImmediate) {
+            // Dalvik validates the version before touching *env. Preserve the
+            // caller's output slot on JNI_EVERSION/JNI_EDETACHED.
+            if (!is_a32_supported_jni_getenv_version(regs[2])) {
+                regs[0] = jint_bits(kA32JniEversion);
+                return runtime::A32HostServiceDisposition::Handled;
+            }
+            if (!attached_) {
+                regs[0] = jint_bits(kA32JniEdetached);
+                return runtime::A32HostServiceDisposition::Handled;
+            }
+        }
+
         if (regs[1] == 0U) {
             return runtime::A32HostServiceDisposition::Failed;
         }
-
-        const auto env_bytes =
-            u32_bytes(layout_.jni_env_address);
+        const auto env_bytes = u32_bytes(layout_.jni_env_address);
         if (!memory.write(regs[1], env_bytes)) {
             return runtime::A32HostServiceDisposition::Failed;
         }
-
+        attached_ = true;
         regs[0] = jint_bits(kA32JniOk);
         return runtime::A32HostServiceDisposition::Handled;
     }
 
+    if (!attached_) {
+        return runtime::A32HostServiceDisposition::Failed;
+    }
     if (regs[0] != layout_.jni_env_address) {
         return runtime::A32HostServiceDisposition::Failed;
     }

@@ -18,23 +18,23 @@ Implemented and regression-tested foundations include:
 - Android namespace/platform-library policy;
 - partial libc/liblog/libdl/libm/pthread compatibility;
 - requester-scoped application native-library search;
-- JNI JavaVM/GetEnv/JNI_OnLoad bootstrap plus bounded FindClass, RegisterNatives, and no-argument registered-native reverse dispatch.
+- JNI JavaVM/GetEnv/JNI_OnLoad bootstrap plus bounded FindClass, RegisterNatives, evidence-backed member IDs, and no-argument registered-native reverse dispatch.
 
 ## Active track: JNI compatibility
 
-The first registration step (`FindClass`, `RegisterNatives`, and bounded
-zero-Java-argument reverse native dispatch) is complete. The next sequence is:
+The first registration and observed member-ID steps are complete. Direct
+supplied-binary evidence has pulled a small JavaVM thread-state seam forward:
+AttachCurrentThread/DetachCurrentThread is active now. After that, continue with:
 
-1. class/member identity (`jclass`, `jmethodID`, `jfieldID`);
-2. local/global/weak reference lifetime;
+1. local/global/weak reference lifetime;
 3. strings and modified UTF-8 APIs;
 4. primitive/object arrays;
 5. pending exception state and exception operations;
 6. object creation and method-call families;
 7. instance/static fields;
-8. thread attach/detach and remaining JavaVM calls where evidence requires them;
-9. direct buffers, critical access, and monitors;
-10. evidence-driven completion of remaining native-facing JNI slots.
+7. remaining JavaVM/thread calls where evidence requires them;
+8. direct buffers, critical access, and monitors;
+9. evidence-driven completion of remaining native-facing JNI slots.
 
 The goal is a compatibility layer with explicit limits and deterministic guest
 handles, not an accidental full Java VM hidden inside the JNI adapter.

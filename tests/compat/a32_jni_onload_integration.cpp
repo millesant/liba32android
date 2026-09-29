@@ -222,6 +222,8 @@ int main(int argc, char** argv) {
         .get_method_id_stub_address = *stub_page + 0x60U,
         .get_field_id_stub_address = *stub_page + 0x80U,
         .get_static_field_id_stub_address = *stub_page + 0xa0U,
+        .attach_current_thread_stub_address = *stub_page + 0xc0U,
+        .detach_current_thread_stub_address = *stub_page + 0xe0U,
     };
     constexpr std::uint32_t kFixtureClassHandle = 0x44550000U;
     A32JniClassRegistry registry;

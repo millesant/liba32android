@@ -1139,3 +1139,32 @@ This slice does not implement GetStaticMethodID, GetObjectClass, IsInstanceOf,
 Java method invocation, field access, inheritance, Java object/reference
 lifetime, strings/arrays/exceptions, or Android framework classes.
 
+## L32-C039 — ARM32 JNI JavaVM thread attachment
+
+Supplied ARMv7 machine code identifies JavaVM AttachCurrentThread at invocation
+slot 4 / byte offset `0x10` and DetachCurrentThread at slot 5 / byte offset
+`0x14`. The existing GetEnv entry remains at slot 6 / byte offset `0x18`.
+Each supported entry targets a distinct private guest ARM service stub while
+unsupported JavaVM entries remain zero.
+
+The VM service models one bounded guest JNI context. Successful installation
+starts that context attached so existing JNI_OnLoad behavior is preserved.
+
+AttachCurrentThread requires the exact configured logical JavaVM pointer and a
+writable guest JNIEnv** output slot. The attach-args pointer is accepted but not
+interpreted in this slice. Success writes the configured logical JNIEnv pointer,
+marks the modeled context attached, and returns JNI_OK. Re-attaching the same
+modeled context is idempotent.
+
+DetachCurrentThread requires the exact JavaVM pointer. Transitioning from
+attached to detached returns JNI_OK. A second detach while already detached
+returns JNI_ERR.
+
+GetEnv keeps JNI-version validation ahead of output access. For a supported
+version while detached it returns JNI_EDETACHED and does not modify the output
+slot. JNIEnv-native services fail while the modeled context is detached.
+
+This slice does not implement multiple host threads, JavaVMAttachArgs contents,
+AttachCurrentThreadAsDaemon, Java thread objects, or thread-local reference
+lifetime.
+

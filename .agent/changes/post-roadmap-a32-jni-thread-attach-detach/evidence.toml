@@ -1,0 +1,29 @@
+schema = 1
+change = "post-roadmap-a32-jni-thread-attach-detach"
+
+[[evidence]]
+id = "supplied-libmla-java-vm-thread-slots"
+kind = "artifact"
+status = "observed"
+claim = "Supplied ARMv7 libmla machine code directly identifies JavaVM AttachCurrentThread and DetachCurrentThread invocation-table offsets."
+source = "docs/research/evidence/arm32-jni-thread-entrypoints-2026-09-29.md"
+result = "Observed wrappers load byte offsets 0x10 and 0x14, corresponding to JavaVM slots 4 and 5; the same binary independently confirms GetEnv at slot 6 / 0x18."
+limitations = "The evidence does not require multiple host-thread state, JavaVMAttachArgs interpretation, AttachCurrentThreadAsDaemon, or Java thread objects."
+
+[[evidence]]
+id = "focused-host-regressions"
+kind = "test"
+status = "pending"
+claim = "Focused JNI host regressions prove JavaVM table/stub publication plus detach/GetEnv/reattach state transitions and failure boundaries."
+source = "tests/compat/a32_jni.cpp"
+result = ""
+limitations = "Pending exact-head execution."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "pending"
+claim = "The thread-attachment slice passes the required exact-head check matrix."
+source = "GitHub commit checks"
+result = ""
+limitations = "Pending exact-head execution."

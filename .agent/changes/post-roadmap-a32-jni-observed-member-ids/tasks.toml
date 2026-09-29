@@ -3,24 +3,24 @@ change = "post-roadmap-a32-jni-observed-member-ids"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Record supplied libmla member-ID ABI evidence and define the bounded registry/table/service contract."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Implement bounded logical member IDs and GetMethodID/GetFieldID/GetStaticFieldID service/table behavior."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Add focused host regressions for member registry identity, table/stub bytes, lookup hits/misses, and failure boundaries."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Converge accepted spec/architecture/state/evidence and pass required exact-head validation."

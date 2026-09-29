@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-observed-member-ids` — ACTIVE; implement the smallest
-  evidence-backed member-ID surface observed in supplied ARMv7 `libmla.so`:
-  GetMethodID, GetFieldID, and GetStaticFieldID.
+- `post-roadmap-a32-jni-thread-attach-detach` — ACTIVE; add the supplied
+  ARMv7-evidenced JavaVM AttachCurrentThread/DetachCurrentThread state seam while
+  preserving bounded single-context semantics.
 
 ## Phase
 
@@ -69,11 +69,17 @@ at `dbbcb06d5a9e0225b9e0a9c3515b646c0fff6503` passed all 11 required
 check-runs, including ARM32 JNI registration integration check
 `109225192284`.
 
-The active member-ID slice is deliberately narrower than the full class/member
-roadmap bucket. Supplied `libmla.so` machine code directly loads JNIEnv offsets
-`0x84`, `0x178`, and `0x240`, proving GetMethodID slot 33, GetFieldID
-slot 94, and GetStaticFieldID slot 144. GetStaticMethodID, GetObjectClass, and
-IsInstanceOf remain outside this slice until separately evidenced.
+The bounded member-ID slice is DONE at
+`f073092cf631a98e274bce9cdb54d0f73ad7099d`. Supplied `libmla.so`
+machine code proved GetMethodID slot 33, GetFieldID slot 94, and
+GetStaticFieldID slot 144; the implementation publishes those exact entries and
+uses caller-seeded logical member handles with exact class/kind/name/signature
+lookup. All 11 exact-head checks passed.
+
+The active JavaVM thread slice is likewise evidence-driven: the same supplied
+ARMv7 library loads AttachCurrentThread from slot 4 / offset `0x10` and
+DetachCurrentThread from slot 5 / offset `0x14`, beside the existing GetEnv
+slot 6 / offset `0x18`.
 
 ## Public repository readiness
 
@@ -112,8 +118,8 @@ check-runs passed at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c.
 
 ## Deferred / partial
 
-JNI member IDs, reference lifetime, strings/arrays/exceptions, general Java
-method/field calls, thread attach/detach, JNI_OnUnload, Android framework
+JNI reference lifetime, strings/arrays/exceptions, general Java
+method/field calls, broader thread/VM semantics, JNI_OnUnload, Android framework
 services, graphics/windowing, audio, input/events/sensors, automatic app
 adaptation/patching, broad real-device execution, and higher-level app/runtime
 orchestration remain separate work.
