@@ -1,15 +1,14 @@
 # Current State
 
-Last updated: 2026-09-28
+Last updated: 2026-09-29
 Integration branch: `main`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-long-arrays` — ACTIVE; add the supplied
-  ARMv7-evidenced NewLongArray/GetLongArrayElements/
-  ReleaseLongArrayElements/SetLongArrayRegion family with bounded APK-agnostic
-  owned jlong storage and one guest element scratch lease.
+- `post-roadmap-a32-jni-object-arrays` — ACTIVE; add the supplied
+  ARMv7-evidenced NewObjectArray/GetObjectArrayElement/SetObjectArrayElement
+  family with bounded APK-agnostic logical object-array storage.
 
 ## Phase
 
@@ -109,12 +108,19 @@ GetStringUTFChars, and ReleaseStringUTFChars are implemented at observed slots
 167/169/170 with synthetic logical jstring identities, bounded owned bytes, and
 one exact guest scratch lease. All 11 exact-head checks passed.
 
-The active array slice is again direct evidence from supplied `libmla.so`:
-NewLongArray uses slot 180 / `0x2d0`, GetLongArrayElements slot 188 /
-`0x2f0`, ReleaseLongArrayElements slot 196 / `0x310`, and
-SetLongArrayRegion slot 212 / `0x350`. The runtime stores generic owned jlong
-values behind synthetic guest handles; no VLC/APK names or host pointers enter
-the compatibility layer.
+The bounded jlong-array slice is DONE at
+`94dd3ed5155654956decce93dd6cbe73c25d4cf0`. NewLongArray,
+GetLongArrayElements, ReleaseLongArrayElements, and SetLongArrayRegion are
+implemented at observed slots 180/188/196/212 with owned int64 storage, exact
+ARM32 stack decoding for the fifth SetLongArrayRegion argument, generic
+GetArrayLength metadata, reference cleanup, and one bounded guest copy lease.
+All 11 exact-head checks passed.
+
+The active object-array slice is direct evidence from the same supplied ARMv7
+library: NewObjectArray uses slot 172 / `0x2b0`, GetObjectArrayElement slot
+173 / `0x2b4`, and SetObjectArrayElement slot 174 / `0x2b8`. The runtime
+stores only synthetic logical jobject identities in bounded owned vectors; no
+APK-specific class names or host object pointers enter the compatibility layer.
 
 ## Public repository readiness
 

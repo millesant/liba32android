@@ -10,24 +10,24 @@ at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c. Licensing is no longer an OSS-readi
 
 ## Active JNI track
 
-Continue `post-roadmap-a32-jni-long-arrays`.
+Continue `post-roadmap-a32-jni-object-arrays`.
 
-The modified-UTF-8 string slice is complete at
-`d06d2ec0393c0cb12fb414d07d618b5bf1c7f07d` with 11/11 checks green.
+The jlong-array slice is complete at
+`94dd3ed5155654956decce93dd6cbe73c25d4cf0` with 11/11 checks green.
 
-Direct ARMv7 `libmla.so` evidence drives one coherent four-slot jlong family:
+Direct ARMv7 `libmla.so` evidence drives one compact adjacent object-array
+family:
 
-1. NewLongArray at JNIEnv slot 180 / offset `0x2d0`;
-2. GetLongArrayElements at slot 188 / `0x2f0`;
-3. ReleaseLongArrayElements at slot 196 / `0x310`;
-4. SetLongArrayRegion at slot 212 / `0x350`;
-5. synthetic collision-free array handles, zero-initialized owned int64 storage,
-   generic GetArrayLength metadata, and one local reference;
-6. one 8-byte-aligned guest element scratch lease with mode 0/JNI_COMMIT/
-   JNI_ABORT copy-back semantics;
-7. exact ARM32 fifth-argument decoding for SetLongArrayRegion through guest
-   `[sp]`;
-8. pinned-NDK ARM32 fixture coverage of all four calls.
+1. NewObjectArray at JNIEnv slot 172 / offset `0x2b0`;
+2. GetObjectArrayElement at slot 173 / `0x2b4`;
+3. SetObjectArrayElement at slot 174 / `0x2b8`;
+4. bounded synthetic object-array handles with owned logical jobject vectors;
+5. registered element-class identity, generic GetArrayLength metadata, and one
+   local array reference;
+6. GetObjectArrayElement creates one local reference for each non-null returned
+   stored identity;
+7. SetObjectArrayElement accepts null or a currently live logical identity;
+8. pinned-NDK ARM32 fixture coverage of create/set/get/release.
 
-Do not generalize other primitive types, object arrays, critical-array APIs,
-pinning, or concurrent element leases until the next evidence-backed slice.
+Do not infer Java class assignability, ArrayStoreException, inheritance, object
+construction, local frames, or general GC into this slice.

@@ -3,24 +3,24 @@ change = "post-roadmap-a32-jni-long-arrays"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Record supplied libmla jlong-array slots and define the bounded owned-array/scratch-lease contract."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Implement NewLongArray/GetLongArrayElements/ReleaseLongArrayElements/SetLongArrayRegion with bounded storage and exact ARM32 ABI handling."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Add focused host regressions and extend the pinned-NDK ARM32 JNI fixture through the full jlong-array round trip."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Converge accepted spec/architecture/state/evidence and pass exact-head validation."

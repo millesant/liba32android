@@ -20,6 +20,9 @@
 #define LIBA32ANDROID_A32_JNI_GET_LONG_ARRAY_ELEMENTS_SVC 0xE8
 #define LIBA32ANDROID_A32_JNI_RELEASE_LONG_ARRAY_ELEMENTS_SVC 0xE9
 #define LIBA32ANDROID_A32_JNI_SET_LONG_ARRAY_REGION_SVC 0xEA
+#define LIBA32ANDROID_A32_JNI_NEW_OBJECT_ARRAY_SVC 0xEB
+#define LIBA32ANDROID_A32_JNI_GET_OBJECT_ARRAY_ELEMENT_SVC 0xEC
+#define LIBA32ANDROID_A32_JNI_SET_OBJECT_ARRAY_ELEMENT_SVC 0xED
 
 #ifdef __cplusplus
 
@@ -79,6 +82,12 @@ inline constexpr std::uint32_t kA32JniReleaseLongArrayElementsSvcImmediate =
     LIBA32ANDROID_A32_JNI_RELEASE_LONG_ARRAY_ELEMENTS_SVC;
 inline constexpr std::uint32_t kA32JniSetLongArrayRegionSvcImmediate =
     LIBA32ANDROID_A32_JNI_SET_LONG_ARRAY_REGION_SVC;
+inline constexpr std::uint32_t kA32JniNewObjectArraySvcImmediate =
+    LIBA32ANDROID_A32_JNI_NEW_OBJECT_ARRAY_SVC;
+inline constexpr std::uint32_t kA32JniGetObjectArrayElementSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_OBJECT_ARRAY_ELEMENT_SVC;
+inline constexpr std::uint32_t kA32JniSetObjectArrayElementSvcImmediate =
+    LIBA32ANDROID_A32_JNI_SET_OBJECT_ARRAY_ELEMENT_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -98,6 +107,7 @@ inline constexpr std::size_t kA32JniHardMaxReferenceHandles = 4096U;
 inline constexpr std::size_t kA32JniHardMaxReferenceCountPerHandle = 1U << 20U;
 inline constexpr std::size_t kA32JniHardMaxArrays = 4096U;
 inline constexpr std::size_t kA32JniHardMaxLongArrayElements = 65536U;
+inline constexpr std::size_t kA32JniHardMaxObjectArrayElements = 65536U;
 inline constexpr std::size_t kA32JniHardMaxStrings = 4096U;
 inline constexpr std::size_t kA32JniHardMaxStringBytes = 4096U;
 
@@ -125,6 +135,7 @@ struct A32JniRegistryLimits {
     std::size_t max_reference_count_per_handle{4096U};
     std::size_t max_arrays{512U};
     std::size_t max_long_array_elements{4096U};
+    std::size_t max_object_array_elements{4096U};
     std::uint32_t dynamic_array_handle_base{0x75000000U};
     std::uint32_t dynamic_array_handle_stride{4U};
     std::size_t max_strings{256U};
@@ -207,6 +218,12 @@ struct A32JniLongArrayInfo {
     std::vector<std::int64_t> elements;
 };
 
+struct A32JniObjectArrayInfo {
+    std::uint32_t handle{};
+    std::uint32_t element_class_handle{};
+    std::vector<std::uint32_t> elements;
+};
+
 struct A32JniRegisteredNative {
     std::uint32_t class_handle{};
     std::string class_name;
@@ -258,6 +275,16 @@ public:
     [[nodiscard]] const A32JniLongArrayInfo* find_long_array(
         std::uint32_t handle) const noexcept;
     [[nodiscard]] A32JniLongArrayInfo* find_long_array(
+        std::uint32_t handle) noexcept;
+
+    [[nodiscard]] A32JniRegistryError create_object_array(
+        std::int32_t length,
+        std::uint32_t element_class_handle,
+        std::uint32_t initial_element,
+        std::uint32_t& handle);
+    [[nodiscard]] const A32JniObjectArrayInfo* find_object_array(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] A32JniObjectArrayInfo* find_object_array(
         std::uint32_t handle) noexcept;
 
     [[nodiscard]] A32JniRegistryError create_modified_utf8_string(
@@ -334,6 +361,7 @@ private:
     std::vector<ReferenceEntry> references_;
     std::vector<A32JniArrayInfo> arrays_;
     std::vector<A32JniLongArrayInfo> long_arrays_;
+    std::vector<A32JniObjectArrayInfo> object_arrays_;
     std::vector<A32JniStringInfo> strings_;
     std::vector<A32JniMemberId> members_;
     std::vector<A32JniStaticIntFieldValue> static_int_fields_;
@@ -371,6 +399,9 @@ struct A32JniVmLayout {
     std::uint32_t set_long_array_region_stub_address{};
     std::uint32_t long_array_scratch_address{};
     std::uint32_t long_array_scratch_bytes{};
+    std::uint32_t new_object_array_stub_address{};
+    std::uint32_t get_object_array_element_stub_address{};
+    std::uint32_t set_object_array_element_stub_address{};
 };
 
 enum class A32JniVmInstallError : std::uint8_t {

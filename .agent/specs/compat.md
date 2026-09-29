@@ -1290,3 +1290,32 @@ jlong values are decoded as little-endian 64-bit quantities.
 Other primitive array families, object arrays, critical access, pinning, and
 multiple simultaneous element leases remain separate.
 
+## L32-C045 — ARM32 JNI bounded object arrays
+
+Supplied ARMv7 machine code identifies JNIEnv NewObjectArray at slot 172 / byte
+offset `0x2b0`, GetObjectArrayElement at slot 173 / `0x2b4`, and
+SetObjectArrayElement at slot 174 / `0x2b8`. Each entry targets a distinct
+private ARM service stub.
+
+The bounded registry creates synthetic logical object-array handles, stores one
+registered element-class handle, owns a finite vector of logical jobject
+identities, publishes generic array-length metadata, and retains one local
+reference for the array itself.
+
+NewObjectArray requires a registered element-class handle, a signed nonnegative
+bounded length, and a null or currently live initial logical reference. The
+initial logical identity is copied into array storage without altering the
+caller's local/global reference counts.
+
+GetObjectArrayElement validates the array and signed index. A null stored element
+returns null. A non-null stored logical identity gains one local JNI reference
+before that same opaque logical handle is returned.
+
+SetObjectArrayElement validates the array and signed index, accepts null, or
+requires a currently live non-null logical reference before storing the opaque
+identity. Array storage itself does not increment or decrement JNI local/global
+reference counts.
+
+This slice does not implement Java class assignability, ArrayStoreException,
+inheritance, object construction, local frames, or general garbage collection.
+

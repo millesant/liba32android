@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: modified-UTF-8 strings validated; evidence-backed jlong-array slice in progress
+Status: jlong arrays validated; evidence-backed object-array slice in progress
 
 ## Goal
 
@@ -37,6 +37,9 @@ entries include:
 - `GetStringUTFChars` — slot 169 / byte offset `0x2a4`;
 - `ReleaseStringUTFChars` — slot 170 / byte offset `0x2a8`;
 - `GetArrayLength` — slot 171 / byte offset `0x2ac`;
+- `NewObjectArray` — slot 172 / byte offset `0x2b0`;
+- `GetObjectArrayElement` — slot 173 / byte offset `0x2b4`;
+- `SetObjectArrayElement` — slot 174 / byte offset `0x2b8`;
 - `NewLongArray` — slot 180 / byte offset `0x2d0`;
 - `GetLongArrayElements` — slot 188 / byte offset `0x2f0`;
 - `ReleaseLongArrayElements` — slot 196 / byte offset `0x310`;
@@ -82,7 +85,10 @@ The current private guest/host service immediates are:
 - `0xE7` — JNIEnv::NewLongArray;
 - `0xE8` — JNIEnv::GetLongArrayElements;
 - `0xE9` — JNIEnv::ReleaseLongArrayElements;
-- `0xEA` — JNIEnv::SetLongArrayRegion.
+- `0xEA` — JNIEnv::SetLongArrayRegion;
+- `0xEB` — JNIEnv::NewObjectArray;
+- `0xEC` — JNIEnv::GetObjectArrayElement;
+- `0xED` — JNIEnv::SetObjectArrayElement.
 
 Each guest stub is a minimal ARM `svc; bx lr` sequence. Unknown SVC immediates
 remain unhandled.
@@ -281,6 +287,34 @@ decoded little-endian and written only after the range is validated.
 
 See
 [ARM32 JNI jlong-array evidence](../research/evidence/arm32-jni-long-array-entrypoints-2026-09-29.md).
+
+Exact-head validation at
+`94dd3ed5155654956decce93dd6cbe73c25d4cf0` passed all 11 required checks.
+
+## Object arrays
+
+Supplied ARMv7 `libmla.so` directly identifies NewObjectArray at JNIEnv slot
+172 / offset `0x2b0`, GetObjectArrayElement at slot 173 / `0x2b4`, and
+SetObjectArrayElement at slot 174 / `0x2b8`.
+
+The bounded registry allocates a synthetic object-array handle, retains one
+local reference for the array, stores a registered element-class handle, and
+owns a finite vector of opaque logical jobject identities. GetArrayLength reuses
+the generic array-length metadata.
+
+NewObjectArray accepts null or a currently live initial logical reference.
+GetObjectArrayElement returns null for a null entry; a non-null stored identity
+receives one local JNI reference before the same opaque handle is returned.
+SetObjectArrayElement accepts null or a currently live logical identity and does
+not alter the caller's local/global reference count merely because the identity
+is stored.
+
+The runtime still has no Java inheritance/assignability graph. This slice
+therefore does not synthesize ArrayStoreException or claim full Java object
+semantics.
+
+See
+[ARM32 JNI object-array evidence](../research/evidence/arm32-jni-object-array-entrypoints-2026-09-29.md).
 
 ## Reverse native dispatch
 

@@ -2,6 +2,7 @@ typedef int jint;
 typedef void* jobject;
 typedef jobject jclass;
 typedef jobject jarray;
+typedef jobject jobjectArray;
 typedef jobject jfieldID;
 typedef jobject jstring;
 typedef jobject jlongArray;
@@ -40,7 +41,13 @@ struct JNINativeInterface {
     const char* (*GetStringUTFChars)(JNIEnv*, jstring, jboolean*);
     void (*ReleaseStringUTFChars)(JNIEnv*, jstring, const char*);
     jint (*GetArrayLength)(JNIEnv*, jarray);
-    void* reserved172_to_179[8];
+    jobjectArray (*NewObjectArray)(
+        JNIEnv*, jint, jclass, jobject);
+    jobject (*GetObjectArrayElement)(
+        JNIEnv*, jobjectArray, jint);
+    void (*SetObjectArrayElement)(
+        JNIEnv*, jobjectArray, jint, jobject);
+    void* reserved175_to_179[5];
     jlongArray (*NewLongArray)(JNIEnv*, jint);
     void* reserved181_to_187[7];
     jlong* (*GetLongArrayElements)(JNIEnv*, jlongArray, jboolean*);
@@ -103,6 +110,8 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     jstring message;
     const char* message_chars;
     jlongArray long_array;
+    jobjectArray object_array;
+    jobject object_element;
     jlong long_values[3];
     jlong* long_elements;
     jboolean long_is_copy;
@@ -216,6 +225,29 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
         long_elements,
         2);
     env->functions->DeleteLocalRef(env, long_array);
+
+    object_array = env->functions->NewObjectArray(
+        env,
+        2,
+        fixture_class,
+        (jobject)0);
+    if (object_array == (jobjectArray)0) {
+        return JNI_ERR;
+    }
+    env->functions->SetObjectArrayElement(
+        env,
+        object_array,
+        0,
+        fixture_class);
+    object_element = env->functions->GetObjectArrayElement(
+        env,
+        object_array,
+        0);
+    if (object_element != (jobject)fixture_class) {
+        return JNI_ERR;
+    }
+    env->functions->DeleteLocalRef(env, object_element);
+    env->functions->DeleteLocalRef(env, object_array);
 
     global_class = env->functions->NewGlobalRef(
         env,

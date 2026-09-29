@@ -47,6 +47,9 @@ using liba32android::compat::kA32JniNewLongArraySvcImmediate;
 using liba32android::compat::kA32JniGetLongArrayElementsSvcImmediate;
 using liba32android::compat::kA32JniReleaseLongArrayElementsSvcImmediate;
 using liba32android::compat::kA32JniSetLongArrayRegionSvcImmediate;
+using liba32android::compat::kA32JniNewObjectArraySvcImmediate;
+using liba32android::compat::kA32JniGetObjectArrayElementSvcImmediate;
+using liba32android::compat::kA32JniSetObjectArrayElementSvcImmediate;
 using liba32android::compat::kA32JniOk;
 using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
@@ -162,6 +165,9 @@ A32JniVmLayout layout() {
         .set_long_array_region_stub_address = 0x1a60U,
         .long_array_scratch_address = 0x1d00U,
         .long_array_scratch_bytes = 64U,
+        .new_object_array_stub_address = 0x1a80U,
+        .get_object_array_element_stub_address = 0x1aa0U,
+        .set_object_array_element_stub_address = 0x1ac0U,
     };
 }
 
@@ -237,6 +243,12 @@ int test_vm_install_and_getenv() {
             configured.release_string_utf_chars_stub_address ||
         read_u32(memory, configured.native_table_address + 171U * 4U) !=
             configured.get_array_length_stub_address ||
+        read_u32(memory, configured.native_table_address + 172U * 4U) !=
+            configured.new_object_array_stub_address ||
+        read_u32(memory, configured.native_table_address + 173U * 4U) !=
+            configured.get_object_array_element_stub_address ||
+        read_u32(memory, configured.native_table_address + 174U * 4U) !=
+            configured.set_object_array_element_stub_address ||
         read_u32(memory, configured.native_table_address + 180U * 4U) !=
             configured.new_long_array_stub_address ||
         read_u32(memory, configured.native_table_address + 188U * 4U) !=
@@ -273,6 +285,9 @@ int test_vm_install_and_getenv() {
             index == 169U ||
             index == 170U ||
             index == 171U ||
+            index == 172U ||
+            index == 173U ||
+            index == 174U ||
             index == 180U ||
             index == 188U ||
             index == 196U ||
@@ -287,7 +302,7 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::array<std::uint8_t, 8>, 20> expected_stubs{{
+    constexpr std::array<std::array<std::uint8_t, 8>, 23> expected_stubs{{
         {{0xD7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD8U, 0x00U, 0x00U, 0xEFU,
@@ -328,8 +343,14 @@ int test_vm_install_and_getenv() {
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xEAU, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xEBU, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xECU, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xEDU, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    const std::array<std::uint32_t, 20> stub_addresses{{
+    const std::array<std::uint32_t, 23> stub_addresses{{
         configured.get_env_stub_address,
         configured.find_class_stub_address,
         configured.register_natives_stub_address,
@@ -350,6 +371,9 @@ int test_vm_install_and_getenv() {
         configured.get_long_array_elements_stub_address,
         configured.release_long_array_elements_stub_address,
         configured.set_long_array_region_stub_address,
+        configured.new_object_array_stub_address,
+        configured.get_object_array_element_stub_address,
+        configured.set_object_array_element_stub_address,
     }};
     for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
         std::array<std::uint8_t, 8> observed_stub{};
@@ -540,7 +564,7 @@ int test_vm_install_and_getenv() {
     regs = {};
     if (service.handle(
             memory,
-            kA32JniSetLongArrayRegionSvcImmediate + 1U,
+            kA32JniSetObjectArrayElementSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
@@ -1434,6 +1458,207 @@ int test_long_array_family() {
     return 0;
 }
 
+int test_object_array_family() {
+    LinearGuestMemory memory{0x1000U, 0x1000U};
+    const A32JniRegistryLimits limits{
+        .max_classes = 2U,
+        .max_registered_methods = 2U,
+        .max_methods_per_registration = 2U,
+        .max_member_ids = 2U,
+        .max_reference_handles = 8U,
+        .max_reference_count_per_handle = 8U,
+        .max_arrays = 4U,
+        .max_long_array_elements = 4U,
+        .max_object_array_elements = 3U,
+        .dynamic_array_handle_base = 0x44581000U,
+        .dynamic_array_handle_stride = 4U,
+        .max_strings = 2U,
+        .max_modified_utf8_bytes = 8U,
+        .dynamic_string_handle_base = 0x44590000U,
+        .dynamic_string_handle_stride = 4U,
+        .max_class_name_bytes = 32U,
+        .max_method_name_bytes = 32U,
+        .max_signature_bytes = 32U,
+    };
+    A32JniClassRegistry registry{limits};
+    constexpr std::uint32_t kClass = 0x44550000U;
+    constexpr std::uint32_t kObject = 0x44560000U;
+    constexpr std::uint32_t kOtherObject = 0x44560004U;
+    if (registry.add_class(kClass, "org/videolan/Fixture") !=
+            A32JniRegistryError::None ||
+        registry.add_reference_identity(kObject) !=
+            A32JniRegistryError::None ||
+        registry.add_reference_identity(kOtherObject) !=
+            A32JniRegistryError::None ||
+        registry.add_reference_identity(0x44581000U) !=
+            A32JniRegistryError::None ||
+        !registry.retain_local_reference(kObject) ||
+        !registry.retain_local_reference(kOtherObject)) {
+        return fail("could not seed JNI object-array identities");
+    }
+
+    const auto configured = layout();
+    A32JniVmService service{configured, &registry};
+    if (!service.install(memory)) {
+        return fail("JNI object-array service did not install");
+    }
+
+    std::uint32_t cpsr{};
+    std::array<std::uint32_t, 16> regs{};
+    regs[0] = configured.jni_env_address;
+    regs[1] = 3U;
+    regs[2] = kClass;
+    regs[3] = kObject;
+    if (service.handle(
+            memory,
+            kA32JniNewObjectArraySvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0x44581004U) {
+        return fail("JNI NewObjectArray did not create bounded array");
+    }
+    const std::uint32_t array_handle = regs[0];
+    const auto* array = registry.find_object_array(array_handle);
+    const auto array_counts = registry.reference_counts(array_handle);
+    if (array == nullptr ||
+        array->element_class_handle != kClass ||
+        array->elements !=
+            std::vector<std::uint32_t>({kObject, kObject, kObject}) ||
+        registry.array_length(array_handle).value_or(99U) != 3U ||
+        !array_counts.has_value() ||
+        array_counts->local != 1U) {
+        return fail("JNI NewObjectArray lost class/elements/lifetime");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    regs[2] = 1U;
+    if (service.handle(
+            memory,
+            kA32JniGetObjectArrayElementSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != kObject ||
+        registry.reference_counts(kObject)->local != 2U) {
+        return fail("JNI GetObjectArrayElement did not create local ref");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kObject;
+    if (service.handle(
+            memory,
+            kA32JniDeleteLocalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        registry.reference_counts(kObject)->local != 1U) {
+        return fail("JNI object-array returned local ref did not release");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    regs[2] = 1U;
+    regs[3] = 0U;
+    if (service.handle(
+            memory,
+            kA32JniSetObjectArrayElementSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        registry.find_object_array(array_handle)->elements[1] != 0U) {
+        return fail("JNI SetObjectArrayElement did not store null");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    regs[2] = 2U;
+    regs[3] = kOtherObject;
+    if (service.handle(
+            memory,
+            kA32JniSetObjectArrayElementSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        registry.find_object_array(array_handle)->elements[2] !=
+            kOtherObject) {
+        return fail("JNI SetObjectArrayElement did not store live ref");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kOtherObject;
+    if (service.handle(
+            memory,
+            kA32JniDeleteLocalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("could not make JNI object-array input dead");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    regs[2] = 0U;
+    regs[3] = kOtherObject;
+    if (service.handle(
+            memory,
+            kA32JniSetObjectArrayElementSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI SetObjectArrayElement accepted dead input ref");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    regs[2] = static_cast<std::uint32_t>(-1);
+    if (service.handle(
+            memory,
+            kA32JniGetObjectArrayElementSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI GetObjectArrayElement accepted negative index");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = 4U;
+    regs[2] = kClass;
+    regs[3] = 0U;
+    if (service.handle(
+            memory,
+            kA32JniNewObjectArraySvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI NewObjectArray exceeded element ceiling");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    if (service.handle(
+            memory,
+            kA32JniDeleteLocalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("could not release JNI object array");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    regs[2] = 0U;
+    if (service.handle(
+            memory,
+            kA32JniGetObjectArrayElementSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI object-array access accepted dead array ref");
+    }
+
+    return 0;
+}
+
 int test_observed_member_id_lookup() {
     LinearGuestMemory memory{0x1000U, 0x1000U};
     const A32JniRegistryLimits limits{
@@ -2100,6 +2325,10 @@ int main() {
         return status;
     }
     if (const int status = test_long_array_family();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_object_array_family();
         status != 0) {
         return status;
     }

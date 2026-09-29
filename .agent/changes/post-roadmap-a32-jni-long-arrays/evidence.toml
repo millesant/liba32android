@@ -13,8 +13,8 @@ limitations = "Other primitive types, object arrays, critical access, and pinnin
 [[evidence]]
 id = "focused-and-arm32-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host regressions and the pinned-NDK ARM32 fixture prove the complete bounded jlong-array family."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending exact-head execution."
+source = "GitHub exact-head checks at 94dd3ed5155654956decce93dd6cbe73c25d4cf0"
+result = "All 11 required exact-head checks concluded success. The pinned-NDK ARM32 JNI registration integration exercised NewLongArray, SetLongArrayRegion, GetLongArrayElements, ReleaseLongArrayElements, GetArrayLength integration, and reference cleanup; the focused Linux A32 matrix also passed."
+limitations = ""

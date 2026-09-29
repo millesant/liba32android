@@ -241,6 +241,9 @@ int main(int argc, char** argv) {
         .set_long_array_region_stub_address = *stub_page + 0x260U,
         .long_array_scratch_address = *data_page + 0x900U,
         .long_array_scratch_bytes = 128U,
+        .new_object_array_stub_address = *stub_page + 0x280U,
+        .get_object_array_element_stub_address = *stub_page + 0x2a0U,
+        .set_object_array_element_stub_address = *stub_page + 0x2c0U,
     };
     constexpr std::uint32_t kFixtureClassHandle = 0x44550000U;
     constexpr std::uint32_t kFixtureStaticFieldHandle = 0x44551000U;
@@ -296,7 +299,7 @@ int main(int argc, char** argv) {
         .stack_top = stack_top,
         .return_pc = *stop,
         .max_instructions = 1024U,
-        .max_service_calls = 20U,
+        .max_service_calls = 25U,
         .symbols = symbol_options(),
         .execution_context = &execution_context,
     };
@@ -311,7 +314,7 @@ int main(int argc, char** argv) {
         result.returned_version != kA32JniVersion16 ||
         !result.execution.has_value() ||
         !result.execution->stop_pc_reached ||
-        result.execution->services_handled != 20U ||
+        result.execution->services_handled != 25U ||
         !handler.saw_expected_context() ||
         execution_context.object_index.has_value()) {
         const std::uint32_t failing_svc =
@@ -348,6 +351,7 @@ int main(int argc, char** argv) {
     }
 
     constexpr std::uint32_t kDynamicLongArrayHandle = 0x75000000U;
+    constexpr std::uint32_t kDynamicObjectArrayHandle = 0x75000004U;
     const auto* long_array =
         registry.find_long_array(kDynamicLongArrayHandle);
     const auto long_reference_counts =
@@ -359,6 +363,20 @@ int main(int argc, char** argv) {
         long_reference_counts->local != 0U ||
         long_reference_counts->global != 0U) {
         return fail("ARM32 JNI_OnLoad lost jlong-array state/lifetime");
+    }
+
+    const auto* object_array =
+        registry.find_object_array(kDynamicObjectArrayHandle);
+    const auto object_array_refs =
+        registry.reference_counts(kDynamicObjectArrayHandle);
+    if (object_array == nullptr ||
+        object_array->element_class_handle != kFixtureClassHandle ||
+        object_array->elements !=
+            std::vector<std::uint32_t>({kFixtureClassHandle, 0U}) ||
+        !object_array_refs.has_value() ||
+        object_array_refs->local != 0U ||
+        object_array_refs->global != 0U) {
+        return fail("ARM32 JNI_OnLoad lost object-array state/lifetime");
     }
 
     const auto reference_counts =
@@ -442,6 +460,12 @@ int main(int argc, char** argv) {
         << "fixture.jni.long_refs="
         << long_reference_counts->local +
                long_reference_counts->global
+        << '\n'
+        << "fixture.jni.object_array_length="
+        << object_array->elements.size() << '\n'
+        << "fixture.jni.object_refs="
+        << object_array_refs->local +
+               object_array_refs->global
         << '\n'
         << "fixture.jni.status=PASS\n";
     return 0;

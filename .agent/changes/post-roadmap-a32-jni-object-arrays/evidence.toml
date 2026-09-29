@@ -1,0 +1,20 @@
+schema = 1
+change = "post-roadmap-a32-jni-object-arrays"
+
+[[evidence]]
+id = "libmla-object-array-slots"
+kind = "artifact"
+status = "observed"
+claim = "Supplied ARMv7 libmla directly uses NewObjectArray, GetObjectArrayElement, and SetObjectArrayElement."
+source = "docs/research/evidence/arm32-jni-object-array-entrypoints-2026-09-29.md"
+result = "JNIEnv offsets 0x2b0, 0x2b4, and 0x2b8 map to adjacent slots 172, 173, and 174."
+limitations = "Class assignability, ArrayStoreException, object construction, local frames, and GC are outside this slice."
+
+[[evidence]]
+id = "focused-and-arm32-validation"
+kind = "validation"
+status = "pending"
+claim = "Focused host regressions and the pinned-NDK ARM32 fixture prove bounded object-array creation, access, mutation, reference behavior, and cleanup."
+source = "GitHub exact-head checks"
+result = ""
+limitations = "Pending exact-head execution."

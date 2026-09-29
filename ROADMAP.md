@@ -23,17 +23,16 @@ Implemented and regression-tested foundations include:
 ## Active track: JNI compatibility
 
 The first registration, observed member-ID, bounded JavaVM attach/detach,
-strong/local-reference, seeded GetArrayLength, GetStaticIntField, and bounded
-modified-UTF-8 string steps are complete. Direct supplied-binary evidence now
-drives one coherent jlong-array family:
+strong/local-reference, seeded GetArrayLength, GetStaticIntField,
+modified-UTF-8 string, and jlong-array steps are complete. Direct
+supplied-binary evidence now drives one compact object-array family:
 
-1. NewLongArray/GetLongArrayElements/ReleaseLongArrayElements/
-   SetLongArrayRegion;
+1. NewObjectArray/GetObjectArrayElement/SetObjectArrayElement;
 2. remaining reference lifetime, including weak/local-frame behavior when
    balanced evidence exists;
 3. remaining string APIs, including UTF-16/length/region behavior;
-4. remaining primitive/object array families beyond jlong and seeded length
-   metadata;
+4. remaining primitive-array families and broader object-array semantics beyond
+   the bounded logical identity model;
 5. pending exception state and exception operations;
 6. object creation and method-call families;
 7. remaining instance/static field operations;
