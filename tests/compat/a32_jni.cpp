@@ -38,6 +38,7 @@ using liba32android::compat::kA32JniDetachCurrentThreadSvcImmediate;
 using liba32android::compat::kA32JniNewGlobalRefSvcImmediate;
 using liba32android::compat::kA32JniDeleteGlobalRefSvcImmediate;
 using liba32android::compat::kA32JniDeleteLocalRefSvcImmediate;
+using liba32android::compat::kA32JniGetArrayLengthSvcImmediate;
 using liba32android::compat::kA32JniOk;
 using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
@@ -121,6 +122,7 @@ A32JniVmLayout layout() {
         .new_global_ref_stub_address = 0x1900U,
         .delete_global_ref_stub_address = 0x1920U,
         .delete_local_ref_stub_address = 0x1940U,
+        .get_array_length_stub_address = 0x1960U,
     };
 }
 
@@ -186,6 +188,8 @@ int test_vm_install_and_getenv() {
             configured.get_field_id_stub_address ||
         read_u32(memory, configured.native_table_address + 144U * 4U) !=
             configured.get_static_field_id_stub_address ||
+        read_u32(memory, configured.native_table_address + 171U * 4U) !=
+            configured.get_array_length_stub_address ||
         read_u32(memory, configured.native_table_address + 215U * 4U) !=
             configured.register_natives_stub_address) {
         return fail("JNI VM pointer tables contain wrong guest pointers");
@@ -209,6 +213,7 @@ int test_vm_install_and_getenv() {
             index == 33U ||
             index == 94U ||
             index == 144U ||
+            index == 171U ||
             index == 215U) {
             continue;
         }
@@ -219,7 +224,7 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::array<std::uint8_t, 8>, 11> expected_stubs{{
+    constexpr std::array<std::array<std::uint8_t, 8>, 12> expected_stubs{{
         {{0xD7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD8U, 0x00U, 0x00U, 0xEFU,
@@ -242,8 +247,10 @@ int test_vm_install_and_getenv() {
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xE1U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xE2U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    const std::array<std::uint32_t, 11> stub_addresses{{
+    const std::array<std::uint32_t, 12> stub_addresses{{
         configured.get_env_stub_address,
         configured.find_class_stub_address,
         configured.register_natives_stub_address,
@@ -255,6 +262,7 @@ int test_vm_install_and_getenv() {
         configured.new_global_ref_stub_address,
         configured.delete_global_ref_stub_address,
         configured.delete_local_ref_stub_address,
+        configured.get_array_length_stub_address,
     }};
     for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
         std::array<std::uint8_t, 8> observed_stub{};
@@ -445,7 +453,7 @@ int test_vm_install_and_getenv() {
     regs = {};
     if (service.handle(
             memory,
-            kA32JniDeleteLocalRefSvcImmediate + 1U,
+            kA32JniGetArrayLengthSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
@@ -648,6 +656,116 @@ int test_strong_reference_lifetime() {
             regs,
             cpsr) != A32HostServiceDisposition::Failed) {
         return fail("JNI DeleteGlobalRef accepted unknown reference");
+    }
+
+    return 0;
+}
+
+int test_seeded_array_length() {
+    LinearGuestMemory memory{0x1000U, 0x1000U};
+    const A32JniRegistryLimits limits{
+        .max_classes = 2U,
+        .max_registered_methods = 2U,
+        .max_methods_per_registration = 2U,
+        .max_member_ids = 2U,
+        .max_reference_handles = 4U,
+        .max_reference_count_per_handle = 4U,
+        .max_arrays = 2U,
+        .max_class_name_bytes = 32U,
+        .max_method_name_bytes = 32U,
+        .max_signature_bytes = 32U,
+    };
+    A32JniClassRegistry registry{limits};
+    constexpr std::uint32_t kArray = 0x44560000U;
+    constexpr std::uint32_t kEmptyArray = 0x44560004U;
+    if (registry.add_array(kArray, 7U) != A32JniRegistryError::None ||
+        registry.add_array(kEmptyArray, 0U) !=
+            A32JniRegistryError::None ||
+        registry.array_count() != 2U ||
+        registry.add_array(kArray, 9U) !=
+            A32JniRegistryError::DuplicateArrayHandle ||
+        registry.add_array(0x44560008U, 1U) !=
+            A32JniRegistryError::ArrayLimitExceeded ||
+        registry.add_array(0U, 1U) !=
+            A32JniRegistryError::InvalidArrayHandle ||
+        registry.add_array(
+            0x4456000cU,
+            0x80000000U) !=
+            A32JniRegistryError::InvalidArrayLength) {
+        return fail("JNI array registry bounds/identity are wrong");
+    }
+
+    const auto counts = registry.reference_counts(kArray);
+    if (!counts.has_value() ||
+        counts->local != 1U ||
+        counts->global != 0U ||
+        registry.array_length(kArray).value_or(99U) != 7U ||
+        registry.array_length(kEmptyArray).value_or(99U) != 0U) {
+        return fail("JNI seeded arrays lost metadata/reference ownership");
+    }
+
+    const auto configured = layout();
+    A32JniVmService service{configured, &registry};
+    if (!service.install(memory)) {
+        return fail("JNI array-length service did not install");
+    }
+
+    std::uint32_t cpsr{};
+    std::array<std::uint32_t, 16> regs{};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kArray;
+    if (service.handle(
+            memory,
+            kA32JniGetArrayLengthSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 7U) {
+        return fail("JNI GetArrayLength returned wrong seeded length");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kEmptyArray;
+    if (service.handle(
+            memory,
+            kA32JniGetArrayLengthSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI GetArrayLength rejected zero-length array");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = 0U;
+    if (service.handle(
+            memory,
+            kA32JniGetArrayLengthSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI GetArrayLength accepted null");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = 0x99887766U;
+    if (service.handle(
+            memory,
+            kA32JniGetArrayLengthSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI GetArrayLength accepted unknown array");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address + 4U;
+    regs[1] = kArray;
+    if (service.handle(
+            memory,
+            kA32JniGetArrayLengthSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI GetArrayLength accepted wrong JNIEnv pointer");
     }
 
     return 0;
@@ -1303,6 +1421,10 @@ int main() {
         return status;
     }
     if (const int status = test_strong_reference_lifetime();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_seeded_array_length();
         status != 0) {
         return status;
     }

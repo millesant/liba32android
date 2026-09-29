@@ -1,0 +1,38 @@
+schema = 1
+change = "post-roadmap-a32-jni-array-length"
+
+[[evidence]]
+id = "supplied-libmla-get-array-length-slot"
+kind = "artifact"
+status = "observed"
+claim = "Supplied ARMv7 libmla machine code directly identifies JNIEnv GetArrayLength at slot 171."
+source = "docs/research/evidence/arm32-jni-array-length-entrypoint-2026-09-29.md"
+result = "The wrapper loads JNIEnv byte offset 0x2ac before the indirect call; 0x2ac / 4 = 171."
+limitations = "The same binary exposes broader array APIs, but this evidence record does not infer their semantics into this slice."
+
+[[evidence]]
+id = "arm32-array-length-fixture"
+kind = "integration"
+status = "pending"
+claim = "The pinned-NDK ARM32 JNI fixture calls GetArrayLength on a caller-seeded logical array and observes length 7 while retaining the earlier registration/reference behavior."
+source = "ARM32 JNI integration workflow"
+result = ""
+limitations = "Pending exact-head execution."
+
+[[evidence]]
+id = "focused-host-regressions"
+kind = "test"
+status = "pending"
+claim = "Focused host regressions prove exact slot/stub publication, seeded array metadata/reference ownership, zero-length handling, limit/duplicate validation, and null/unknown/wrong-env failures."
+source = "tests/compat/a32_jni.cpp"
+result = ""
+limitations = "Pending exact-head execution."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "pending"
+claim = "The seeded GetArrayLength slice passes the required exact-head check matrix."
+source = "GitHub commit checks"
+result = ""
+limitations = "Pending exact-head execution."

@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: member IDs + JavaVM attach/detach validated; evidence-backed strong/local reference slice in progress
+Status: strong/local refs validated; evidence-backed seeded GetArrayLength slice in progress
 
 ## Goal
 
@@ -32,6 +32,7 @@ entries include:
 - `GetMethodID` — slot 33 / byte offset `0x84`;
 - `GetFieldID` — slot 94 / byte offset `0x178`;
 - `GetStaticFieldID` — slot 144 / byte offset `0x240`;
+- `GetArrayLength` — slot 171 / byte offset `0x2ac`;
 - `RegisterNatives` — slot 215 / byte offset `0x35c`.
 
 Unsupported entries remain null.
@@ -64,7 +65,8 @@ The current private guest/host service immediates are:
 - `0xDE` — JavaVM::DetachCurrentThread;
 - `0xDF` — JNIEnv::NewGlobalRef;
 - `0xE0` — JNIEnv::DeleteGlobalRef;
-- `0xE1` — JNIEnv::DeleteLocalRef.
+- `0xE1` — JNIEnv::DeleteLocalRef;
+- `0xE2` — JNIEnv::GetArrayLength.
 
 Each guest stub is a minimal ARM `svc; bx lr` sequence. Unknown SVC immediates
 remain unhandled.
@@ -115,8 +117,10 @@ opaque logical handle. DeleteLocalRef/DeleteGlobalRef release only their
 respective counts. Null follows JNI no-op/null semantics.
 
 The representation is intentionally APK-agnostic and never exposes host
-pointers. Full GC, weak refs, local frames, cross-thread local refs, and
-universal liveness enforcement are separate work.
+pointers. Exact-head validation at
+`764658ec7a6bde80b2cc6b0474bba75f0dd79d1b` passed all 11 required checks.
+Full GC, weak refs, local frames, cross-thread local refs, and universal
+liveness enforcement are separate work.
 
 See
 [ARM32 JNI reference entrypoint evidence](../research/evidence/arm32-jni-reference-entrypoints-2026-09-29.md).
@@ -178,6 +182,23 @@ object/reference lifetime.
 
 See
 [ARM32 JNI member-ID entrypoint evidence](../research/evidence/arm32-jni-member-id-entrypoints-2026-09-28.md).
+
+## Seeded array length
+
+Supplied ARMv7 `libmla.so` directly loads GetArrayLength from JNIEnv slot 171 /
+offset `0x2ac`.
+
+The current bounded array seam is metadata-only. The caller seeds one logical
+array handle plus a finite signed-32-bit-compatible length. Seeding establishes
+one local reference through the generic reference ledger. GetArrayLength returns
+that exact length for the known logical array and fails for null, unknown, or
+non-array handles.
+
+No array allocation, element storage/access, pin/copy buffer, or Java array type
+semantics are implied.
+
+See
+[ARM32 JNI GetArrayLength evidence](../research/evidence/arm32-jni-array-length-entrypoint-2026-09-29.md).
 
 ## Reverse native dispatch
 

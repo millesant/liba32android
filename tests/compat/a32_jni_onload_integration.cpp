@@ -227,13 +227,17 @@ int main(int argc, char** argv) {
         .new_global_ref_stub_address = *stub_page + 0x100U,
         .delete_global_ref_stub_address = *stub_page + 0x120U,
         .delete_local_ref_stub_address = *stub_page + 0x140U,
+        .get_array_length_stub_address = *stub_page + 0x160U,
     };
     constexpr std::uint32_t kFixtureClassHandle = 0x44550000U;
+    constexpr std::uint32_t kFixtureArrayHandle = 0x44560000U;
     A32JniClassRegistry registry;
     if (!registry.valid() ||
         registry.add_class(
             kFixtureClassHandle,
             "org/videolan/Fixture") !=
+            A32JniRegistryError::None ||
+        registry.add_array(kFixtureArrayHandle, 7U) !=
             A32JniRegistryError::None) {
         return fail("could not seed JNI fixture class registry");
     }
@@ -269,7 +273,7 @@ int main(int argc, char** argv) {
         .stack_top = stack_top,
         .return_pc = *stop,
         .max_instructions = 1024U,
-        .max_service_calls = 6U,
+        .max_service_calls = 7U,
         .symbols = symbol_options(),
         .execution_context = &execution_context,
     };
@@ -284,7 +288,7 @@ int main(int argc, char** argv) {
         result.returned_version != kA32JniVersion16 ||
         !result.execution.has_value() ||
         !result.execution->stop_pc_reached ||
-        result.execution->services_handled != 6U ||
+        result.execution->services_handled != 7U ||
         !handler.saw_expected_context() ||
         execution_context.object_index.has_value()) {
         const std::uint32_t failing_svc =
@@ -299,6 +303,12 @@ int main(int argc, char** argv) {
             " svc=" + std::to_string(failing_svc) +
             " handled=" +
             std::to_string(handled_services));
+    }
+
+    const auto array_length =
+        registry.array_length(kFixtureArrayHandle);
+    if (!array_length.has_value() || *array_length != 7U) {
+        return fail("ARM32 JNI_OnLoad lost seeded array metadata");
     }
 
     const auto reference_counts =
@@ -367,6 +377,8 @@ int main(int argc, char** argv) {
         << reference_counts->local << '\n'
         << "fixture.jni.global_refs="
         << reference_counts->global << '\n'
+        << "fixture.jni.array_length="
+        << *array_length << '\n'
         << "fixture.jni.status=PASS\n";
     return 0;
 }

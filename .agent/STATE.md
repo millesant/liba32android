@@ -6,9 +6,8 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-strong-references` — ACTIVE; add the supplied
-  ARMv7-evidenced NewGlobalRef/DeleteGlobalRef/DeleteLocalRef seam with bounded
-  APK-agnostic logical reference bookkeeping.
+- `post-roadmap-a32-jni-array-length` — ACTIVE; add the supplied ARMv7-evidenced
+  GetArrayLength slot with bounded caller-seeded APK-agnostic array metadata.
 
 ## Phase
 
@@ -83,11 +82,17 @@ proved AttachCurrentThread slot 4 / offset `0x10` and DetachCurrentThread slot
 context, returns JNI_EDETACHED from GetEnv while detached, and passed all 11
 exact-head checks.
 
-The active reference slice is again driven by supplied `libmla.so`: machine
-code loads NewGlobalRef from slot 21 / offset `0x54`, DeleteGlobalRef from slot
-22 / `0x58`, and DeleteLocalRef from slot 23 / `0x5c`. The same library
-contains NewWeakGlobalRef at slot 226, but no matching DeleteWeakGlobalRef
-wrapper was found in the targeted pass, so weak references remain deferred.
+The bounded strong/local reference slice is DONE at
+`764658ec7a6bde80b2cc6b0474bba75f0dd79d1b`. The supplied ARMv7 library
+proved NewGlobalRef slot 21 / `0x54`, DeleteGlobalRef slot 22 / `0x58`, and
+DeleteLocalRef slot 23 / `0x5c`; the implementation keeps APK-agnostic logical
+local/global counts and the real ARM32 fixture ends with zero live class
+references. All 11 exact-head checks passed.
+
+The active array slice is deliberately small: the same supplied `libmla.so`
+loads GetArrayLength from JNIEnv slot 171 / offset `0x2ac`. The runtime seeds
+finite logical array metadata from the caller; allocation and elements remain
+separate work.
 
 ## Public repository readiness
 

@@ -3,24 +3,24 @@ change = "post-roadmap-a32-jni-strong-references"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Record supplied libmla strong/local reference slot evidence and define the bounded logical-reference contract."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Implement bounded local/global reference bookkeeping plus NewGlobalRef/DeleteGlobalRef/DeleteLocalRef table/service behavior."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Add focused regressions for table/stub bytes, FindClass local retention, global promotion, per-kind deletion, null behavior, limits, and dead-reference behavior."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Converge accepted spec/architecture/state/evidence and pass exact-head validation."

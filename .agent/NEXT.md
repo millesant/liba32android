@@ -10,21 +10,21 @@ at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c. Licensing is no longer an OSS-readi
 
 ## Active JNI track
 
-Continue `post-roadmap-a32-jni-strong-references`.
+Continue `post-roadmap-a32-jni-array-length`.
 
-The JavaVM AttachCurrentThread/DetachCurrentThread slice is complete at
-`35168f13294de7f88ed7b7054f0b08f1c9f5e7e9` with 11/11 checks green.
+The strong/local reference slice is complete at
+`764658ec7a6bde80b2cc6b0474bba75f0dd79d1b` with 11/11 checks green.
 
-Direct ARMv7 `libmla.so` evidence drives the next bounded reference seam:
+Direct ARMv7 `libmla.so` evidence drives the next minimal array seam:
 
-1. NewGlobalRef at JNIEnv slot 21 / offset `0x54`;
-2. DeleteGlobalRef at slot 22 / `0x58`;
-3. DeleteLocalRef at slot 23 / `0x5c`;
-4. bounded APK-agnostic logical object identities with separate local/global
-   counts;
-5. FindClass establishes one local reference for its returned class handle;
-6. real ARM32 JNI_OnLoad fixture promotes the class to global, deletes the local,
-   registers the native through the global handle, then releases the global.
+1. GetArrayLength at JNIEnv slot 171 / offset `0x2ac`;
+2. caller-seeded logical array identities with exact finite jsize-compatible
+   lengths;
+3. one local reference retained for each seeded array handle;
+4. exact GetArrayLength behavior for known arrays and explicit failure for
+   null/unknown/non-array handles;
+5. real ARM32 fixture execution against a seeded logical array.
 
-Defer weak references, NewLocalRef, IsSameObject, local frames, GC, and general
-object lifetime until a balanced evidence-backed boundary exists.
+Do not infer NewLongArray/NewObjectArray, element storage, region APIs, or
+pin/copy semantics into this slice. Reassess those observed entrypoints after
+GetArrayLength closes.

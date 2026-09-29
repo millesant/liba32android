@@ -1196,3 +1196,23 @@ Weak references, NewLocalRef, IsSameObject, local frames, garbage collection,
 cross-thread local-reference ownership, general object allocation, and full
 lifetime enforcement across all JNI entrypoints remain separate.
 
+## L32-C041 — ARM32 JNI seeded GetArrayLength
+
+Supplied ARMv7 machine code identifies JNIEnv GetArrayLength at slot 171 / byte
+offset `0x2ac`. The guest JNIEnv table publishes that exact entry through one
+private ARM service stub.
+
+The bounded JNI registry may seed finite logical array identities. Each array has
+one nonzero logical handle and an exact length representable by signed 32-bit
+`jsize`. Seeding creates or reuses the generic reference identity and retains
+one local reference for the caller-visible array handle.
+
+GetArrayLength requires the exact configured JNIEnv pointer, an attached JNI
+context, and a registered array handle. It returns the exact seeded length in
+`r0`. Null, unknown, or non-array handles fail rather than returning fabricated
+metadata.
+
+This slice does not allocate arrays, store elements, implement primitive/object
+array element or region operations, expose pin/copy buffers, or infer Java array
+types.
+

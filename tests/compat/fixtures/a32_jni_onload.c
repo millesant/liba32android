@@ -1,6 +1,7 @@
 typedef int jint;
 typedef void* jobject;
 typedef jobject jclass;
+typedef jobject jarray;
 
 typedef struct JNIEnv_ JNIEnv;
 typedef struct JavaVM_ JavaVM;
@@ -23,7 +24,9 @@ struct JNINativeInterface {
     jobject (*NewGlobalRef)(JNIEnv*, jobject);
     void (*DeleteGlobalRef)(JNIEnv*, jobject);
     void (*DeleteLocalRef)(JNIEnv*, jobject);
-    void* reserved24_to_214[191];
+    void* reserved24_to_170[147];
+    jint (*GetArrayLength)(JNIEnv*, jarray);
+    void* reserved172_to_214[43];
     jint (*RegisterNatives)(
         JNIEnv*,
         jclass,
@@ -84,6 +87,11 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
         return JNI_ERR;
     }
     if (env == (JNIEnv*)0 || env->functions == (void*)0) {
+        return JNI_ERR;
+    }
+    if (env->functions->GetArrayLength(
+            env,
+            (jarray)0x44560000) != 7) {
         return JNI_ERR;
     }
 

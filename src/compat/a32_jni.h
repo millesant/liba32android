@@ -11,6 +11,7 @@
 #define LIBA32ANDROID_A32_JNI_NEW_GLOBAL_REF_SVC 0xDF
 #define LIBA32ANDROID_A32_JNI_DELETE_GLOBAL_REF_SVC 0xE0
 #define LIBA32ANDROID_A32_JNI_DELETE_LOCAL_REF_SVC 0xE1
+#define LIBA32ANDROID_A32_JNI_GET_ARRAY_LENGTH_SVC 0xE2
 
 #ifdef __cplusplus
 
@@ -52,6 +53,8 @@ inline constexpr std::uint32_t kA32JniDeleteGlobalRefSvcImmediate =
     LIBA32ANDROID_A32_JNI_DELETE_GLOBAL_REF_SVC;
 inline constexpr std::uint32_t kA32JniDeleteLocalRefSvcImmediate =
     LIBA32ANDROID_A32_JNI_DELETE_LOCAL_REF_SVC;
+inline constexpr std::uint32_t kA32JniGetArrayLengthSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_ARRAY_LENGTH_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -69,6 +72,7 @@ inline constexpr std::size_t kA32JniHardMaxMethodsPerRegistration = 1024U;
 inline constexpr std::size_t kA32JniHardMaxMemberIds = 4096U;
 inline constexpr std::size_t kA32JniHardMaxReferenceHandles = 4096U;
 inline constexpr std::size_t kA32JniHardMaxReferenceCountPerHandle = 1U << 20U;
+inline constexpr std::size_t kA32JniHardMaxArrays = 4096U;
 inline constexpr std::size_t kA32JniHardMaxStringBytes = 4096U;
 
 // Android/Dalvik GetEnv accepts the inclusive numeric JNI 1.1..1.6
@@ -93,6 +97,7 @@ struct A32JniRegistryLimits {
     std::size_t max_member_ids{512U};
     std::size_t max_reference_handles{512U};
     std::size_t max_reference_count_per_handle{4096U};
+    std::size_t max_arrays{512U};
     std::size_t max_class_name_bytes{256U};
     std::size_t max_method_name_bytes{256U};
     std::size_t max_signature_bytes{256U};
@@ -119,6 +124,10 @@ enum class A32JniRegistryError : std::uint8_t {
     ReferenceLimitExceeded,
     DuplicateReferenceHandle,
     ReferenceCountExceeded,
+    InvalidArrayHandle,
+    InvalidArrayLength,
+    ArrayLimitExceeded,
+    DuplicateArrayHandle,
 };
 
 enum class A32JniMemberKind : std::uint8_t {
@@ -139,6 +148,11 @@ struct A32JniMemberId {
 struct A32JniReferenceCounts {
     std::uint32_t local{};
     std::uint32_t global{};
+};
+
+struct A32JniArrayInfo {
+    std::uint32_t handle{};
+    std::uint32_t length{};
 };
 
 struct A32JniRegisteredNative {
@@ -179,6 +193,13 @@ public:
         std::uint32_t handle) noexcept;
     [[nodiscard]] std::optional<A32JniReferenceCounts> reference_counts(
         std::uint32_t handle) const noexcept;
+
+    [[nodiscard]] A32JniRegistryError add_array(
+        std::uint32_t handle,
+        std::uint32_t length);
+    [[nodiscard]] std::optional<std::uint32_t> array_length(
+        std::uint32_t handle) const noexcept;
+
     [[nodiscard]] A32JniRegistryError add_member(
         std::uint32_t class_handle,
         A32JniMemberKind kind,
@@ -200,6 +221,9 @@ public:
     }
     [[nodiscard]] std::size_t member_count() const noexcept {
         return members_.size();
+    }
+    [[nodiscard]] std::size_t array_count() const noexcept {
+        return arrays_.size();
     }
     [[nodiscard]] std::size_t registered_native_count() const noexcept {
         return natives_.size();
@@ -232,6 +256,7 @@ private:
     A32JniRegistryLimits limits_;
     std::vector<ClassEntry> classes_;
     std::vector<ReferenceEntry> references_;
+    std::vector<A32JniArrayInfo> arrays_;
     std::vector<A32JniMemberId> members_;
     std::vector<A32JniRegisteredNative> natives_;
 
@@ -254,6 +279,7 @@ struct A32JniVmLayout {
     std::uint32_t new_global_ref_stub_address{};
     std::uint32_t delete_global_ref_stub_address{};
     std::uint32_t delete_local_ref_stub_address{};
+    std::uint32_t get_array_length_stub_address{};
 };
 
 enum class A32JniVmInstallError : std::uint8_t {
