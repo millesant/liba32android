@@ -426,8 +426,8 @@ int test_observed_member_id_lookup() {
             kClassHandle,
             A32JniMemberKind::InstanceMethod,
             0x44554000U,
-            "member",
-            "()I") !=
+            "overflow",
+            "()V") !=
             A32JniRegistryError::MemberLimitExceeded) {
         return fail("JNI member registry limits/identity were not enforced");
     }
