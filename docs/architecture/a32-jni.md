@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: GetStaticIntField validated; evidence-backed modified-UTF-8 string slice in progress
+Status: modified-UTF-8 strings validated; evidence-backed jlong-array slice in progress
 
 ## Goal
 
@@ -37,6 +37,10 @@ entries include:
 - `GetStringUTFChars` — slot 169 / byte offset `0x2a4`;
 - `ReleaseStringUTFChars` — slot 170 / byte offset `0x2a8`;
 - `GetArrayLength` — slot 171 / byte offset `0x2ac`;
+- `NewLongArray` — slot 180 / byte offset `0x2d0`;
+- `GetLongArrayElements` — slot 188 / byte offset `0x2f0`;
+- `ReleaseLongArrayElements` — slot 196 / byte offset `0x310`;
+- `SetLongArrayRegion` — slot 212 / byte offset `0x350`;
 - `RegisterNatives` — slot 215 / byte offset `0x35c`.
 
 Unsupported entries remain null.
@@ -74,7 +78,11 @@ The current private guest/host service immediates are:
 - `0xE3` — JNIEnv::GetStaticIntField;
 - `0xE4` — JNIEnv::NewStringUTF;
 - `0xE5` — JNIEnv::GetStringUTFChars;
-- `0xE6` — JNIEnv::ReleaseStringUTFChars.
+- `0xE6` — JNIEnv::ReleaseStringUTFChars;
+- `0xE7` — JNIEnv::NewLongArray;
+- `0xE8` — JNIEnv::GetLongArrayElements;
+- `0xE9` — JNIEnv::ReleaseLongArrayElements;
+- `0xEA` — JNIEnv::SetLongArrayRegion.
 
 Each guest stub is a minimal ARM `svc; bx lr` sequence. Unknown SVC immediates
 remain unhandled.
@@ -250,6 +258,29 @@ simultaneous leases remain separate.
 
 See
 [ARM32 JNI modified-UTF-8 evidence](../research/evidence/arm32-jni-modified-utf8-entrypoints-2026-09-29.md).
+
+Exact-head validation at
+`d06d2ec0393c0cb12fb414d07d618b5bf1c7f07d` passed all 11 required checks.
+
+## jlong arrays
+
+Supplied ARMv7 `libmla.so` identifies one coherent primitive-array family:
+NewLongArray at slot 180, GetLongArrayElements at slot 188,
+ReleaseLongArrayElements at slot 196, and SetLongArrayRegion at slot 212.
+
+NewLongArray allocates a synthetic logical handle, zero-initialized owned
+`int64_t` storage, generic array-length metadata, and one local reference.
+GetLongArrayElements copies the full array into one caller-owned 8-byte-aligned
+guest scratch region and records an exact lease. ReleaseLongArrayElements
+implements copy-back/release mode 0, JNI_COMMIT, and JNI_ABORT. No host element
+pointer becomes guest-visible.
+
+SetLongArrayRegion decodes start/length as signed jsize values and reads the
+fifth ARM32 argument from guest `[sp]` as the source jlong pointer. Values are
+decoded little-endian and written only after the range is validated.
+
+See
+[ARM32 JNI jlong-array evidence](../research/evidence/arm32-jni-long-array-entrypoints-2026-09-29.md).
 
 ## Reverse native dispatch
 

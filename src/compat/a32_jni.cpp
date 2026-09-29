@@ -35,6 +35,10 @@ constexpr std::size_t kNewStringUtfSlot = 167U;
 constexpr std::size_t kGetStringUtfCharsSlot = 169U;
 constexpr std::size_t kReleaseStringUtfCharsSlot = 170U;
 constexpr std::size_t kGetArrayLengthSlot = 171U;
+constexpr std::size_t kNewLongArraySlot = 180U;
+constexpr std::size_t kGetLongArrayElementsSlot = 188U;
+constexpr std::size_t kReleaseLongArrayElementsSlot = 196U;
+constexpr std::size_t kSetLongArrayRegionSlot = 212U;
 constexpr std::size_t kRegisterNativesSlot = 215U;
 constexpr std::size_t kJniNativeMethodBytes = 12U;
 constexpr std::size_t kServiceStubBytes = 8U;
@@ -109,6 +113,85 @@ void write_u32(
             (static_cast<std::uint32_t>(bytes[2]) << 16U) |
             (static_cast<std::uint32_t>(bytes[3]) << 24U);
     return true;
+}
+
+[[nodiscard]] bool read_guest_i64_values(
+    const memory::GuestMemory& memory,
+    std::uint32_t address,
+    std::size_t count,
+    std::vector<std::int64_t>& output) {
+    output.clear();
+    if (count > kA32JniHardMaxLongArrayElements) {
+        return false;
+    }
+    if (count == 0U) {
+        return true;
+    }
+    if (address == 0U ||
+        count > std::numeric_limits<std::size_t>::max() / 8U) {
+        return false;
+    }
+    const std::size_t byte_count = count * 8U;
+    if (static_cast<std::uint64_t>(address) +
+            static_cast<std::uint64_t>(byte_count) >
+        (std::uint64_t{1} << 32U)) {
+        return false;
+    }
+
+    std::vector<std::uint8_t> bytes(byte_count);
+    if (!memory.read(address, bytes)) {
+        return false;
+    }
+    output.reserve(count);
+    for (std::size_t index = 0U; index < count; ++index) {
+        const std::size_t offset = index * 8U;
+        std::uint64_t bits{};
+        for (std::size_t byte = 0U; byte < 8U; ++byte) {
+            bits |= static_cast<std::uint64_t>(
+                        bytes[offset + byte])
+                    << (byte * 8U);
+        }
+        output.push_back(static_cast<std::int64_t>(bits));
+    }
+    return true;
+}
+
+[[nodiscard]] bool write_guest_i64_values(
+    memory::GuestMemory& memory,
+    std::uint32_t address,
+    const std::vector<std::int64_t>& values) {
+    if (values.size() > kA32JniHardMaxLongArrayElements) {
+        return false;
+    }
+    if (values.empty()) {
+        return true;
+    }
+    if (address == 0U ||
+        values.size() >
+            std::numeric_limits<std::size_t>::max() / 8U) {
+        return false;
+    }
+    const std::size_t byte_count = values.size() * 8U;
+    if (static_cast<std::uint64_t>(address) +
+            static_cast<std::uint64_t>(byte_count) >
+        (std::uint64_t{1} << 32U)) {
+        return false;
+    }
+
+    std::vector<std::uint8_t> bytes(byte_count, 0U);
+    for (std::size_t index = 0U;
+         index < values.size();
+         ++index) {
+        const std::uint64_t bits =
+            static_cast<std::uint64_t>(values[index]);
+        const std::size_t offset = index * 8U;
+        for (std::size_t byte = 0U; byte < 8U; ++byte) {
+            bytes[offset + byte] =
+                static_cast<std::uint8_t>(
+                    bits >> (byte * 8U));
+        }
+    }
+    return memory.write(address, bytes);
 }
 
 [[nodiscard]] bool read_guest_c_string(
@@ -241,6 +324,18 @@ bool A32JniClassRegistry::valid() const noexcept {
                 kA32JniHardMaxReferenceCountPerHandle &&
            limits_.max_arrays > 0U &&
            limits_.max_arrays <= kA32JniHardMaxArrays &&
+           limits_.max_long_array_elements > 0U &&
+           limits_.max_long_array_elements <=
+                kA32JniHardMaxLongArrayElements &&
+           limits_.dynamic_array_handle_base != 0U &&
+           limits_.dynamic_array_handle_stride != 0U &&
+           static_cast<std::uint64_t>(
+               limits_.dynamic_array_handle_base) +
+                   static_cast<std::uint64_t>(
+                       limits_.max_arrays +
+                       limits_.max_reference_handles - 1U) *
+                       limits_.dynamic_array_handle_stride <=
+               std::numeric_limits<std::uint32_t>::max() &&
            limits_.max_strings > 0U &&
            limits_.max_strings <= kA32JniHardMaxStrings &&
            limits_.max_modified_utf8_bytes > 0U &&
@@ -457,6 +552,89 @@ std::optional<std::uint32_t> A32JniClassRegistry::array_length(
         }
     }
     return std::nullopt;
+}
+
+A32JniRegistryError A32JniClassRegistry::create_long_array(
+    std::int32_t length,
+    std::uint32_t& handle) {
+    handle = 0U;
+    if (!valid()) {
+        return A32JniRegistryError::InvalidLimits;
+    }
+    if (length < 0 ||
+        static_cast<std::size_t>(length) >
+            limits_.max_long_array_elements) {
+        return A32JniRegistryError::InvalidArrayLength;
+    }
+    if (arrays_.size() >= limits_.max_arrays) {
+        return A32JniRegistryError::ArrayLimitExceeded;
+    }
+    if (references_.size() >= limits_.max_reference_handles) {
+        return A32JniRegistryError::ReferenceLimitExceeded;
+    }
+
+    const std::size_t candidate_count =
+        limits_.max_arrays +
+        limits_.max_reference_handles;
+    for (std::size_t index = 0U;
+         index < candidate_count;
+         ++index) {
+        const std::uint64_t candidate64 =
+            static_cast<std::uint64_t>(
+                limits_.dynamic_array_handle_base) +
+            static_cast<std::uint64_t>(index) *
+                limits_.dynamic_array_handle_stride;
+        if (candidate64 >
+            std::numeric_limits<std::uint32_t>::max()) {
+            break;
+        }
+        const auto candidate =
+            static_cast<std::uint32_t>(candidate64);
+        if (candidate == 0U ||
+            find_reference_entry(candidate) != nullptr) {
+            continue;
+        }
+
+        A32JniLongArrayInfo long_array;
+        long_array.handle = candidate;
+        long_array.elements.assign(
+            static_cast<std::size_t>(length),
+            std::int64_t{0});
+
+        references_.push_back(ReferenceEntry{
+            .handle = candidate,
+            .local_count = 1U,
+            .global_count = 0U,
+        });
+        arrays_.push_back(A32JniArrayInfo{
+            .handle = candidate,
+            .length = static_cast<std::uint32_t>(length),
+        });
+        long_arrays_.push_back(std::move(long_array));
+        handle = candidate;
+        return A32JniRegistryError::None;
+    }
+    return A32JniRegistryError::ArrayHandleExhausted;
+}
+
+const A32JniLongArrayInfo* A32JniClassRegistry::find_long_array(
+    std::uint32_t handle) const noexcept {
+    for (const A32JniLongArrayInfo& array : long_arrays_) {
+        if (array.handle == handle) {
+            return &array;
+        }
+    }
+    return nullptr;
+}
+
+A32JniLongArrayInfo* A32JniClassRegistry::find_long_array(
+    std::uint32_t handle) noexcept {
+    for (A32JniLongArrayInfo& array : long_arrays_) {
+        if (array.handle == handle) {
+            return &array;
+        }
+    }
+    return nullptr;
 }
 
 A32JniRegistryError A32JniClassRegistry::create_modified_utf8_string(
@@ -766,10 +944,15 @@ A32JniRegistryError A32JniClassRegistry::register_natives(
 bool A32JniVmService::layout_valid() const noexcept {
     if (layout_.string_utf_scratch_bytes == 0U ||
         layout_.string_utf_scratch_bytes >
-            kA32JniHardMaxStringBytes + 1U) {
+            kA32JniHardMaxStringBytes + 1U ||
+        layout_.long_array_scratch_bytes == 0U ||
+        (layout_.long_array_scratch_address & 7U) != 0U ||
+        (layout_.long_array_scratch_bytes & 7U) != 0U ||
+        layout_.long_array_scratch_bytes >
+            kA32JniHardMaxLongArrayElements * 8U) {
         return false;
     }
-    const std::array<AddressRange, 21> ranges{{
+    const std::array<AddressRange, 26> ranges{{
         {layout_.java_vm_address, kJavaVmBytes},
         {layout_.invoke_table_address, kInvokeTableBytes},
         {layout_.jni_env_address, kJniEnvBytes},
@@ -792,6 +975,12 @@ bool A32JniVmService::layout_valid() const noexcept {
         {layout_.release_string_utf_chars_stub_address, kServiceStubBytes},
         {layout_.string_utf_scratch_address,
          layout_.string_utf_scratch_bytes},
+        {layout_.new_long_array_stub_address, kServiceStubBytes},
+        {layout_.get_long_array_elements_stub_address, kServiceStubBytes},
+        {layout_.release_long_array_elements_stub_address, kServiceStubBytes},
+        {layout_.set_long_array_region_stub_address, kServiceStubBytes},
+        {layout_.long_array_scratch_address,
+         layout_.long_array_scratch_bytes},
     }};
 
     for (const AddressRange& range : ranges) {
@@ -818,7 +1007,7 @@ A32JniVmInstallResult A32JniVmService::install(
         return {.error = A32JniVmInstallError::InvalidLayout};
     }
 
-    std::array<InstallRegion, 20> regions{{
+    std::array<InstallRegion, 24> regions{{
         {.address = layout_.java_vm_address, .size = kJavaVmBytes},
         {.address = layout_.invoke_table_address,
          .size = kInvokeTableBytes},
@@ -856,6 +1045,14 @@ A32JniVmInstallResult A32JniVmService::install(
         {.address = layout_.get_string_utf_chars_stub_address,
          .size = kServiceStubBytes},
         {.address = layout_.release_string_utf_chars_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.new_long_array_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.get_long_array_elements_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.release_long_array_elements_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.set_long_array_region_stub_address,
          .size = kServiceStubBytes},
     }};
 
@@ -929,6 +1126,22 @@ A32JniVmInstallResult A32JniVmService::install(
         layout_.get_array_length_stub_address);
     write_u32(
         regions[3].desired,
+        kNewLongArraySlot * 4U,
+        layout_.new_long_array_stub_address);
+    write_u32(
+        regions[3].desired,
+        kGetLongArrayElementsSlot * 4U,
+        layout_.get_long_array_elements_stub_address);
+    write_u32(
+        regions[3].desired,
+        kReleaseLongArrayElementsSlot * 4U,
+        layout_.release_long_array_elements_stub_address);
+    write_u32(
+        regions[3].desired,
+        kSetLongArrayRegionSlot * 4U,
+        layout_.set_long_array_region_stub_address);
+    write_u32(
+        regions[3].desired,
         kRegisterNativesSlot * 4U,
         layout_.register_natives_stub_address);
 
@@ -980,6 +1193,18 @@ A32JniVmInstallResult A32JniVmService::install(
     write_service_stub(
         regions[19].desired,
         kA32JniReleaseStringUtfCharsSvcImmediate);
+    write_service_stub(
+        regions[20].desired,
+        kA32JniNewLongArraySvcImmediate);
+    write_service_stub(
+        regions[21].desired,
+        kA32JniGetLongArrayElementsSvcImmediate);
+    write_service_stub(
+        regions[22].desired,
+        kA32JniReleaseLongArrayElementsSvcImmediate);
+    write_service_stub(
+        regions[23].desired,
+        kA32JniSetLongArrayRegionSvcImmediate);
 
     for (InstallRegion& region : regions) {
         if (!memory.read(
@@ -1023,6 +1248,7 @@ A32JniVmInstallResult A32JniVmService::install(
     installed_ = true;
     attached_ = true;
     active_utf_chars_string_.reset();
+    active_long_array_.reset();
     return {};
 }
 
@@ -1047,7 +1273,11 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         svc_immediate == kA32JniGetStaticIntFieldSvcImmediate ||
         svc_immediate == kA32JniNewStringUtfSvcImmediate ||
         svc_immediate == kA32JniGetStringUtfCharsSvcImmediate ||
-        svc_immediate == kA32JniReleaseStringUtfCharsSvcImmediate;
+        svc_immediate == kA32JniReleaseStringUtfCharsSvcImmediate ||
+        svc_immediate == kA32JniNewLongArraySvcImmediate ||
+        svc_immediate == kA32JniGetLongArrayElementsSvcImmediate ||
+        svc_immediate == kA32JniReleaseLongArrayElementsSvcImmediate ||
+        svc_immediate == kA32JniSetLongArrayRegionSvcImmediate;
     if (!known_service) {
         return runtime::A32HostServiceDisposition::Unhandled;
     }
@@ -1245,6 +1475,145 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             return runtime::A32HostServiceDisposition::Failed;
         }
         active_utf_chars_string_.reset();
+        regs[0] = 0U;
+        return runtime::A32HostServiceDisposition::Handled;
+    }
+
+    if (svc_immediate == kA32JniNewLongArraySvcImmediate) {
+        if (registry_ == nullptr || !registry_->valid()) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        std::uint32_t handle{};
+        const A32JniRegistryError created =
+            registry_->create_long_array(
+                static_cast<std::int32_t>(regs[1]),
+                handle);
+        if (created == A32JniRegistryError::InvalidLimits) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        regs[0] =
+            created == A32JniRegistryError::None
+                ? handle
+                : 0U;
+        return runtime::A32HostServiceDisposition::Handled;
+    }
+
+    if (svc_immediate ==
+        kA32JniGetLongArrayElementsSvcImmediate) {
+        if (registry_ == nullptr || !registry_->valid()) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        const A32JniLongArrayInfo* array =
+            registry_->find_long_array(regs[1]);
+        const auto counts =
+            registry_->reference_counts(regs[1]);
+        if (array == nullptr ||
+            !counts.has_value() ||
+            (counts->local == 0U &&
+             counts->global == 0U)) {
+            regs[0] = 0U;
+            return runtime::A32HostServiceDisposition::Handled;
+        }
+        if (active_long_array_.has_value() ||
+            array->elements.size() >
+                layout_.long_array_scratch_bytes / 8U) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        if (!write_guest_i64_values(
+                memory,
+                layout_.long_array_scratch_address,
+                array->elements)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        if (regs[2] != 0U) {
+            constexpr std::array<std::uint8_t, 1> kIsCopy{{1U}};
+            if (!memory.write(regs[2], kIsCopy)) {
+                return runtime::A32HostServiceDisposition::Failed;
+            }
+        }
+        active_long_array_ = regs[1];
+        regs[0] = layout_.long_array_scratch_address;
+        return runtime::A32HostServiceDisposition::Handled;
+    }
+
+    if (svc_immediate ==
+        kA32JniReleaseLongArrayElementsSvcImmediate) {
+        if (registry_ == nullptr ||
+            !active_long_array_.has_value() ||
+            regs[1] != *active_long_array_ ||
+            regs[2] != layout_.long_array_scratch_address) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        A32JniLongArrayInfo* array =
+            registry_->find_long_array(regs[1]);
+        if (array == nullptr) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        const std::int32_t mode =
+            static_cast<std::int32_t>(regs[3]);
+        if (mode != 0 && mode != 1 && mode != 2) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        if (mode != 2) {
+            std::vector<std::int64_t> values;
+            if (!read_guest_i64_values(
+                    memory,
+                    layout_.long_array_scratch_address,
+                    array->elements.size(),
+                    values)) {
+                return runtime::A32HostServiceDisposition::Failed;
+            }
+            array->elements = std::move(values);
+        }
+        if (mode != 1) {
+            active_long_array_.reset();
+        }
+        regs[0] = 0U;
+        return runtime::A32HostServiceDisposition::Handled;
+    }
+
+    if (svc_immediate == kA32JniSetLongArrayRegionSvcImmediate) {
+        if (registry_ == nullptr || !registry_->valid()) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        A32JniLongArrayInfo* array =
+            registry_->find_long_array(regs[1]);
+        if (array == nullptr) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        const std::int32_t start =
+            static_cast<std::int32_t>(regs[2]);
+        const std::int32_t length =
+            static_cast<std::int32_t>(regs[3]);
+        if (start < 0 || length < 0) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        const std::size_t start_index =
+            static_cast<std::size_t>(start);
+        const std::size_t count =
+            static_cast<std::size_t>(length);
+        if (start_index > array->elements.size() ||
+            count > array->elements.size() - start_index) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+
+        std::uint32_t source{};
+        if (!read_guest_u32(memory, regs[13], source)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        std::vector<std::int64_t> values;
+        if (!read_guest_i64_values(
+                memory,
+                source,
+                count,
+                values)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        std::copy(
+            values.begin(),
+            values.end(),
+            array->elements.begin() +
+                static_cast<std::ptrdiff_t>(start_index));
         regs[0] = 0U;
         return runtime::A32HostServiceDisposition::Handled;
     }
@@ -1757,6 +2126,8 @@ const char* to_string(
         return "string_limit_exceeded";
     case A32JniRegistryError::StringHandleExhausted:
         return "string_handle_exhausted";
+    case A32JniRegistryError::ArrayHandleExhausted:
+        return "array_handle_exhausted";
     }
     return "unknown";
 }

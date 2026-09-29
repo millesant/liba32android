@@ -10,20 +10,24 @@ at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c. Licensing is no longer an OSS-readi
 
 ## Active JNI track
 
-Continue `post-roadmap-a32-jni-modified-utf8-strings`.
+Continue `post-roadmap-a32-jni-long-arrays`.
 
-The GetStaticIntField slice is complete at
-`2aeb574f67dcd2b01e6593ed9947f50b528b9a76` with 11/11 checks green.
+The modified-UTF-8 string slice is complete at
+`d06d2ec0393c0cb12fb414d07d618b5bf1c7f07d` with 11/11 checks green.
 
-Direct ARMv7 `libmla.so` evidence drives the next bounded string seam:
+Direct ARMv7 `libmla.so` evidence drives one coherent four-slot jlong family:
 
-1. NewStringUTF at JNIEnv slot 167 / offset `0x29c`;
-2. GetStringUTFChars at slot 169 / `0x2a4`;
-3. ReleaseStringUTFChars at slot 170 / `0x2a8`;
-4. bounded synthetic logical jstring handles and owned byte payloads;
-5. one caller-owned guest scratch region and one outstanding UTF-char lease;
-6. real pinned-NDK ARM32 JNI_OnLoad round-trip of `"hello"`.
+1. NewLongArray at JNIEnv slot 180 / offset `0x2d0`;
+2. GetLongArrayElements at slot 188 / `0x2f0`;
+3. ReleaseLongArrayElements at slot 196 / `0x310`;
+4. SetLongArrayRegion at slot 212 / `0x350`;
+5. synthetic collision-free array handles, zero-initialized owned int64 storage,
+   generic GetArrayLength metadata, and one local reference;
+6. one 8-byte-aligned guest element scratch lease with mode 0/JNI_COMMIT/
+   JNI_ABORT copy-back semantics;
+7. exact ARM32 fifth-argument decoding for SetLongArrayRegion through guest
+   `[sp]`;
+8. pinned-NDK ARM32 fixture coverage of all four calls.
 
-Do not infer UTF-16 APIs, GetStringUTFLength, region APIs, multiple simultaneous
-leases, Unicode normalization, or a complete Java String runtime into this
-slice.
+Do not generalize other primitive types, object arrays, critical-array APIs,
+pinning, or concurrent element leases until the next evidence-backed slice.

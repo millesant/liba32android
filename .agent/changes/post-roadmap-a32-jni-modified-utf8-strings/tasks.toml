@@ -3,24 +3,24 @@ change = "post-roadmap-a32-jni-modified-utf8-strings"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Record supplied libmla modified-UTF-8 string slot evidence and define the bounded logical-string/scratch-lease contract."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Implement bounded logical strings plus NewStringUTF/GetStringUTFChars/ReleaseStringUTFChars table/service behavior."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Add focused host regressions and extend the pinned-NDK ARM32 fixture through a hello string round trip."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Converge accepted spec/architecture/state/evidence and pass exact-head validation."

@@ -235,6 +235,12 @@ int main(int argc, char** argv) {
         .release_string_utf_chars_stub_address = *stub_page + 0x1e0U,
         .string_utf_scratch_address = *data_page + 0x800U,
         .string_utf_scratch_bytes = 128U,
+        .new_long_array_stub_address = *stub_page + 0x200U,
+        .get_long_array_elements_stub_address = *stub_page + 0x220U,
+        .release_long_array_elements_stub_address = *stub_page + 0x240U,
+        .set_long_array_region_stub_address = *stub_page + 0x260U,
+        .long_array_scratch_address = *data_page + 0x900U,
+        .long_array_scratch_bytes = 128U,
     };
     constexpr std::uint32_t kFixtureClassHandle = 0x44550000U;
     constexpr std::uint32_t kFixtureStaticFieldHandle = 0x44551000U;
@@ -290,7 +296,7 @@ int main(int argc, char** argv) {
         .stack_top = stack_top,
         .return_pc = *stop,
         .max_instructions = 1024U,
-        .max_service_calls = 13U,
+        .max_service_calls = 20U,
         .symbols = symbol_options(),
         .execution_context = &execution_context,
     };
@@ -305,7 +311,7 @@ int main(int argc, char** argv) {
         result.returned_version != kA32JniVersion16 ||
         !result.execution.has_value() ||
         !result.execution->stop_pc_reached ||
-        result.execution->services_handled != 13U ||
+        result.execution->services_handled != 20U ||
         !handler.saw_expected_context() ||
         execution_context.object_index.has_value()) {
         const std::uint32_t failing_svc =
@@ -336,8 +342,23 @@ int main(int argc, char** argv) {
     }
 
     if (registry.string_count() != 1U ||
-        vm.utf_chars_lease_active()) {
-        return fail("ARM32 JNI_OnLoad lost/released string state incorrectly");
+        vm.utf_chars_lease_active() ||
+        vm.long_array_lease_active()) {
+        return fail("ARM32 JNI_OnLoad left a JNI copy lease active");
+    }
+
+    constexpr std::uint32_t kDynamicLongArrayHandle = 0x75000000U;
+    const auto* long_array =
+        registry.find_long_array(kDynamicLongArrayHandle);
+    const auto long_reference_counts =
+        registry.reference_counts(kDynamicLongArrayHandle);
+    if (long_array == nullptr ||
+        long_array->elements !=
+            std::vector<std::int64_t>({1, 7, 42}) ||
+        !long_reference_counts.has_value() ||
+        long_reference_counts->local != 0U ||
+        long_reference_counts->global != 0U) {
+        return fail("ARM32 JNI_OnLoad lost jlong-array state/lifetime");
     }
 
     const auto reference_counts =
@@ -414,6 +435,14 @@ int main(int argc, char** argv) {
         << registry.string_count() << '\n'
         << "fixture.jni.utf_lease="
         << (vm.utf_chars_lease_active() ? 1 : 0) << '\n'
+        << "fixture.jni.long_array="
+        << long_array->elements[0] << ","
+        << long_array->elements[1] << ","
+        << long_array->elements[2] << '\n'
+        << "fixture.jni.long_refs="
+        << long_reference_counts->local +
+               long_reference_counts->global
+        << '\n'
         << "fixture.jni.status=PASS\n";
     return 0;
 }

@@ -6,9 +6,10 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-modified-utf8-strings` — ACTIVE; add the supplied
-  ARMv7-evidenced NewStringUTF/GetStringUTFChars/ReleaseStringUTFChars seam with
-  bounded APK-agnostic logical strings and one guest UTF scratch lease.
+- `post-roadmap-a32-jni-long-arrays` — ACTIVE; add the supplied
+  ARMv7-evidenced NewLongArray/GetLongArrayElements/
+  ReleaseLongArrayElements/SetLongArrayRegion family with bounded APK-agnostic
+  owned jlong storage and one guest element scratch lease.
 
 ## Phase
 
@@ -102,11 +103,18 @@ proved GetStaticIntField slot 150 / offset `0x258`; the runtime stores only
 caller-seeded signed 32-bit values against existing StaticField member IDs, and
 all 11 exact-head checks passed.
 
-The active string slice is direct evidence from the same supplied ARMv7
-library: NewStringUTF uses slot 167 / `0x29c`, GetStringUTFChars uses slot 169 /
-`0x2a4`, and ReleaseStringUTFChars uses slot 170 / `0x2a8`. The runtime
-remains APK-agnostic: string handles are synthetic logical guest identities,
-payloads are bounded owned bytes, and host string pointers are never exposed.
+The bounded modified-UTF-8 string slice is DONE at
+`d06d2ec0393c0cb12fb414d07d618b5bf1c7f07d`. NewStringUTF,
+GetStringUTFChars, and ReleaseStringUTFChars are implemented at observed slots
+167/169/170 with synthetic logical jstring identities, bounded owned bytes, and
+one exact guest scratch lease. All 11 exact-head checks passed.
+
+The active array slice is again direct evidence from supplied `libmla.so`:
+NewLongArray uses slot 180 / `0x2d0`, GetLongArrayElements slot 188 /
+`0x2f0`, ReleaseLongArrayElements slot 196 / `0x310`, and
+SetLongArrayRegion slot 212 / `0x350`. The runtime stores generic owned jlong
+values behind synthetic guest handles; no VLC/APK names or host pointers enter
+the compatibility layer.
 
 ## Public repository readiness
 

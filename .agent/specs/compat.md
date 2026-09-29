@@ -1262,3 +1262,31 @@ modified-UTF-8 validation or normalization, UTF-16 conversion, GetStringUTFLengt
 region APIs, multiple simultaneous UTF-char leases, pinning semantics, or a
 complete Java String implementation.
 
+## L32-C044 — ARM32 JNI bounded jlong arrays
+
+Supplied ARMv7 machine code identifies JNIEnv NewLongArray at slot 180 / byte
+offset `0x2d0`, GetLongArrayElements at slot 188 / `0x2f0`,
+ReleaseLongArrayElements at slot 196 / `0x310`, and SetLongArrayRegion at slot
+212 / `0x350`. Each entry targets a distinct private ARM service stub.
+
+The bounded registry creates zero-initialized logical jlong arrays with owned
+signed 64-bit element storage, synthetic collision-free logical handles, generic
+array-length metadata, and one initial local reference. Length is a signed jsize
+and must be nonnegative and within the configured hard-capped element limit.
+
+The VM layout contains one caller-owned 8-byte-aligned guest scratch region for
+jlong elements. GetLongArrayElements allows one outstanding copy lease, writes
+the complete array there, reports JNI_TRUE through non-null isCopy, and returns
+the logical scratch address.
+
+ReleaseLongArrayElements requires the exact leased array and exact scratch
+pointer. Mode 0 copies back and releases; JNI_COMMIT (1) copies back and retains
+the lease; JNI_ABORT (2) releases without copying scratch changes.
+
+SetLongArrayRegion validates signed start/length bounds. Its fifth ARM32 C
+argument is decoded from guest `[sp]` as the source buffer pointer, and guest
+jlong values are decoded as little-endian 64-bit quantities.
+
+Other primitive array families, object arrays, critical access, pinning, and
+multiple simultaneous element leases remain separate.
+

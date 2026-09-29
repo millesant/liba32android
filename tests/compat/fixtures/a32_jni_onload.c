@@ -4,6 +4,8 @@ typedef jobject jclass;
 typedef jobject jarray;
 typedef jobject jfieldID;
 typedef jobject jstring;
+typedef jobject jlongArray;
+typedef long long jlong;
 typedef unsigned char jboolean;
 
 typedef struct JNIEnv_ JNIEnv;
@@ -38,7 +40,17 @@ struct JNINativeInterface {
     const char* (*GetStringUTFChars)(JNIEnv*, jstring, jboolean*);
     void (*ReleaseStringUTFChars)(JNIEnv*, jstring, const char*);
     jint (*GetArrayLength)(JNIEnv*, jarray);
-    void* reserved172_to_214[43];
+    void* reserved172_to_179[8];
+    jlongArray (*NewLongArray)(JNIEnv*, jint);
+    void* reserved181_to_187[7];
+    jlong* (*GetLongArrayElements)(JNIEnv*, jlongArray, jboolean*);
+    void* reserved189_to_195[7];
+    void (*ReleaseLongArrayElements)(
+        JNIEnv*, jlongArray, jlong*, jint);
+    void* reserved197_to_211[15];
+    void (*SetLongArrayRegion)(
+        JNIEnv*, jlongArray, jint, jint, const jlong*);
+    void* reserved213_to_214[2];
     jint (*RegisterNatives)(
         JNIEnv*,
         jclass,
@@ -90,6 +102,10 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     jfieldID answer_field;
     jstring message;
     const char* message_chars;
+    jlongArray long_array;
+    jlong long_values[3];
+    jlong* long_elements;
+    jboolean long_is_copy;
     JNINativeMethod method;
 
     if (vm == (JavaVM*)0 || reserved != (void*)0) {
@@ -152,6 +168,54 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
         message,
         message_chars);
     env->functions->DeleteLocalRef(env, message);
+
+    long_array = env->functions->NewLongArray(env, 3);
+    if (long_array == (jlongArray)0) {
+        return JNI_ERR;
+    }
+    long_values[0] = 1;
+    long_values[1] = -2;
+    long_values[2] = 42;
+    env->functions->SetLongArrayRegion(
+        env,
+        long_array,
+        0,
+        3,
+        long_values);
+    long_is_copy = 0;
+    long_elements = env->functions->GetLongArrayElements(
+        env,
+        long_array,
+        &long_is_copy);
+    if (long_elements == (jlong*)0 ||
+        long_is_copy == 0 ||
+        long_elements[0] != 1 ||
+        long_elements[1] != -2 ||
+        long_elements[2] != 42) {
+        return JNI_ERR;
+    }
+    long_elements[1] = 7;
+    env->functions->ReleaseLongArrayElements(
+        env,
+        long_array,
+        long_elements,
+        0);
+    long_elements = env->functions->GetLongArrayElements(
+        env,
+        long_array,
+        (jboolean*)0);
+    if (long_elements == (jlong*)0 ||
+        long_elements[0] != 1 ||
+        long_elements[1] != 7 ||
+        long_elements[2] != 42) {
+        return JNI_ERR;
+    }
+    env->functions->ReleaseLongArrayElements(
+        env,
+        long_array,
+        long_elements,
+        2);
+    env->functions->DeleteLocalRef(env, long_array);
 
     global_class = env->functions->NewGlobalRef(
         env,

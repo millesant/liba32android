@@ -43,6 +43,10 @@ using liba32android::compat::kA32JniGetStaticIntFieldSvcImmediate;
 using liba32android::compat::kA32JniNewStringUtfSvcImmediate;
 using liba32android::compat::kA32JniGetStringUtfCharsSvcImmediate;
 using liba32android::compat::kA32JniReleaseStringUtfCharsSvcImmediate;
+using liba32android::compat::kA32JniNewLongArraySvcImmediate;
+using liba32android::compat::kA32JniGetLongArrayElementsSvcImmediate;
+using liba32android::compat::kA32JniReleaseLongArrayElementsSvcImmediate;
+using liba32android::compat::kA32JniSetLongArrayRegionSvcImmediate;
 using liba32android::compat::kA32JniOk;
 using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
@@ -80,6 +84,25 @@ bool write_u32(
         static_cast<std::uint8_t>(value >> 16U),
         static_cast<std::uint8_t>(value >> 24U),
     }};
+    return memory.write(address, bytes);
+}
+
+bool write_i64_values(
+    GuestMemory& memory,
+    std::uint32_t address,
+    const std::vector<std::int64_t>& values) {
+    std::vector<std::uint8_t> bytes(values.size() * 8U, 0U);
+    for (std::size_t index = 0U;
+         index < values.size();
+         ++index) {
+        const std::uint64_t bits =
+            static_cast<std::uint64_t>(values[index]);
+        for (std::size_t byte = 0U; byte < 8U; ++byte) {
+            bytes[index * 8U + byte] =
+                static_cast<std::uint8_t>(
+                    bits >> (byte * 8U));
+        }
+    }
     return memory.write(address, bytes);
 }
 
@@ -133,6 +156,12 @@ A32JniVmLayout layout() {
         .release_string_utf_chars_stub_address = 0x19e0U,
         .string_utf_scratch_address = 0x1c00U,
         .string_utf_scratch_bytes = 64U,
+        .new_long_array_stub_address = 0x1a00U,
+        .get_long_array_elements_stub_address = 0x1a20U,
+        .release_long_array_elements_stub_address = 0x1a40U,
+        .set_long_array_region_stub_address = 0x1a60U,
+        .long_array_scratch_address = 0x1d00U,
+        .long_array_scratch_bytes = 64U,
     };
 }
 
@@ -208,6 +237,14 @@ int test_vm_install_and_getenv() {
             configured.release_string_utf_chars_stub_address ||
         read_u32(memory, configured.native_table_address + 171U * 4U) !=
             configured.get_array_length_stub_address ||
+        read_u32(memory, configured.native_table_address + 180U * 4U) !=
+            configured.new_long_array_stub_address ||
+        read_u32(memory, configured.native_table_address + 188U * 4U) !=
+            configured.get_long_array_elements_stub_address ||
+        read_u32(memory, configured.native_table_address + 196U * 4U) !=
+            configured.release_long_array_elements_stub_address ||
+        read_u32(memory, configured.native_table_address + 212U * 4U) !=
+            configured.set_long_array_region_stub_address ||
         read_u32(memory, configured.native_table_address + 215U * 4U) !=
             configured.register_natives_stub_address) {
         return fail("JNI VM pointer tables contain wrong guest pointers");
@@ -236,6 +273,10 @@ int test_vm_install_and_getenv() {
             index == 169U ||
             index == 170U ||
             index == 171U ||
+            index == 180U ||
+            index == 188U ||
+            index == 196U ||
+            index == 212U ||
             index == 215U) {
             continue;
         }
@@ -246,7 +287,7 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::array<std::uint8_t, 8>, 16> expected_stubs{{
+    constexpr std::array<std::array<std::uint8_t, 8>, 20> expected_stubs{{
         {{0xD7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD8U, 0x00U, 0x00U, 0xEFU,
@@ -279,8 +320,16 @@ int test_vm_install_and_getenv() {
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xE6U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xE7U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xE8U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xE9U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xEAU, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    const std::array<std::uint32_t, 16> stub_addresses{{
+    const std::array<std::uint32_t, 20> stub_addresses{{
         configured.get_env_stub_address,
         configured.find_class_stub_address,
         configured.register_natives_stub_address,
@@ -297,6 +346,10 @@ int test_vm_install_and_getenv() {
         configured.new_string_utf_stub_address,
         configured.get_string_utf_chars_stub_address,
         configured.release_string_utf_chars_stub_address,
+        configured.new_long_array_stub_address,
+        configured.get_long_array_elements_stub_address,
+        configured.release_long_array_elements_stub_address,
+        configured.set_long_array_region_stub_address,
     }};
     for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
         std::array<std::uint8_t, 8> observed_stub{};
@@ -487,7 +540,7 @@ int test_vm_install_and_getenv() {
     regs = {};
     if (service.handle(
             memory,
-            kA32JniReleaseStringUtfCharsSvcImmediate + 1U,
+            kA32JniSetLongArrayRegionSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
@@ -1118,6 +1171,264 @@ int test_modified_utf8_strings() {
             cpsr) != A32HostServiceDisposition::Handled ||
         regs[0] != 0U) {
         return fail("JNI NewStringUTF exceeded bounded string count");
+    }
+
+    return 0;
+}
+
+int test_long_array_family() {
+    LinearGuestMemory memory{0x1000U, 0x1000U};
+    const A32JniRegistryLimits limits{
+        .max_classes = 2U,
+        .max_registered_methods = 2U,
+        .max_methods_per_registration = 2U,
+        .max_member_ids = 2U,
+        .max_reference_handles = 6U,
+        .max_reference_count_per_handle = 4U,
+        .max_arrays = 3U,
+        .max_long_array_elements = 4U,
+        .dynamic_array_handle_base = 0x44580000U,
+        .dynamic_array_handle_stride = 4U,
+        .max_strings = 2U,
+        .max_modified_utf8_bytes = 8U,
+        .dynamic_string_handle_base = 0x44590000U,
+        .dynamic_string_handle_stride = 4U,
+        .max_class_name_bytes = 32U,
+        .max_method_name_bytes = 32U,
+        .max_signature_bytes = 32U,
+    };
+    A32JniClassRegistry registry{limits};
+    if (registry.add_reference_identity(0x44580000U) !=
+        A32JniRegistryError::None) {
+        return fail("could not seed JNI long-array handle collision");
+    }
+
+    const auto configured = layout();
+    A32JniVmService service{configured, &registry};
+    if (!service.install(memory)) {
+        return fail("JNI long-array service did not install");
+    }
+
+    std::uint32_t cpsr{};
+    std::array<std::uint32_t, 16> regs{};
+    regs[0] = configured.jni_env_address;
+    regs[1] = static_cast<std::uint32_t>(-1);
+    if (service.handle(
+            memory,
+            kA32JniNewLongArraySvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI NewLongArray accepted negative length");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = 3U;
+    if (service.handle(
+            memory,
+            kA32JniNewLongArraySvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0x44580004U) {
+        return fail("JNI NewLongArray did not skip occupied handle");
+    }
+    const std::uint32_t array_handle = regs[0];
+    const auto* created = registry.find_long_array(array_handle);
+    const auto counts = registry.reference_counts(array_handle);
+    if (created == nullptr ||
+        created->elements !=
+            std::vector<std::int64_t>({0, 0, 0}) ||
+        registry.array_length(array_handle).value_or(99U) != 3U ||
+        !counts.has_value() ||
+        counts->local != 1U ||
+        counts->global != 0U) {
+        return fail("JNI NewLongArray lost zero/init/reference metadata");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    if (service.handle(
+            memory,
+            kA32JniGetArrayLengthSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 3U) {
+        return fail("JNI GetArrayLength missed dynamic jlong array");
+    }
+
+    constexpr std::uint32_t kSource = 0x1700U;
+    constexpr std::uint32_t kStack = 0x17f0U;
+    const std::vector<std::int64_t> first_values{
+        1,
+        -2,
+        static_cast<std::int64_t>(
+            UINT64_C(0x1122334455667788)),
+    };
+    if (!write_i64_values(memory, kSource, first_values) ||
+        !write_u32(memory, kStack, kSource)) {
+        return fail("could not stage JNI SetLongArrayRegion input");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    regs[2] = 0U;
+    regs[3] = 3U;
+    regs[13] = kStack;
+    if (service.handle(
+            memory,
+            kA32JniSetLongArrayRegionSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        registry.find_long_array(array_handle) == nullptr ||
+        registry.find_long_array(array_handle)->elements != first_values) {
+        return fail("JNI SetLongArrayRegion decoded wrong ARM32 arguments");
+    }
+
+    constexpr std::uint32_t kIsCopy = 0x16f0U;
+    if (!write_u32(memory, kIsCopy, 0U)) {
+        return fail("could not seed JNI long-array isCopy");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    regs[2] = kIsCopy;
+    if (service.handle(
+            memory,
+            kA32JniGetLongArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != configured.long_array_scratch_address ||
+        !service.long_array_lease_active()) {
+        return fail("JNI GetLongArrayElements did not open copy lease");
+    }
+    std::array<std::uint8_t, 1> is_copy{};
+    if (!memory.read(kIsCopy, is_copy) || is_copy[0] != 1U) {
+        return fail("JNI GetLongArrayElements did not report JNI_TRUE");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    if (service.handle(
+            memory,
+            kA32JniGetLongArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI GetLongArrayElements allowed overlapping lease");
+    }
+
+    const std::vector<std::int64_t> committed{10, 20, 30};
+    if (!write_i64_values(
+            memory,
+            configured.long_array_scratch_address,
+            committed)) {
+        return fail("could not edit JNI long-array scratch");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    regs[2] = configured.long_array_scratch_address;
+    regs[3] = 1U;
+    if (service.handle(
+            memory,
+            kA32JniReleaseLongArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        !service.long_array_lease_active() ||
+        registry.find_long_array(array_handle)->elements != committed) {
+        return fail("JNI_COMMIT did not copy back/retain lease");
+    }
+
+    const std::vector<std::int64_t> aborted{40, 50, 60};
+    if (!write_i64_values(
+            memory,
+            configured.long_array_scratch_address,
+            aborted)) {
+        return fail("could not edit JNI long-array abort scratch");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    regs[2] = configured.long_array_scratch_address;
+    regs[3] = 2U;
+    if (service.handle(
+            memory,
+            kA32JniReleaseLongArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        service.long_array_lease_active() ||
+        registry.find_long_array(array_handle)->elements != committed) {
+        return fail("JNI_ABORT copied back or retained lease");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    if (service.handle(
+            memory,
+            kA32JniGetLongArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("JNI long-array second lease failed");
+    }
+    const std::vector<std::int64_t> final_values{-1, -2, -3};
+    if (!write_i64_values(
+            memory,
+            configured.long_array_scratch_address,
+            final_values)) {
+        return fail("could not stage JNI long-array final copy");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    regs[2] = configured.long_array_scratch_address + 8U;
+    regs[3] = 0U;
+    if (service.handle(
+            memory,
+            kA32JniReleaseLongArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        !service.long_array_lease_active()) {
+        return fail("JNI long-array release accepted wrong pointer");
+    }
+    regs[2] = configured.long_array_scratch_address;
+    if (service.handle(
+            memory,
+            kA32JniReleaseLongArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        service.long_array_lease_active() ||
+        registry.find_long_array(array_handle)->elements != final_values) {
+        return fail("JNI long-array mode-0 release did not copy/release");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = array_handle;
+    regs[2] = 2U;
+    regs[3] = 2U;
+    regs[13] = kStack;
+    if (service.handle(
+            memory,
+            kA32JniSetLongArrayRegionSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI SetLongArrayRegion accepted out-of-bounds range");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = 5U;
+    if (service.handle(
+            memory,
+            kA32JniNewLongArraySvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI NewLongArray exceeded element ceiling");
     }
 
     return 0;
@@ -1785,6 +2096,10 @@ int main() {
         return status;
     }
     if (const int status = test_modified_utf8_strings();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_long_array_family();
         status != 0) {
         return status;
     }
