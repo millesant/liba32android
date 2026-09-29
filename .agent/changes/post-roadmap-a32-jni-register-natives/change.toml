@@ -2,10 +2,11 @@ schema = 1
 id = "post-roadmap-a32-jni-register-natives"
 kind = "feature"
 size = "S2"
-status = "active"
+status = "done"
 workflow = "feature"
 control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
 base_revision = "553251275b6d45bab61417a95dae6dc57ed41aa4"
+result_revision = "dbbcb06d5a9e0225b9e0a9c3515b646c0fff6503"
 acceptance = [
   "the guest JNINativeInterface table extends through real slot 215, publishes FindClass at slot 6 and RegisterNatives at slot 215, and leaves unsupported slots null",
   "a bounded caller-owned class registry maps exact guest class names to caller-selected nonzero jclass handles under explicit class/string ceilings",
@@ -22,9 +23,9 @@ acceptance = [
 requirements = "aligned"
 specs = "aligned"
 implementation = "aligned"
-tests = "pending"
-documentation = "pending"
+tests = "aligned"
+documentation = "aligned"
 decisions = "not_applicable"
 tasks = "aligned"
-evidence = "pending"
+evidence = "aligned"
 repository = "aligned"

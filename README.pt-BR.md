@@ -59,8 +59,8 @@ O runtime atual inclui:
 - superfícies parciais de compatibilidade para libc, liblog, libdl, libm,
   sincronização no estilo pthread, `__aeabi_atexit` / `__cxa_finalize` e
   serviços relacionados;
-- bootstrap JNI VM/GetEnv/JNI_OnLoad, com trabalho em andamento para registro de
-  classes/natives e despacho reverso de natives;
+- bootstrap JNI VM/GetEnv/JNI_OnLoad, mais FindClass, RegisterNatives e
+  despacho reverso limitado de natives sem argumentos Java;
 - fixtures Android ARMv7 reproduzíveis, além de probes de espaço de
   endereçamento/runtime no Android.
 
@@ -169,10 +169,10 @@ Para regras de ownership/dependências, veja
 ## Roadmap
 
 O roadmap público está em [ROADMAP.md](ROADMAP.md). A trilha imediata de
-compatibilidade está avançando JNI de VM/GetEnv/JNI_OnLoad para busca limitada
-de classes, registro de natives e despacho reverso antes de superfícies mais
-amplas de objetos/referências, strings/arrays, exceções, métodos/campos e
-threads.
+compatibilidade está avançando JNI a partir da etapa concluída de
+classe/registro de natives para identidade de classes/membros, seguida por
+referências, strings/arrays, exceções, chamadas de métodos/campos e superfícies
+de thread/VM.
 
 ## Contribuindo
 

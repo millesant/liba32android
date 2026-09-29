@@ -51,8 +51,8 @@ The current runtime includes:
 - Android namespace/platform-library policy and requester-aware library search;
 - partial compatibility surfaces for libc, liblog, libdl, libm, pthread-style
   synchronization, `__aeabi_atexit` / `__cxa_finalize`, and related services;
-- JNI VM/GetEnv/JNI_OnLoad bootstrap with ongoing work on class/native
-  registration and reverse native dispatch;
+- JNI VM/GetEnv/JNI_OnLoad bootstrap plus bounded FindClass,
+  RegisterNatives, and zero-Java-argument registered-native reverse dispatch;
 - reproducible ARMv7 Android fixtures plus Android address-space/runtime probes.
 
 The normal build registers dozens of host CTest regressions, with additional
@@ -159,9 +159,9 @@ For ownership/dependency rules, see
 ## Roadmap
 
 The public roadmap is in [ROADMAP.md](ROADMAP.md). The immediate compatibility
-track is advancing JNI from VM/GetEnv/JNI_OnLoad into bounded class lookup,
-native registration, and reverse dispatch before broader object/reference,
-string/array, exception, method/field, and thread surfaces.
+track is advancing JNI from the completed class/native-registration seam into
+class/member identity, followed by references, strings/arrays, exceptions,
+method/field calls, and thread/VM surfaces.
 
 ## Contributing
 

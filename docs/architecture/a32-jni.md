@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: VM/GetEnv/JNI_OnLoad implemented; FindClass/RegisterNatives/reverse-dispatch slice in progress
+Status: VM/GetEnv/JNI_OnLoad + FindClass/RegisterNatives + no-arg reverse dispatch implemented and validated
 
 ## Goal
 
@@ -146,14 +146,15 @@ Host regressions cover:
 - one zero-argument reverse-dispatch execution;
 - exact-object JNI_OnLoad isolation and return-version validation.
 
-The existing pinned-NDK integration fixture still proves only the first
-bootstrap: JNI_OnLoad performs an indirect JavaVM::GetEnv and returns JNI 1.6
-after receiving a non-null JNIEnv.
+The pinned-NDK ARM32 integration fixture now performs the complete bounded
+registration path: JNI_OnLoad calls GetEnv, FindClass, and RegisterNatives
+through the installed guest tables. The host verifies the exact
+`org/videolan/Fixture / nativePing / ()I` binding and then invokes that
+registered guest native through reverse dispatch, which returns 42.
 
-The remaining acceptance work for the registration slice is to extend that real
-ARM32 fixture so JNI_OnLoad performs FindClass + RegisterNatives and the host
-then invokes one registered guest native. That integration evidence is not yet
-claimed.
+Exact-head validation at
+`dbbcb06d5a9e0225b9e0a9c3515b646c0fff6503` passed all 11 required checks,
+including the ARM32 JNI registration integration.
 
 ## Limits
 
@@ -168,7 +169,7 @@ JNI is one continuous compatibility track. Each bounded slice keeps the guest
 ARM32 ABI stable, reuses the service-aware executor, and adds only Java-side
 state that real native libraries prove they need.
 
-Planned order after the current registration slice:
+Planned order after the registration slice:
 
 1. **Class/member identity substrate**
    - GetObjectClass and IsInstanceOf;

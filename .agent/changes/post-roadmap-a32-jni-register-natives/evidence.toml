@@ -1,0 +1,38 @@
+schema = 1
+change = "post-roadmap-a32-jni-register-natives"
+
+[[evidence]]
+id = "focused-host-regressions"
+kind = "test"
+status = "passed"
+claim = "The bounded class registry, FindClass/RegisterNatives services, transactional registration, exact native lookup, reverse-dispatch success, and failure classifications are covered by the host JNI regression target."
+source = "tests/compat/a32_jni.cpp at dbbcb06d5a9e0225b9e0a9c3515b646c0fff6503"
+result = "Linux A32 smoke check 109225193132 concluded success on the exact implementation revision."
+limitations = "Host regressions complement rather than replace the generated ARM32 JNI integration fixture."
+
+[[evidence]]
+id = "arm32-registration-fixture"
+kind = "integration"
+status = "passed"
+claim = "A generated pinned-NDK ARM32 DSO performs GetEnv, FindClass, and RegisterNatives from JNI_OnLoad and the registered guest native is then invoked from the host."
+source = "ARM32 JNI registration integration check 109225192284 at dbbcb06d5a9e0225b9e0a9c3515b646c0fff6503"
+result = "The workflow concluded success after asserting object_count=1, service_calls=3, JNI version 0x10006, a nonzero registered function, native_return=42, and fixture status PASS."
+limitations = "The fixture intentionally proves one zero-Java-argument native and does not claim general JNI argument marshalling."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "passed"
+claim = "The JNI registration slice passes the complete required exact-head check matrix before closure."
+source = "GitHub commit checks at dbbcb06d5a9e0225b9e0a9c3515b646c0fff6503"
+result = "11/11 checks concluded success: Linux A32 smoke 109225193132; Android x86_64 probe 109225193064; Android arm64-v8a cross-build 109225193007; libc 109225192298; liblog 109225192288; JNI registration 109225192284; libdl 109225192175; app search 109225192167; repository/docs 109225192111; libm 109225192089; public C API 109225191779."
+limitations = ""
+
+[[evidence]]
+id = "fixture-relocation-diagnostic"
+kind = "development"
+status = "observed"
+claim = "The freestanding JNI fixture must not rely on an unperformed relocation transaction merely to stage its JNINativeMethod record."
+source = "Development investigation preceding dbbcb06d5a9e0225b9e0a9c3515b646c0fff6503"
+result = "A const aggregate caused three R_ARM_RELATIVE entries and RegisterNatives failed at private SVC 0xd9 after two successful services. Runtime field assignment produced a relocation-free ARM32 fixture in a local cross-link check; the exact-head pinned-NDK integration then passed."
+limitations = "The local diagnostic cross-link used a host clang target configuration; exact-head correctness is established by the pinned-NDK GitHub integration above."

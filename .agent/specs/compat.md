@@ -1025,18 +1025,21 @@ The first JNI compatibility surface provides one currently-attached ARM32 guest
 JNI context without modeling Java objects/classes.
 
 The caller supplies already-mapped logical guest addresses for one JavaVM
-object, one eight-word JNI invocation table, one JNIEnv object, one five-word
-native-interface prefix, and one eight-byte ARM GetEnv SVC stub. Every range is
+object, one eight-word JNI invocation table, one JNIEnv object, one 216-word
+native-interface table, and three eight-byte ARM service stubs. Every range is
 nonzero, word-aligned, pairwise non-overlapping, and must fit in the 32-bit
 guest address space. Installation uses GuestMemory only, never changes mappings
 or permissions, snapshots current bytes, and rolls back prior writes if a later
 publication write fails.
 
 The JavaVM object contains the invocation-table guest pointer. The invocation
-table follows the Android JNI layout and publishes only GetEnv at slot 6
+table follows the Android JNI layout and publishes GetEnv at slot 6
 (byte offset 0x18); unsupported invoke entries are zero. The JNIEnv object
-contains its native-table guest pointer, whose first five words are zero in this
-slice. The GetEnv entry targets one ARM `svc #0xd7; bx lr` stub.
+contains its native-table guest pointer. The native table publishes FindClass at
+slot 6 / byte offset `0x18` and RegisterNatives at slot 215 / byte offset
+`0x35c`; unsupported native entries are zero. GetEnv, FindClass, and
+RegisterNatives target distinct ARM `svc; bx lr` stubs using private SVC
+immediates `0xd7`, `0xd8`, and `0xd9` respectively.
 
 Matching Dalvik, GetEnv validates the JNI version before touching the output
 slot. The inclusive numeric range from JNI_VERSION_1_1 through
@@ -1063,6 +1066,42 @@ JNI_OnLoad succeeds only when its returned jint is exactly JNI_VERSION_1_2,
 JNI_VERSION_1_4, or JNI_VERSION_1_6, matching Dalvik/ART native-library load
 semantics. All other returns are an explicit unsupported-version failure.
 
-FindClass, RegisterNatives, native-method dispatch, Java
-objects/references/strings/arrays/exceptions, thread attach/detach,
-JNI_OnUnload, framework classes, graphics, and audio remain separate.
+FindClass, RegisterNatives, and the first registered-native dispatch seam are
+specified by L32-C037. General Java objects/references/strings/arrays/exceptions,
+member IDs and Java method/field calls, thread attach/detach, JNI_OnUnload,
+framework classes, graphics, and audio remain separate.
+
+## L32-C037 — ARM32 JNI class/native registration bootstrap
+
+The caller owns a bounded `A32JniClassRegistry` and may associate exact
+slash-separated class names with caller-selected nonzero logical 32-bit
+`jclass` handles. Class names and handles are unique; accepted strings are
+copied into owned host storage under explicit hard/configurable ceilings. No
+host pointer is published to the guest.
+
+`FindClass` requires the exact configured JNIEnv pointer, decodes one bounded
+guest C string, returns the exact registered logical class handle on a hit, and
+returns null on a semantic miss. Unreadable or unterminated guest strings are
+service failures.
+
+`RegisterNatives` requires the exact configured JNIEnv pointer and a known
+class handle. It decodes ARM32 `JNINativeMethod` records as three 32-bit words
+(name pointer, signature pointer, guest function pointer), validates finite
+method/string limits, rejects malformed/duplicate entries, and commits only
+after the complete registration call has validated. Accepted metadata owns
+class/name/signature strings and stores the guest function only as a logical
+32-bit value.
+
+`invoke_a32_registered_native_noargs` resolves one exact
+class/name/signature binding, accepts only zero-Java-argument signatures, seeds
+`r0=JNIEnv*` and `r1=receiver-or-class`, and executes the registered ARM/Thumb
+guest function through the bounded service-aware A32 executor. The raw `r0`
+return bits are exposed to the caller.
+
+The pinned-NDK ARM32 fixture performs GetEnv, FindClass, and RegisterNatives
+from JNI_OnLoad, retains the registered `nativePing()I` association, and is
+then invoked from the host through reverse dispatch with return value 42.
+General argument marshalling, member IDs, reference lifetime, strings/arrays,
+exceptions, Java method/field calls, thread attach/detach, framework classes,
+graphics, and audio remain separate slices.
+

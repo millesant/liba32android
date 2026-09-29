@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-register-natives` — ACTIVE; core implementation and
-  focused host coverage exist, real ARM32 registration fixture integration
-  remains pending.
+- none. `post-roadmap-a32-jni-register-natives` is DONE with exact-head
+  validation at `dbbcb06d5a9e0225b9e0a9c3515b646c0fff6503`. The next JNI
+  class/member-identity slice has not yet been opened.
 
 ## Phase
 
@@ -20,7 +20,9 @@ ownership/reclamation planning, physical reclamation, targeted final-close
 `dlclose` unload, lifecycle-scoped automatic DSO association, ARM32 Bionic
 libdl policy, bounded APK native-library acquisition, caller-supplied APK
 runtime bootstrap composition, bounded APK native-library catalog discovery,
-and the ARM32 JNI VM/GetEnv/JNI_OnLoad bootstrap.
+the ARM32 JNI VM/GetEnv/JNI_OnLoad bootstrap, and bounded JNI
+FindClass/RegisterNatives plus zero-Java-argument registered-native reverse
+dispatch.
 
 The JNI VM/GetEnv/JNI_OnLoad bootstrap is DONE with exact-head evidence at
 `d8564a7a465f1099e8c8b415997f0d1812e2998e`. The pinned-NDK integration and focused bootstrap regressions are
@@ -31,7 +33,7 @@ green there.
 including repository hygiene, the public C API, compatibility integrations,
 and the main CI workflow.
 
-## Active JNI follow-up
+## Accepted JNI registration slice
 
 The current JNI registration slice extends the guest `JNINativeInterface`
 through real slot 215 and publishes the evidence-backed entries:
@@ -59,9 +61,13 @@ Focused host coverage exercises table/stub bytes, class lookup, registration
 validation/rollback, exact native lookup, one reverse-dispatch execution, and
 the pre-existing JNI_OnLoad/GetEnv behavior.
 
-The dedicated pinned-NDK JNI fixture still proves only JNI_OnLoad + GetEnv. The
-remaining acceptance work is to extend that real ARM32 fixture to perform
-FindClass + RegisterNatives and then invoke one registered guest native.
+The pinned-NDK ARM32 fixture now executes GetEnv, FindClass, and
+RegisterNatives from JNI_OnLoad, preserves the exact
+`org/videolan/Fixture / nativePing / ()I` guest binding, and then reverse
+dispatches that registered native with return value 42. Exact-head validation
+at `dbbcb06d5a9e0225b9e0a9c3515b646c0fff6503` passed all 11 required
+check-runs, including ARM32 JNI registration integration check
+`109225192284`.
 
 ## Public repository readiness
 
