@@ -6,8 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-array-length` — ACTIVE; add the supplied ARMv7-evidenced
-  GetArrayLength slot with bounded caller-seeded APK-agnostic array metadata.
+- `post-roadmap-a32-jni-static-int-field` — ACTIVE; add the supplied
+  ARMv7-evidenced GetStaticIntField slot over bounded caller-seeded static-field
+  state.
 
 ## Phase
 
@@ -89,10 +90,16 @@ DeleteLocalRef slot 23 / `0x5c`; the implementation keeps APK-agnostic logical
 local/global counts and the real ARM32 fixture ends with zero live class
 references. All 11 exact-head checks passed.
 
-The active array slice is deliberately small: the same supplied `libmla.so`
-loads GetArrayLength from JNIEnv slot 171 / offset `0x2ac`. The runtime seeds
-finite logical array metadata from the caller; allocation and elements remain
-separate work.
+The seeded GetArrayLength slice is DONE at
+`db558233a50eb79c21e65792dea4a4b74bd72d89`. The supplied ARMv7 library
+proved slot 171 / offset `0x2ac`; the caller-seeded logical array registry and
+real pinned-NDK ARM32 fixture both observed the exact length 7. All 11
+exact-head checks passed.
+
+The active field-value slice is also direct evidence: supplied `libmla.so`
+loads GetStaticIntField from JNIEnv slot 150 / offset `0x258`. The runtime
+stores only caller-seeded signed 32-bit values against existing StaticField
+member IDs, keeping the compatibility layer APK-agnostic.
 
 ## Public repository readiness
 

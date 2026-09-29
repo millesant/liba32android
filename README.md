@@ -53,8 +53,8 @@ The current runtime includes:
   synchronization, `__aeabi_atexit` / `__cxa_finalize`, and related services;
 - JNI VM/GetEnv/JNI_OnLoad bootstrap plus bounded FindClass,
   RegisterNatives, member-ID lookup, JavaVM attach/detach state,
-  strong/local reference bookkeeping, and zero-Java-argument registered-native
-  reverse dispatch;
+  strong/local reference bookkeeping, seeded array-length metadata, and
+  zero-Java-argument registered-native reverse dispatch;
 - reproducible ARMv7 Android fixtures plus Android address-space/runtime probes.
 
 The normal build registers dozens of host CTest regressions, with additional
@@ -162,9 +162,9 @@ For ownership/dependency rules, see
 
 The public roadmap is in [ROADMAP.md](ROADMAP.md). The immediate compatibility
 track has completed the first class/native-registration, member-ID,
-JavaVM attach/detach, and strong/local-reference seams. Current work is adding
-the observed seeded GetArrayLength boundary before broader array/string,
-exception, and method/field behavior.
+JavaVM attach/detach, strong/local-reference, and seeded GetArrayLength seams.
+Current work is adding the observed GetStaticIntField boundary before broader
+field/method, string/array, and exception behavior.
 
 ## Contributing
 

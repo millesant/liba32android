@@ -10,21 +10,20 @@ at 0e1a0b76f8568e53e9843e58b8f12768276f4c4c. Licensing is no longer an OSS-readi
 
 ## Active JNI track
 
-Continue `post-roadmap-a32-jni-array-length`.
+Continue `post-roadmap-a32-jni-static-int-field`.
 
-The strong/local reference slice is complete at
-`764658ec7a6bde80b2cc6b0474bba75f0dd79d1b` with 11/11 checks green.
+The seeded GetArrayLength slice is complete at
+`db558233a50eb79c21e65792dea4a4b74bd72d89` with 11/11 checks green.
 
-Direct ARMv7 `libmla.so` evidence drives the next minimal array seam:
+Direct ARMv7 `libmla.so` evidence drives the next minimal Java-state seam:
 
-1. GetArrayLength at JNIEnv slot 171 / offset `0x2ac`;
-2. caller-seeded logical array identities with exact finite jsize-compatible
-   lengths;
-3. one local reference retained for each seeded array handle;
-4. exact GetArrayLength behavior for known arrays and explicit failure for
-   null/unknown/non-array handles;
-5. real ARM32 fixture execution against a seeded logical array.
+1. GetStaticIntField at JNIEnv slot 150 / offset `0x258`;
+2. caller-seeded signed 32-bit values attached only to existing StaticField
+   member IDs;
+3. exact class/field-kind/field-handle validation;
+4. real ARM32 JNI_OnLoad fixture path through GetStaticFieldID ->
+   GetStaticIntField with value 42;
+5. no package/class-specific runtime policy.
 
-Do not infer NewLongArray/NewObjectArray, element storage, region APIs, or
-pin/copy semantics into this slice. Reassess those observed entrypoints after
-GetArrayLength closes.
+Do not infer SetStaticIntField, instance field values, Java method invocation,
+reflection, inheritance, or framework state into this slice.

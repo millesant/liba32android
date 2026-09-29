@@ -1216,3 +1216,24 @@ This slice does not allocate arrays, store elements, implement primitive/object
 array element or region operations, expose pin/copy buffers, or infer Java array
 types.
 
+## L32-C042 — ARM32 JNI GetStaticIntField
+
+Supplied ARMv7 machine code identifies JNIEnv GetStaticIntField at slot 150 /
+byte offset `0x258`. The guest JNIEnv table publishes that exact entry through
+one private ARM service stub.
+
+The bounded JNI registry may associate one signed 32-bit static value with an
+existing member whose kind is StaticField. Re-seeding the same field updates its
+value. Stored field values remain bounded by the existing member-ID ceiling and
+contain only caller-supplied logical Java state.
+
+GetStaticIntField requires the exact configured JNIEnv pointer, attached state,
+a registered class handle, a StaticField member handle belonging to that class,
+and a seeded value. Success returns the exact `jint` bits in `r0`.
+Unknown/mismatched class/member identity, wrong member kind, or missing value
+fails explicitly rather than fabricating Java state.
+
+SetStaticIntField, instance field access, Java method invocation, object
+construction, inheritance, reflection, and framework-specific state remain
+separate.
+

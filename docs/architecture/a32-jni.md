@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: strong/local refs validated; evidence-backed seeded GetArrayLength slice in progress
+Status: seeded GetArrayLength validated; evidence-backed GetStaticIntField slice in progress
 
 ## Goal
 
@@ -32,6 +32,7 @@ entries include:
 - `GetMethodID` — slot 33 / byte offset `0x84`;
 - `GetFieldID` — slot 94 / byte offset `0x178`;
 - `GetStaticFieldID` — slot 144 / byte offset `0x240`;
+- `GetStaticIntField` — slot 150 / byte offset `0x258`;
 - `GetArrayLength` — slot 171 / byte offset `0x2ac`;
 - `RegisterNatives` — slot 215 / byte offset `0x35c`.
 
@@ -66,7 +67,8 @@ The current private guest/host service immediates are:
 - `0xDF` — JNIEnv::NewGlobalRef;
 - `0xE0` — JNIEnv::DeleteGlobalRef;
 - `0xE1` — JNIEnv::DeleteLocalRef;
-- `0xE2` — JNIEnv::GetArrayLength.
+- `0xE2` — JNIEnv::GetArrayLength;
+- `0xE3` — JNIEnv::GetStaticIntField.
 
 Each guest stub is a minimal ARM `svc; bx lr` sequence. Unknown SVC immediates
 remain unhandled.
@@ -188,17 +190,36 @@ See
 Supplied ARMv7 `libmla.so` directly loads GetArrayLength from JNIEnv slot 171 /
 offset `0x2ac`.
 
-The current bounded array seam is metadata-only. The caller seeds one logical
-array handle plus a finite signed-32-bit-compatible length. Seeding establishes
-one local reference through the generic reference ledger. GetArrayLength returns
+The bounded array seam is metadata-only. The caller seeds one logical array
+handle plus a finite signed-32-bit-compatible length. Seeding establishes one
+local reference through the generic reference ledger. GetArrayLength returns
 that exact length for the known logical array and fails for null, unknown, or
-non-array handles.
+non-array handles. Exact-head validation at
+`db558233a50eb79c21e65792dea4a4b74bd72d89` passed all 11 required checks.
 
 No array allocation, element storage/access, pin/copy buffer, or Java array type
 semantics are implied.
 
 See
 [ARM32 JNI GetArrayLength evidence](../research/evidence/arm32-jni-array-length-entrypoint-2026-09-29.md).
+
+## Static int field values
+
+Supplied ARMv7 `libmla.so` directly loads GetStaticIntField from JNIEnv slot
+150 / offset `0x258`.
+
+The bounded member registry keeps the already-accepted opaque StaticField ID and
+may associate one caller-seeded signed 32-bit value with it. GetStaticIntField
+validates the exact JNIEnv, attached state, class/member association, and static
+field kind before returning the exact jint bits. Missing or mismatched logical
+Java state fails rather than being synthesized.
+
+The implementation remains APK-agnostic: class/member/value identities are
+supplied by the embedding and no package names, reflection, host objects, or
+framework behavior are encoded in `src/compat`.
+
+See
+[ARM32 JNI GetStaticIntField evidence](../research/evidence/arm32-jni-static-int-field-entrypoint-2026-09-29.md).
 
 ## Reverse native dispatch
 

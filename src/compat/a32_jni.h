@@ -12,6 +12,7 @@
 #define LIBA32ANDROID_A32_JNI_DELETE_GLOBAL_REF_SVC 0xE0
 #define LIBA32ANDROID_A32_JNI_DELETE_LOCAL_REF_SVC 0xE1
 #define LIBA32ANDROID_A32_JNI_GET_ARRAY_LENGTH_SVC 0xE2
+#define LIBA32ANDROID_A32_JNI_GET_STATIC_INT_FIELD_SVC 0xE3
 
 #ifdef __cplusplus
 
@@ -55,6 +56,8 @@ inline constexpr std::uint32_t kA32JniDeleteLocalRefSvcImmediate =
     LIBA32ANDROID_A32_JNI_DELETE_LOCAL_REF_SVC;
 inline constexpr std::uint32_t kA32JniGetArrayLengthSvcImmediate =
     LIBA32ANDROID_A32_JNI_GET_ARRAY_LENGTH_SVC;
+inline constexpr std::uint32_t kA32JniGetStaticIntFieldSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_STATIC_INT_FIELD_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -155,6 +158,11 @@ struct A32JniArrayInfo {
     std::uint32_t length{};
 };
 
+struct A32JniStaticIntFieldValue {
+    std::uint32_t field_handle{};
+    std::int32_t value{};
+};
+
 struct A32JniRegisteredNative {
     std::uint32_t class_handle{};
     std::string class_name;
@@ -211,6 +219,13 @@ public:
         A32JniMemberKind kind,
         std::string_view name,
         std::string_view signature) const noexcept;
+    [[nodiscard]] const A32JniMemberId* find_member_by_handle(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] A32JniRegistryError set_static_int_field_value(
+        std::uint32_t field_handle,
+        std::int32_t value);
+    [[nodiscard]] std::optional<std::int32_t> static_int_field_value(
+        std::uint32_t field_handle) const noexcept;
     [[nodiscard]] const A32JniRegisteredNative* find_native(
         std::uint32_t class_handle,
         std::string_view name,
@@ -258,6 +273,7 @@ private:
     std::vector<ReferenceEntry> references_;
     std::vector<A32JniArrayInfo> arrays_;
     std::vector<A32JniMemberId> members_;
+    std::vector<A32JniStaticIntFieldValue> static_int_fields_;
     std::vector<A32JniRegisteredNative> natives_;
 
     friend class A32JniVmService;
@@ -280,6 +296,7 @@ struct A32JniVmLayout {
     std::uint32_t delete_global_ref_stub_address{};
     std::uint32_t delete_local_ref_stub_address{};
     std::uint32_t get_array_length_stub_address{};
+    std::uint32_t get_static_int_field_stub_address{};
 };
 
 enum class A32JniVmInstallError : std::uint8_t {

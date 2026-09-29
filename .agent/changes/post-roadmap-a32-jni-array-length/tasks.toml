@@ -3,24 +3,24 @@ change = "post-roadmap-a32-jni-array-length"
 
 [[tasks]]
 id = "T001"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = "Record supplied libmla GetArrayLength ABI evidence and define the bounded seeded-array contract."
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Implement bounded array metadata plus exact slot-171 GetArrayLength table/service behavior."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Add focused host regressions and extend the pinned-NDK ARM32 JNI fixture to execute GetArrayLength on a seeded logical array."
 
 [[tasks]]
 id = "T004"
-status = "active"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Converge accepted spec/architecture/state/evidence and pass exact-head validation."

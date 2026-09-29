@@ -2,6 +2,7 @@ typedef int jint;
 typedef void* jobject;
 typedef jobject jclass;
 typedef jobject jarray;
+typedef jobject jfieldID;
 
 typedef struct JNIEnv_ JNIEnv;
 typedef struct JavaVM_ JavaVM;
@@ -24,7 +25,12 @@ struct JNINativeInterface {
     jobject (*NewGlobalRef)(JNIEnv*, jobject);
     void (*DeleteGlobalRef)(JNIEnv*, jobject);
     void (*DeleteLocalRef)(JNIEnv*, jobject);
-    void* reserved24_to_170[147];
+    void* reserved24_to_143[120];
+    jfieldID (*GetStaticFieldID)(
+        JNIEnv*, jclass, const char*, const char*);
+    void* reserved145_to_149[5];
+    jint (*GetStaticIntField)(JNIEnv*, jclass, jfieldID);
+    void* reserved151_to_170[20];
     jint (*GetArrayLength)(JNIEnv*, jarray);
     void* reserved172_to_214[43];
     jint (*RegisterNatives)(
@@ -75,6 +81,7 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     JNIEnv* env = (JNIEnv*)0;
     jclass fixture_class;
     jobject global_class;
+    jfieldID answer_field;
     JNINativeMethod method;
 
     if (vm == (JavaVM*)0 || reserved != (void*)0) {
@@ -99,6 +106,19 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
         env,
         "org/videolan/Fixture");
     if (fixture_class == (jclass)0) {
+        return JNI_ERR;
+    }
+
+    answer_field = env->functions->GetStaticFieldID(
+        env,
+        fixture_class,
+        "answer",
+        "I");
+    if (answer_field == (jfieldID)0 ||
+        env->functions->GetStaticIntField(
+            env,
+            fixture_class,
+            answer_field) != 42) {
         return JNI_ERR;
     }
 

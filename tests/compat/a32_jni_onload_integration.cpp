@@ -20,6 +20,7 @@
 namespace {
 
 using liba32android::compat::A32JniClassRegistry;
+using liba32android::compat::A32JniMemberKind;
 using liba32android::compat::A32JniNativeInvokeOptions;
 using liba32android::compat::A32JniOnLoadOptions;
 using liba32android::compat::A32JniRegistryError;
@@ -228,8 +229,10 @@ int main(int argc, char** argv) {
         .delete_global_ref_stub_address = *stub_page + 0x120U,
         .delete_local_ref_stub_address = *stub_page + 0x140U,
         .get_array_length_stub_address = *stub_page + 0x160U,
+        .get_static_int_field_stub_address = *stub_page + 0x180U,
     };
     constexpr std::uint32_t kFixtureClassHandle = 0x44550000U;
+    constexpr std::uint32_t kFixtureStaticFieldHandle = 0x44551000U;
     constexpr std::uint32_t kFixtureArrayHandle = 0x44560000U;
     A32JniClassRegistry registry;
     if (!registry.valid() ||
@@ -237,6 +240,15 @@ int main(int argc, char** argv) {
             kFixtureClassHandle,
             "org/videolan/Fixture") !=
             A32JniRegistryError::None ||
+        registry.add_member(
+            kFixtureClassHandle,
+            A32JniMemberKind::StaticField,
+            kFixtureStaticFieldHandle,
+            "answer",
+            "I") != A32JniRegistryError::None ||
+        registry.set_static_int_field_value(
+            kFixtureStaticFieldHandle,
+            42) != A32JniRegistryError::None ||
         registry.add_array(kFixtureArrayHandle, 7U) !=
             A32JniRegistryError::None) {
         return fail("could not seed JNI fixture class registry");
@@ -273,7 +285,7 @@ int main(int argc, char** argv) {
         .stack_top = stack_top,
         .return_pc = *stop,
         .max_instructions = 1024U,
-        .max_service_calls = 7U,
+        .max_service_calls = 9U,
         .symbols = symbol_options(),
         .execution_context = &execution_context,
     };
@@ -288,7 +300,7 @@ int main(int argc, char** argv) {
         result.returned_version != kA32JniVersion16 ||
         !result.execution.has_value() ||
         !result.execution->stop_pc_reached ||
-        result.execution->services_handled != 7U ||
+        result.execution->services_handled != 9U ||
         !handler.saw_expected_context() ||
         execution_context.object_index.has_value()) {
         const std::uint32_t failing_svc =
@@ -309,6 +321,13 @@ int main(int argc, char** argv) {
         registry.array_length(kFixtureArrayHandle);
     if (!array_length.has_value() || *array_length != 7U) {
         return fail("ARM32 JNI_OnLoad lost seeded array metadata");
+    }
+
+    const auto static_int =
+        registry.static_int_field_value(
+            kFixtureStaticFieldHandle);
+    if (!static_int.has_value() || *static_int != 42) {
+        return fail("ARM32 JNI_OnLoad lost seeded static-int value");
     }
 
     const auto reference_counts =
@@ -379,6 +398,8 @@ int main(int argc, char** argv) {
         << reference_counts->global << '\n'
         << "fixture.jni.array_length="
         << *array_length << '\n'
+        << "fixture.jni.static_int="
+        << *static_int << '\n'
         << "fixture.jni.status=PASS\n";
     return 0;
 }

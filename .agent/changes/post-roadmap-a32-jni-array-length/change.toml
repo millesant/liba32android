@@ -2,10 +2,11 @@ schema = 1
 id = "post-roadmap-a32-jni-array-length"
 kind = "feature"
 size = "S1"
-status = "active"
+status = "done"
 workflow = "feature"
 control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
 base_revision = "764658ec7a6bde80b2cc6b0474bba75f0dd79d1b"
+result_revision = "db558233a50eb79c21e65792dea4a4b74bd72d89"
 acceptance = [
   "supplied ARMv7 libmla evidence records GetArrayLength at JNIEnv slot 171 / offset 0x2ac",
   "the guest JNIEnv table publishes GetArrayLength at exactly slot 171 with a distinct private service stub",
@@ -21,9 +22,9 @@ acceptance = [
 requirements = "aligned"
 specs = "aligned"
 implementation = "aligned"
-tests = "pending"
+tests = "aligned"
 documentation = "aligned"
 decisions = "not_applicable"
 tasks = "aligned"
-evidence = "pending"
+evidence = "aligned"
 repository = "aligned"

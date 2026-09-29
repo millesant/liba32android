@@ -22,19 +22,21 @@ Implemented and regression-tested foundations include:
 
 ## Active track: JNI compatibility
 
-The first registration, observed member-ID, and bounded JavaVM attach/detach
-steps are complete. Direct supplied-binary evidence now drives a smaller
-strong/local-reference step:
+The first registration, observed member-ID, bounded JavaVM attach/detach,
+strong/local-reference, and seeded GetArrayLength steps are complete. Direct
+supplied-binary evidence now drives a minimal static field-value step:
 
-1. NewGlobalRef/DeleteGlobalRef/DeleteLocalRef bookkeeping;
+1. GetStaticIntField over caller-seeded StaticField IDs/values;
+2. remaining reference lifetime, including weak/local-frame behavior when
+   balanced evidence exists;
 3. strings and modified UTF-8 APIs;
-4. primitive/object arrays;
+4. primitive/object arrays beyond seeded length metadata;
 5. pending exception state and exception operations;
 6. object creation and method-call families;
-7. instance/static fields;
-7. remaining JavaVM/thread calls where evidence requires them;
-8. direct buffers, critical access, and monitors;
-9. evidence-driven completion of remaining native-facing JNI slots.
+7. remaining instance/static field operations;
+8. remaining JavaVM/thread calls where evidence requires them;
+9. direct buffers, critical access, and monitors;
+10. evidence-driven completion of remaining native-facing JNI slots.
 
 The goal is a compatibility layer with explicit limits and deterministic guest
 handles, not an accidental full Java VM hidden inside the JNI adapter.

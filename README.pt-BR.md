@@ -61,8 +61,8 @@ O runtime atual inclui:
   serviços relacionados;
 - bootstrap JNI VM/GetEnv/JNI_OnLoad, mais FindClass, RegisterNatives,
   identificação limitada de membros, estado de attach/detach da JavaVM,
-  bookkeeping de referências local/global e despacho reverso de natives sem
-  argumentos Java;
+  bookkeeping de referências local/global, metadata limitada de comprimento de
+  arrays e despacho reverso de natives sem argumentos Java;
 - fixtures Android ARMv7 reproduzíveis, além de probes de espaço de
   endereçamento/runtime no Android.
 
@@ -172,10 +172,10 @@ Para regras de ownership/dependências, veja
 
 O roadmap público está em [ROADMAP.md](ROADMAP.md). A trilha imediata de
 compatibilidade já concluiu as primeiras etapas de registro de natives, IDs de
-membros, attach/detach da JavaVM e referências local/global guiadas por
-evidência. O trabalho atual adiciona o limite observado de GetArrayLength com
-arrays lógicos fornecidos pelo caller antes de APIs mais amplas de arrays,
-strings, exceções e métodos/campos.
+membros, attach/detach da JavaVM, referências local/global e GetArrayLength
+guiadas por evidência. O trabalho atual adiciona a fronteira observada de
+GetStaticIntField antes de APIs mais amplas de campos/métodos, arrays, strings e
+exceções.
 
 ## Contribuindo
 

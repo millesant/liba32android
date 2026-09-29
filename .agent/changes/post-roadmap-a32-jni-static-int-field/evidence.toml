@@ -1,0 +1,38 @@
+schema = 1
+change = "post-roadmap-a32-jni-static-int-field"
+
+[[evidence]]
+id = "supplied-libmla-get-static-int-field-slot"
+kind = "artifact"
+status = "observed"
+claim = "Supplied ARMv7 libmla machine code directly identifies JNIEnv GetStaticIntField at slot 150."
+source = "docs/research/evidence/arm32-jni-static-int-field-entrypoint-2026-09-29.md"
+result = "The Thumb wrapper loads JNIEnv byte offset 0x258 before its indirect call; 0x258 / 4 = 150."
+limitations = "The same binary exposes broader field/method calls, but those semantics remain outside this slice."
+
+[[evidence]]
+id = "arm32-static-int-fixture"
+kind = "integration"
+status = "pending"
+claim = "The pinned-NDK ARM32 JNI fixture resolves answer:I through GetStaticFieldID and reads caller-seeded value 42 through GetStaticIntField before registration."
+source = "ARM32 JNI integration workflow"
+result = ""
+limitations = "Pending exact-head execution."
+
+[[evidence]]
+id = "focused-host-regressions"
+kind = "test"
+status = "pending"
+claim = "Focused host regressions prove exact table/stub publication, signed jint bits, deterministic updates, and wrong class/kind/missing-value failures."
+source = "tests/compat/a32_jni.cpp"
+result = ""
+limitations = "Pending exact-head execution."
+
+[[evidence]]
+id = "exact-head-validation"
+kind = "validation"
+status = "pending"
+claim = "The GetStaticIntField slice passes the required exact-head check matrix."
+source = "GitHub commit checks"
+result = ""
+limitations = "Pending exact-head execution."
