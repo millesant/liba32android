@@ -2078,7 +2078,7 @@ int test_call_void_method_v_bridge() {
         .max_class_name_bytes = 64U,
         .max_method_name_bytes = 32U,
         .max_signature_bytes = 64U,
-        .max_method_arguments = 8U,
+        .max_method_arguments = 10U,
     };
     A32JniClassRegistry registry{limits};
     constexpr std::uint32_t kClass = 0x44550000U;
@@ -2093,7 +2093,7 @@ int test_call_void_method_v_bridge() {
     constexpr std::uint32_t kTooManyMethod = 0x44551010U;
     constexpr std::uint32_t kField = 0x44551014U;
     constexpr std::string_view kMixedSignature =
-        "(IZJFDLjava/lang/String;[J)V";
+        "(IZBCSJFDLjava/lang/String;[J)V";
 
     if (registry.add_class(
             kClass,
@@ -2139,7 +2139,7 @@ int test_call_void_method_v_bridge() {
             A32JniMemberKind::InstanceMethod,
             kTooManyMethod,
             "tooMany",
-            "(IIIIIIIII)V") != A32JniRegistryError::None ||
+            "(IIIIIIIIIII)V") != A32JniRegistryError::None ||
         registry.add_member(
             kClass,
             A32JniMemberKind::InstanceField,
@@ -2152,14 +2152,17 @@ int test_call_void_method_v_bridge() {
     constexpr std::uint32_t kVa = 0x1604U;
     if (!write_u32(memory, kVa + 0x00U, 0xfffffffbU) ||
         !write_u32(memory, kVa + 0x04U, 1U) ||
-        !write_u32(memory, kVa + 0x0cU, 0x89abcdefU) ||
-        !write_u32(memory, kVa + 0x10U, 0x01234567U) ||
-        !write_u32(memory, kVa + 0x14U, 0x00000000U) ||
-        !write_u32(memory, kVa + 0x18U, 0x3ff80000U) ||
+        !write_u32(memory, kVa + 0x08U, 0xffffff80U) ||
+        !write_u32(memory, kVa + 0x0cU, 0x000000e9U) ||
+        !write_u32(memory, kVa + 0x10U, 0xffff8001U) ||
+        !write_u32(memory, kVa + 0x14U, 0x89abcdefU) ||
+        !write_u32(memory, kVa + 0x18U, 0x01234567U) ||
         !write_u32(memory, kVa + 0x1cU, 0x00000000U) ||
-        !write_u32(memory, kVa + 0x20U, 0xc0020000U) ||
-        !write_u32(memory, kVa + 0x24U, kString) ||
-        !write_u32(memory, kVa + 0x28U, kArray)) {
+        !write_u32(memory, kVa + 0x20U, 0x3ff80000U) ||
+        !write_u32(memory, kVa + 0x24U, 0x00000000U) ||
+        !write_u32(memory, kVa + 0x28U, 0xc0020000U) ||
+        !write_u32(memory, kVa + 0x2cU, kString) ||
+        !write_u32(memory, kVa + 0x30U, kArray)) {
         return fail("could not stage JNI CallVoidMethodV va_list");
     }
 
@@ -2185,21 +2188,27 @@ int test_call_void_method_v_bridge() {
         bridge.receiver != kObject ||
         bridge.method_handle != kMixedMethod ||
         bridge.signature != kMixedSignature ||
-        bridge.arguments.size() != 7U ||
+        bridge.arguments.size() != 10U ||
         bridge.arguments[0].kind != A32JniValueKind::Int ||
         bridge.arguments[0].bits != 0xfffffffbU ||
         bridge.arguments[1].kind != A32JniValueKind::Boolean ||
         bridge.arguments[1].bits != 1U ||
-        bridge.arguments[2].kind != A32JniValueKind::Long ||
-        bridge.arguments[2].bits != UINT64_C(0x0123456789abcdef) ||
-        bridge.arguments[3].kind != A32JniValueKind::Float ||
-        bridge.arguments[3].bits != 0x3fc00000U ||
-        bridge.arguments[4].kind != A32JniValueKind::Double ||
-        bridge.arguments[4].bits != UINT64_C(0xc002000000000000) ||
-        bridge.arguments[5].kind != A32JniValueKind::Reference ||
-        bridge.arguments[5].bits != kString ||
-        bridge.arguments[6].kind != A32JniValueKind::Reference ||
-        bridge.arguments[6].bits != kArray) {
+        bridge.arguments[2].kind != A32JniValueKind::Byte ||
+        bridge.arguments[2].bits != 0xffffff80U ||
+        bridge.arguments[3].kind != A32JniValueKind::Char ||
+        bridge.arguments[3].bits != 0x000000e9U ||
+        bridge.arguments[4].kind != A32JniValueKind::Short ||
+        bridge.arguments[4].bits != 0xffff8001U ||
+        bridge.arguments[5].kind != A32JniValueKind::Long ||
+        bridge.arguments[5].bits != UINT64_C(0x0123456789abcdef) ||
+        bridge.arguments[6].kind != A32JniValueKind::Float ||
+        bridge.arguments[6].bits != 0x3fc00000U ||
+        bridge.arguments[7].kind != A32JniValueKind::Double ||
+        bridge.arguments[7].bits != UINT64_C(0xc002000000000000) ||
+        bridge.arguments[8].kind != A32JniValueKind::Reference ||
+        bridge.arguments[8].bits != kString ||
+        bridge.arguments[9].kind != A32JniValueKind::Reference ||
+        bridge.arguments[9].bits != kArray) {
         return fail("JNI CallVoidMethodV decoded mixed arguments incorrectly");
     }
 
@@ -2216,6 +2225,20 @@ int test_call_void_method_v_bridge() {
         bridge.calls != 2U ||
         !bridge.arguments.empty()) {
         return fail("JNI CallVoidMethodV rejected zero-argument method");
+    }
+
+    const std::size_t calls_after_success = bridge.calls;
+    regs = {};
+    regs[0] = configured.jni_env_address + 4U;
+    regs[1] = kObject;
+    regs[2] = kNoArgsMethod;
+    if (service.handle(
+            memory,
+            kA32JniCallVoidMethodVSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        bridge.calls != calls_after_success) {
+        return fail("JNI CallVoidMethodV accepted wrong JNIEnv pointer");
     }
 
     const std::size_t calls_before_failures = bridge.calls;
@@ -2314,6 +2337,30 @@ int test_call_void_method_v_bridge() {
             regs,
             cpsr) != A32HostServiceDisposition::Failed) {
         return fail("JNI CallVoidMethodV ran without embedding bridge");
+    }
+
+    const std::size_t calls_before_detach = bridge.calls;
+    regs = {};
+    regs[0] = configured.java_vm_address;
+    if (service.handle(
+            memory,
+            kA32JniDetachCurrentThreadSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniOk)) {
+        return fail("could not detach before JNI CallVoidMethodV test");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kObject;
+    regs[2] = kNoArgsMethod;
+    if (service.handle(
+            memory,
+            kA32JniCallVoidMethodVSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        bridge.calls != calls_before_detach) {
+        return fail("JNI CallVoidMethodV accepted detached context");
     }
 
     return 0;
