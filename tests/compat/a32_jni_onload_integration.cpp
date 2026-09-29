@@ -279,9 +279,18 @@ int main(int argc, char** argv) {
         result.execution->services_handled != 3U ||
         !handler.saw_expected_context() ||
         execution_context.object_index.has_value()) {
+        const std::uint32_t failing_svc =
+            result.failing_svc_immediate.value_or(0U);
+        const std::size_t handled_services =
+            result.execution.has_value()
+                ? result.execution->services_handled
+                : 0U;
         return fail(
-            std::string("ARM32 JNI_OnLoad/GetEnv execution failed: ") +
-            liba32android::compat::to_string(result.error));
+            std::string("ARM32 JNI registration execution failed: ") +
+            liba32android::compat::to_string(result.error) +
+            " svc=" + std::to_string(failing_svc) +
+            " handled=" +
+            std::to_string(handled_services));
     }
 
     const auto* registered = registry.find_native(
