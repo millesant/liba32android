@@ -76,30 +76,14 @@ jobs:
           grep -F 'fixture.jni.object_count=1' build-fixtures/jni-integration-evidence.txt
           grep -F 'fixture.jni.service_calls=3' build-fixtures/jni-integration-evidence.txt
           grep -F 'fixture.jni.version=0x10006' build-fixtures/jni-integration-evidence.txt
-          grep -E '^fixture\.jni\.registered_function=0x[1-9a-f][0-9a-f]*
+          grep -E '^fixture\.jni\.registered_function=0x[1-9a-f][0-9a-f]*$' build-fixtures/jni-integration-evidence.txt
+          grep -F 'fixture.jni.native_return=42' build-fixtures/jni-integration-evidence.txt
           grep -F 'fixture.jni.status=PASS' build-fixtures/jni-integration-evidence.txt
 
       - name: Upload JNI registration evidence
         uses: actions/upload-artifact@v4
         with:
           name: arm32-jni-registration
-          path: |
-            build-fixtures/jni/libfixture_jni_onload.so
-            build-fixtures/jni-header.txt
-            build-fixtures/jni-dynamic.txt
-            build-fixtures/jni-symbols.txt
-            build-fixtures/jni-relocations.txt
-            build-fixtures/jni-integration-evidence.txt
-          if-no-files-found: error
-          retention-days: 14
- build-fixtures/jni-integration-evidence.txt
-          grep -F 'fixture.jni.native_return=42' build-fixtures/jni-integration-evidence.txt
-          grep -F 'fixture.jni.status=PASS' build-fixtures/jni-integration-evidence.txt
-
-      - name: Upload JNI bootstrap evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: arm32-jni-onload
           path: |
             build-fixtures/jni/libfixture_jni_onload.so
             build-fixtures/jni-header.txt
