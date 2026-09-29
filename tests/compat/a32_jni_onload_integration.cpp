@@ -19,12 +19,15 @@
 
 namespace {
 
+using liba32android::compat::A32JniClassRegistry;
+using liba32android::compat::A32JniNativeInvokeOptions;
 using liba32android::compat::A32JniOnLoadOptions;
+using liba32android::compat::A32JniRegistryError;
 using liba32android::compat::A32JniVmLayout;
 using liba32android::compat::A32JniVmService;
-using liba32android::compat::kA32JniGetEnvSvcImmediate;
 using liba32android::compat::kA32JniVersion16;
 using liba32android::compat::invoke_a32_jni_on_load;
+using liba32android::compat::invoke_a32_registered_native_noargs;
 using liba32android::elf::Elf32DependencyLoadOptions;
 using liba32android::elf::Elf32DependencyLoadSource;
 using liba32android::elf::Elf32DependencyProvider;
@@ -217,7 +220,17 @@ int main(int argc, char** argv) {
         .find_class_stub_address = *stub_page + 0x20U,
         .register_natives_stub_address = *stub_page + 0x40U,
     };
-    A32JniVmService vm{vm_layout};
+    constexpr std::uint32_t kFixtureClassHandle = 0x44550000U;
+    A32JniClassRegistry registry;
+    if (!registry.valid() ||
+        registry.add_class(
+            kFixtureClassHandle,
+            "org/videolan/Fixture") !=
+            A32JniRegistryError::None) {
+        return fail("could not seed JNI fixture class registry");
+    }
+
+    A32JniVmService vm{vm_layout, &registry};
     const auto installed = vm.install(memory);
     if (!installed ||
         !memory.protect(
@@ -242,12 +255,13 @@ int main(int argc, char** argv) {
         return fail("JNI integration stack top overflowed");
     }
 
+    const std::uint32_t stack_top =
+        static_cast<std::uint32_t>(stack_top64) & ~7U;
     const A32JniOnLoadOptions options{
-        .stack_top =
-            static_cast<std::uint32_t>(stack_top64) & ~7U,
+        .stack_top = stack_top,
         .return_pc = *stop,
-        .max_instructions = 256U,
-        .max_service_calls = 1U,
+        .max_instructions = 1024U,
+        .max_service_calls = 3U,
         .symbols = symbol_options(),
         .execution_context = &execution_context,
     };
@@ -262,12 +276,51 @@ int main(int argc, char** argv) {
         result.returned_version != kA32JniVersion16 ||
         !result.execution.has_value() ||
         !result.execution->stop_pc_reached ||
-        result.execution->services_handled != 1U ||
+        result.execution->services_handled != 3U ||
         !handler.saw_expected_context() ||
         execution_context.object_index.has_value()) {
         return fail(
             std::string("ARM32 JNI_OnLoad/GetEnv execution failed: ") +
             liba32android::compat::to_string(result.error));
+    }
+
+    const auto* registered = registry.find_native(
+        kFixtureClassHandle,
+        "nativePing",
+        "()I");
+    if (registered == nullptr ||
+        registered->class_name != "org/videolan/Fixture" ||
+        registered->function == 0U) {
+        return fail("ARM32 JNI_OnLoad did not retain native registration");
+    }
+
+    const A32JniNativeInvokeOptions native_options{
+        .stack_top = stack_top,
+        .return_pc = *stop,
+        .max_instructions = 64U,
+        .max_service_calls = 1U,
+    };
+    const auto native_result =
+        invoke_a32_registered_native_noargs(
+            memory,
+            registry,
+            kFixtureClassHandle,
+            "nativePing",
+            "()I",
+            vm_layout.jni_env_address,
+            kFixtureClassHandle,
+            vm,
+            native_options);
+    if (!native_result ||
+        native_result.function != registered->function ||
+        native_result.returned_value != 42U ||
+        !native_result.execution.has_value() ||
+        !native_result.execution->stop_pc_reached ||
+        native_result.execution->services_handled != 0U) {
+        return fail(
+            std::string("registered ARM32 JNI native execution failed: ") +
+            liba32android::compat::to_string(
+                native_result.error));
     }
 
     std::cout
@@ -281,6 +334,10 @@ int main(int argc, char** argv) {
         << std::dec << result.execution->services_handled << '\n'
         << "fixture.jni.version=0x"
         << std::hex << result.returned_version << '\n'
+        << "fixture.jni.registered_function=0x"
+        << std::hex << registered->function << '\n'
+        << "fixture.jni.native_return="
+        << std::dec << native_result.returned_value << '\n'
         << "fixture.jni.status=PASS\n";
     return 0;
 }

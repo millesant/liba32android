@@ -1,4 +1,4 @@
-name: ARM32 JNI_OnLoad bootstrap
+name: ARM32 JNI registration bootstrap
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   arm32-jni-onload:
-    name: ARM32 JNI_OnLoad/GetEnv integration
+    name: ARM32 JNI registration integration
     runs-on: ubuntu-24.04
     env:
       NDK_VERSION: 27.3.13750724
@@ -29,7 +29,7 @@ jobs:
           fi
           test -x "$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi26-clang"
 
-      - name: Build reproducible ARM32 JNI_OnLoad fixture
+      - name: Build reproducible ARM32 JNI registration fixture
         run: |
           set -euxo pipefail
           bash -n tools/fixtures/build_arm32_jni_onload_fixture.sh
@@ -66,7 +66,7 @@ jobs:
         run: |
           cmake --build build             --target compat_jni_test compat_jni_onload_integration_test             --parallel 2
 
-      - name: Test JNI bootstrap
+      - name: Test JNI registration bootstrap
         run: |
           set -euxo pipefail
           ctest --test-dir build --output-on-failure             -R '^a32_jni_(vm_bootstrap|onload_integration)$'
@@ -74,8 +74,26 @@ jobs:
             tee build-fixtures/jni-integration-evidence.txt
 
           grep -F 'fixture.jni.object_count=1' build-fixtures/jni-integration-evidence.txt
-          grep -F 'fixture.jni.service_calls=1' build-fixtures/jni-integration-evidence.txt
+          grep -F 'fixture.jni.service_calls=3' build-fixtures/jni-integration-evidence.txt
           grep -F 'fixture.jni.version=0x10006' build-fixtures/jni-integration-evidence.txt
+          grep -E '^fixture\.jni\.registered_function=0x[1-9a-f][0-9a-f]*
+          grep -F 'fixture.jni.status=PASS' build-fixtures/jni-integration-evidence.txt
+
+      - name: Upload JNI registration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm32-jni-registration
+          path: |
+            build-fixtures/jni/libfixture_jni_onload.so
+            build-fixtures/jni-header.txt
+            build-fixtures/jni-dynamic.txt
+            build-fixtures/jni-symbols.txt
+            build-fixtures/jni-relocations.txt
+            build-fixtures/jni-integration-evidence.txt
+          if-no-files-found: error
+          retention-days: 14
+ build-fixtures/jni-integration-evidence.txt
+          grep -F 'fixture.jni.native_return=42' build-fixtures/jni-integration-evidence.txt
           grep -F 'fixture.jni.status=PASS' build-fixtures/jni-integration-evidence.txt
 
       - name: Upload JNI bootstrap evidence
