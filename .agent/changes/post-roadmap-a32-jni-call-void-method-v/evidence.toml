@@ -13,8 +13,8 @@ limitations = "This evidence does not prove raw slot 61, A-form calls, return-va
 [[evidence]]
 id = "focused-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host regressions prove exact slot/stub publication, bounded ARM32 va_list decoding, logical validation, and embedding bridge behavior."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending exact-head execution."
+source = "GitHub exact-head checks at 8a528b9402a874e8d1520687dc5920248234af7b"
+result = "All 11 required exact-head check-runs concluded success, including Linux A32 smoke and ARM32 JNI registration integration."
+limitations = "This validates only the bounded CallVoidMethodV surface; raw variadic/A-form and broader Java method families remain outside the slice."

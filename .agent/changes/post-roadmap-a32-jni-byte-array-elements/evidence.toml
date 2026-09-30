@@ -1,0 +1,20 @@
+schema = 1
+change = "post-roadmap-a32-jni-byte-array-elements"
+
+[[evidence]]
+id = "fmod-byte-array-element-slots"
+kind = "artifact"
+status = "observed"
+claim = "Supplied ARMv7 libfmod directly uses GetByteArrayElements and ReleaseByteArrayElements."
+source = "docs/research/evidence/arm32-jni-byte-array-elements-entrypoint-2026-09-30.md"
+result = "Java_org_fmod_MediaCodec_fmodReadAt loads JNIEnv offset 0x2e0 / slot 184 before its first indirect call and offset 0x300 / slot 192 before the matching release call."
+limitations = "This evidence does not prove NewByteArray, byte-region calls, other primitive arrays, or Java framework semantics."
+
+[[evidence]]
+id = "focused-validation"
+kind = "validation"
+status = "pending"
+claim = "Focused host regressions prove exact byte-array slots/stubs plus bounded seeded storage and copy-lease semantics."
+source = "GitHub exact-head checks"
+result = ""
+limitations = "Pending implementation and exact-head execution."
