@@ -284,7 +284,7 @@ A32JniVmLayout layout() {
         .call_static_object_method_stub_address = 0x1cc0U,
         .new_weak_global_ref_stub_address = 0x1ce0U,
         .delete_weak_global_ref_stub_address = 0x1cf0U,
-        .exception_check_stub_address = 0x1d00U,
+        .exception_check_stub_address = 0x1d80U,
         .get_long_field_stub_address = 0x1ae0U,
         .set_long_field_stub_address = 0x1b00U,
         .throw_new_stub_address = 0x1b20U,
