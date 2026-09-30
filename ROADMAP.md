@@ -32,10 +32,13 @@ CallStaticObjectMethod, balanced NewWeakGlobalRef/DeleteWeakGlobalRef,
 explicit bounded JNI_OnUnload invocation, and read-only ExceptionCheck are
 complete.
 
-Direct supplied VLC ARMv7 `libvlc.so` evidence now selects the next bounded
-JNI seam: GetStaticObjectField at slot 145 / offset `0x244`, with
-caller-seeded logical static object identity and local-reference return
-semantics. Implement only that proven read surface. In particular,
+Direct supplied VLC ARMv7 `libvlc.so` evidence-backed GetStaticObjectField
+at slot 145 / offset `0x244` is complete, including bounded caller-seeded
+logical static object state and local-reference return semantics.
+
+The next JNI step returns to evidence discovery: inspect supplied ARMv7
+artifacts for another directly observed bounded seam and implement only that
+proven surface. In particular,
 generic ELF dlclose is not treated as equivalent to VM/class-loader
 JNI_OnUnload ownership. Local frames, NewLocalRef, IsSameObject, GC behavior,
 and other JNI families remain unselected until evidence justifies them.

@@ -9,24 +9,24 @@ acceptance = "Record supplied VLC ARMv7 GetStaticObjectField slot/callsite evide
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Add bounded caller-seeded static-object field storage over existing StaticField IDs and known logical identities."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Publish slot 145 and implement null/object return semantics with one local-reference retention per non-null read."
 
 [[tasks]]
 id = "T004"
-status = "implemented"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Add focused regressions for exact slot/stub publication, null return, local-ref reacquisition, and invalid/missing state."
 
 [[tasks]]
 id = "T005"
-status = "active"
+status = "verified"
 depends_on = ["T004"]
 acceptance = "Pass exact-head validation and converge accepted spec/architecture/state/evidence."

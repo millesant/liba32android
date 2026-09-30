@@ -1672,3 +1672,33 @@ Existing `ExceptionOccurred` and `ExceptionClear` semantics remain
 unchanged. `ExceptionDescribe`, automatic exception gating across unrelated
 JNI calls, Java stack traces/unwinding, and framework exception behavior remain
 outside this slice.
+
+## L32-C060 — ARM32 JNI bounded GetStaticObjectField
+
+Supplied VLC ARMv7 `libvlc.so` JNI_OnLoad directly identifies
+`GetStaticObjectField` at JNIEnv slot 145 / byte offset `0x244`. The
+observed path first resolves a static jfieldID through slot 144, calls slot 145
+with JNIEnv/jclass/jfieldID, then passes the returned jobject to
+GetStringUTFChars and later DeleteLocalRef.
+
+The guest JNIEnv table publishes slot 145 through one distinct private ARM
+service stub while leaving unsupported entries null.
+
+The bounded registry may associate an explicitly seeded null or pre-existing
+logical jobject identity with an existing StaticField member ID. The stored
+field identity is Java/static state, not a caller JNI local/global reference
+count. A non-null seed must already exist in the bounded logical reference
+ledger.
+
+GetStaticObjectField requires the exact configured JNIEnv, attached state, a
+registered class, a StaticField member belonging to that class, and seeded
+state. A seeded null returns null. A seeded non-null identity gains exactly one
+local JNI reference before the same opaque logical handle is returned.
+Deleting an earlier returned local reference does not erase the stored static
+field identity; a later read can create a new local reference.
+
+Unknown seeded identities, wrong class/member kind, and missing values fail
+deterministically. SetStaticObjectField, Java class initialization, field
+descriptor type enforcement, inheritance/assignability, garbage collection,
+reachability, and framework object semantics remain separate evidence-driven
+slices.

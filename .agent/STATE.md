@@ -6,9 +6,8 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-static-object-field` — ACTIVE; add supplied VLC
-  ARMv7 GetStaticObjectField slot 145 / `0x244` with bounded caller-seeded
-  static object identity and one local reference per non-null read.
+- JNI evidence discovery — inspect supplied ARMv7 artifacts and select the next
+  directly observed bounded JNI seam; do not preselect unsupported APIs.
 
 ## Phase
 
@@ -294,4 +293,11 @@ Direct supplied VLC ARMv7 `libvlc.so` JNI_OnLoad evidence now proves
 `GetStaticObjectField` at JNIEnv slot 145 / `0x244`: the path first obtains
 a static jfieldID through slot 144, calls slot 145 with JNIEnv/jclass/jfieldID,
 then consumes the returned object through GetStringUTFChars and later
-DeleteLocalRef. This is the active bounded JNI seam.
+DeleteLocalRef. This evidence drove the now-validated bounded JNI seam.
+
+The bounded GetStaticObjectField slice is DONE at
+`82021c5e8aac437e6f1c74cc8db4e797737d74bf`. Supplied VLC ARMv7 `libvlc.so` proved JNIEnv slot 145 /
+`0x244`; caller-seeded static object state returns null or one retained local
+reference to the same logical identity, and the stored field value survives
+deletion of an earlier returned local ref. All 11 required exact-head checks
+passed.

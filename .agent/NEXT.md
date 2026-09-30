@@ -1,26 +1,26 @@
 # NEXT
 
-## Active JNI track
+## JNI evidence discovery
 
-Continue `post-roadmap-a32-jni-static-object-field` from
-`500ff207eabbdede73f7af4cfab1b5e385a045e8`.
+Continue from validated GetStaticObjectField revision `82021c5e8aac437e6f1c74cc8db4e797737d74bf`.
 
-Supplied VLC ARMv7 `libvlc.so` JNI_OnLoad directly proves
-`GetStaticObjectField` at JNIEnv slot 145 / byte offset `0x244`.
-The returned jobject is immediately used through GetStringUTFChars and later
-DeleteLocalRef.
+The direct VLC ARMv7 JNI_OnLoad seam at slot 145 / `0x244` is complete.
+Inspect the supplied ARMv7 artifacts for the next bounded JNI call or balanced
+lifecycle pair. Select a new API only from a concrete callsite with an exact
+JNIEnv/JavaVM slot or other equally direct ABI evidence.
 
-Keep the slice bounded to caller-seeded static object state on an existing
-StaticField ID. A seeded null returns null; a non-null known logical identity
-receives one local reference when read. Stored static-field identity is not a
-caller JNI local/global count and survives deletion of an earlier returned
-local reference.
+Do not preselect SetStaticObjectField, local-frame APIs, NewLocalRef,
+IsSameObject, GC behavior, or a return-valued method family merely because it
+remains unimplemented.
 
-Do not add SetStaticObjectField, Java class initialization, descriptor type
-enforcement, inheritance/assignability, garbage collection/reachability, or
-framework object semantics.
+For the next selected seam:
+
+- record exact slot/byte offset and callsite evidence;
+- define the smallest logical state/identity/lifetime contract required;
+- add focused host coverage before broadening implementation;
+- keep unrelated Java/framework behavior outside the slice.
 
 ## Validation
 
-Run exact-head checks after the focused host regression is committed. Escalate
-only failing checks. Leave CI immediately on terminal success and converge.
+After implementation, query exact-head checks once. Escalate only a failing or
+ambiguous check, and leave CI immediately on terminal success.

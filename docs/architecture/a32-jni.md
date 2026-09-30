@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: raw static calls, bounded weak globals, and ExceptionCheck validated
+Status: raw static calls, bounded weak globals, ExceptionCheck, and GetStaticObjectField validated
 
 ## Goal
 
@@ -42,6 +42,7 @@ entries include:
 - `SetLongField` — slot 110 / byte offset `0x1b8`;
 - `GetStaticMethodID` — slot 113 / byte offset `0x1c4`;
 - `GetStaticFieldID` — slot 144 / byte offset `0x240`;
+- `GetStaticObjectField` — slot 145 / byte offset `0x244`;
 - `GetStaticIntField` — slot 150 / byte offset `0x258`;
 - `NewStringUTF` — slot 167 / byte offset `0x29c`;
 - `GetStringUTFChars` — slot 169 / byte offset `0x2a4`;
@@ -724,3 +725,21 @@ ExceptionOccurred/ExceptionClear model.
 
 The pinned ARM32 JNI fixture executes the real slot-228 call in its no-pending
 path. Exact-head validation passed with the updated expected service-call count.
+
+## Static object fields
+
+Supplied VLC ARMv7 `libvlc.so` JNI_OnLoad directly selects
+`GetStaticObjectField` at JNIEnv slot 145 / `0x244` after resolving the
+field through GetStaticFieldID. The returned object is immediately consumed by
+GetStringUTFChars and later DeleteLocalRef, establishing object-return/local-ref
+behavior for the observed path.
+
+The bounded registry stores an explicitly seeded null or pre-existing logical
+object identity against an existing StaticField ID. The stored field identity
+is independent of caller local/global JNI counts. A non-null read creates one
+local reference before returning the same opaque logical handle, so deleting a
+prior returned local reference does not erase the static field value.
+
+No host pointer, Java class initialization, SetStaticObjectField, descriptor
+type engine, inheritance/assignability model, garbage collector, or framework
+object implementation is introduced.

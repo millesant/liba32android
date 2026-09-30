@@ -13,8 +13,8 @@ limitations = "This proves GetStaticObjectField read semantics only; it does not
 [[evidence]]
 id = "focused-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host regressions prove exact slot/stub publication and bounded static-object stored identity/local-reference behavior."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending exact-head execution."
+source = "GitHub exact-head checks at 82021c5e8aac437e6f1c74cc8db4e797737d74bf"
+result = "All 11 required exact-head checks concluded success, including Linux A32 smoke, ARM32 JNI registration integration, Android cross-build, and public repository/API validation."
+limitations = "The validated surface is GetStaticObjectField only; SetStaticObjectField, Java class initialization, field descriptor type enforcement, GC/reachability, and framework object behavior remain outside scope."
