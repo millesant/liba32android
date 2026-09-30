@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-call-void-method` — ACTIVE; add the supplied VLC
-  ARMv7-evidenced raw CallVoidMethod slot with bounded AAPCS32 r3/stack
-  variadic decoding and the existing caller-owned Java method-call bridge.
+- `post-roadmap-a32-jni-instance-int-field` — ACTIVE; add the supplied VLC
+  ARMv7-evidenced GetIntField slot with bounded caller-seeded logical
+  jobject/InstanceField signed 32-bit value state.
 
 ## Phase
 
@@ -148,12 +148,19 @@ GetByteArrayElements slot 184 / `0x2e0` and ReleaseByteArrayElements slot
 reference metadata plus one bounded guest copy lease with JNI_COMMIT/JNI_ABORT
 semantics. All 11 exact-head checks passed.
 
-The active raw method-call slice is direct evidence from the supplied VLC
-ARMv7 `libvlcjni.so`: `VLCJniObject_attachEvents` loads JNIEnv table
-offset `0xf4`, slot 61 (`CallVoidMethod`), forwards the first variadic word
-in r3, stages later words on the guest stack, and promotes a float source to an
-aligned double stack argument. The implementation will reuse the existing
-APK-agnostic logical-value method-call bridge.
+The bounded raw CallVoidMethod slice is DONE at
+`1383d7cd44b3b0a669e9e2a3e6fd7915d747efcc`. Supplied VLC ARMv7
+`libvlcjni.so` proved JNIEnv slot 61 / offset `0xf4`; the runtime decodes
+the first promoted 32-bit argument from r3, continues on the guest stack,
+aligns 64-bit/default-promoted floating values per AAPCS32, and reuses the
+accepted logical-value method-call bridge. All 11 exact-head checks passed.
+
+The active instance-int-field slice is direct evidence from the same supplied
+VLC ARMv7 `libvlcjni.so`: `Java_org_videolan_libvlc_Media_nativeNewFromFd`
+loads JNIEnv offset `0x190`, slot 100 (`GetIntField`), passes JNIEnv,
+jobject, and cached jfieldID in r0-r2, and receives the jint result in r0.
+The same function also exposes future ExceptionOccurred/ExceptionClear evidence,
+but those APIs remain separate from this bounded field slice.
 
 ## Public repository readiness
 

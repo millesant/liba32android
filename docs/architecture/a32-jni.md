@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: CallVoidMethodV and byte-array element leases validated; raw CallVoidMethod in progress
+Status: raw CallVoidMethod and byte-array element leases validated; GetIntField in progress
 
 ## Goal
 
@@ -31,6 +31,7 @@ entries include:
 - `DeleteGlobalRef` — slot 22 / byte offset `0x58`;
 - `DeleteLocalRef` — slot 23 / byte offset `0x5c`;
 - `GetMethodID` — slot 33 / byte offset `0x84`;
+- `CallVoidMethod` — slot 61 / byte offset `0xf4`;
 - `CallVoidMethodV` — slot 62 / byte offset `0xf8`;
 - `GetFieldID` — slot 94 / byte offset `0x178`;
 - `GetLongField` — slot 101 / byte offset `0x194`;
@@ -100,7 +101,8 @@ The current private guest/host service immediates are:
 - `0xF0` — JNIEnv::ThrowNew;
 - `0xF1` — JNIEnv::CallVoidMethodV;
 - `0xF2` — JNIEnv::GetByteArrayElements;
-- `0xF3` — JNIEnv::ReleaseByteArrayElements.
+- `0xF3` — JNIEnv::ReleaseByteArrayElements;
+- `0xF4` — JNIEnv::CallVoidMethod.
 
 Each guest stub is a minimal ARM `svc; bx lr` sequence. Unknown SVC immediates
 remain unhandled.
@@ -406,6 +408,31 @@ See
 Exact-head validation at
 `8a528b9402a874e8d1520687dc5920248234af7b` passed all 11 required checks.
 
+## Raw CallVoidMethod bridge
+
+The supplied VLC ARMv7 `libvlcjni.so` `VLCJniObject_attachEvents` helper
+directly loads native-table byte offset `0xf4`, slot 61, then invokes raw
+CallVoidMethod with JNIEnv, receiver, and method ID in r0-r2. The first
+variadic 32-bit word is forwarded in r3 and later arguments are staged on the
+guest stack. The same call site promotes a float source to double before
+placing it at an 8-byte-aligned stack address.
+
+The raw decoder shares the accepted descriptor parser and
+`A32JniMethodCallBridge` value surface with CallVoidMethodV. Promoted
+32-bit integral/reference values consume r3 first and then stack words.
+jlong/jdouble/default-promoted jfloat values do not split across odd r3 and the
+stack; they begin at the next 8-byte-aligned guest stack location. Non-null
+logical reference arguments must be live before the embedding bridge is called.
+
+CallVoidMethodA, return-valued/static/nonvirtual method families, NewObject,
+inheritance/virtual dispatch, and Java framework behavior remain separate.
+
+See
+[ARM32 JNI raw CallVoidMethod evidence](../research/evidence/arm32-jni-call-void-method-entrypoint-2026-09-30.md).
+
+Exact-head validation at
+`1383d7cd44b3b0a669e9e2a3e6fd7915d747efcc` passed all 11 required checks.
+
 ## Byte-array element leases
 
 Supplied ARMv7 `libfmod.so` directly identifies GetByteArrayElements at
@@ -487,7 +514,7 @@ including the ARM32 JNI registration integration.
 ## Limits
 
 The current compatibility surface still does not provide a general Java object
-runtime, inheritance/virtual dispatch, raw/A-form or return-valued method-call
+runtime, inheritance/virtual dispatch, A-form or return-valued method-call
 families, general native argument marshalling, JNI_OnUnload, framework classes,
 graphics, or audio. Existing references, members, strings/arrays, fields,
 thread attachment, pending ThrowNew state, CallVoidMethodV, and byte-array

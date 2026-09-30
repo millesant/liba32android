@@ -1429,3 +1429,36 @@ are rejected deterministically.
 NewByteArray, GetByteArrayRegion, SetByteArrayRegion, other primitive-array
 families, pinning, Java framework behavior, and host-pointer publication remain
 separate.
+
+## L32-C050 — ARM32 JNI bounded raw CallVoidMethod bridge
+
+Supplied VLC ARMv7 `libvlcjni.so` machine code in
+`VLCJniObject_attachEvents` identifies raw variadic CallVoidMethod at JNIEnv
+slot 61 / byte offset `0xf4`. The call site places JNIEnv, receiver, method
+ID, and the first promoted variadic word in r0-r3, stages later arguments on
+the guest stack, and converts one float source to an 8-byte-aligned promoted
+double stack argument.
+
+The guest JNIEnv table publishes slot 61 through one distinct private ARM
+service stub while preserving the accepted CallVoidMethodV slot 62 behavior.
+
+CallVoidMethod requires exact configured JNIEnv/attached state, a currently
+live non-null logical receiver, an existing InstanceMethod ID, a structurally
+valid void-return JNI method descriptor, and the caller-owned method-call
+bridge. Missing or mismatched logical state fails rather than synthesizing Java
+dispatch.
+
+The raw AAPCS32 decoder shares the accepted bounded descriptor/value parser.
+The first promoted 32-bit integral/reference value consumes r3; later 32-bit
+values consume successive guest stack words. A jlong, jdouble, or
+default-promoted jfloat cannot begin in odd r3, so it advances directly to the
+next 8-byte-aligned guest stack location and consumes two little-endian words.
+Object and array descriptors produce logical 32-bit handles and every non-null
+decoded reference must be live.
+
+Decoded values use the same synchronous `A32JniValue` bridge vector as
+CallVoidMethodV. No host pointer is published to the guest.
+
+CallVoidMethodA, return-valued/static/nonvirtual call families, NewObject,
+inheritance/virtual dispatch, Java frames, and framework method
+implementations remain separate slices.

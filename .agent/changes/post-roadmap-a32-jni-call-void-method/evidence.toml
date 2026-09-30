@@ -13,8 +13,8 @@ limitations = "This evidence does not prove CallVoidMethodA, return-valued/stati
 [[evidence]]
 id = "focused-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host regressions prove exact raw CallVoidMethod publication, bounded AAPCS32 variadic decoding, logical validation, and embedding bridge behavior."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending implementation and exact-head execution."
+source = "GitHub exact-head checks at 1383d7cd44b3b0a669e9e2a3e6fd7915d747efcc"
+result = "All 11 required exact-head check-runs concluded success. Focused coverage validated slot/stub publication, first-word r3 decoding, guest-stack continuation, aligned jlong/jdouble/default-promoted jfloat decoding, zero-argument calls, method/reference validation, unreadable stack handling, missing bridge, bridge failure, and detached-context rejection."
+limitations = "CallVoidMethodA, return-valued/static/nonvirtual call families, NewObject, inheritance/virtual dispatch, and Java framework behavior remain outside this slice."
