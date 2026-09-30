@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- next evidence-backed JNI seam — explicit JNI_OnUnload is now validated;
-  continue artifact/spec-driven discovery without equating generic ELF dlclose
-  with VM/class-loader native-library unload.
+- `post-roadmap-a32-jni-exception-check` — ACTIVE; add supplied VLC ARMv7
+  ExceptionCheck slot 228 / `0x390` as a pure bounded observation of the
+  existing pending-exception state.
 
 ## Phase
 
@@ -277,3 +277,9 @@ version contract. All 11 required exact-head checks passed.
 Automatic JNI_OnUnload triggering remains separate. JNI unload belongs to the
 VM/class-loader library lifecycle, so generic final ELF handle release is not
 treated as sufficient evidence for invocation.
+
+The same supplied VLC ARMv7 `libvlc.so` directly proves ExceptionCheck in its
+JNI_OnLoad path: the function dereferences JNIEnv, loads byte offset `0x390`
+(slot 228), calls it, and branches on the returned jboolean. This is a read-only
+observation seam over the already accepted pending-exception model; no new
+Throwable identity or clearing behavior is required.

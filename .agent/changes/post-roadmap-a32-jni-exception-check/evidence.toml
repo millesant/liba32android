@@ -1,0 +1,20 @@
+schema = 1
+change = "post-roadmap-a32-jni-exception-check"
+
+[[evidence]]
+id = "vlc-libvlc-exception-check-slot"
+kind = "artifact"
+status = "observed"
+claim = "Supplied VLC ARMv7 libvlc.so directly calls JNIEnv ExceptionCheck."
+source = "docs/research/evidence/arm32-jni-exception-check-entrypoint-2026-09-30.md"
+result = "JNI_OnLoad loads JNIEnv table byte offset 0x390 / slot 228, calls the function pointer, compares r0 with zero, and branches on the jboolean result."
+limitations = "This proves ExceptionCheck observation only; it does not establish ExceptionDescribe, Java unwinding, or universal pending-exception gating."
+
+[[evidence]]
+id = "focused-validation"
+kind = "validation"
+status = "pending"
+claim = "Focused host and pinned ARM32 fixture regressions prove exact slot/stub publication and read-only pending-state observation."
+source = "GitHub exact-head checks"
+result = ""
+limitations = "Pending exact-head execution."

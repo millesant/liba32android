@@ -39,6 +39,7 @@
 #define LIBA32ANDROID_A32_JNI_CALL_STATIC_OBJECT_METHOD_SVC 0xFB
 #define LIBA32ANDROID_A32_JNI_NEW_WEAK_GLOBAL_REF_SVC 0xFC
 #define LIBA32ANDROID_A32_JNI_DELETE_WEAK_GLOBAL_REF_SVC 0xFD
+#define LIBA32ANDROID_A32_JNI_EXCEPTION_CHECK_SVC 0xFE
 
 #ifdef __cplusplus
 
@@ -137,6 +138,8 @@ inline constexpr std::uint32_t kA32JniNewWeakGlobalRefSvcImmediate =
     LIBA32ANDROID_A32_JNI_NEW_WEAK_GLOBAL_REF_SVC;
 inline constexpr std::uint32_t kA32JniDeleteWeakGlobalRefSvcImmediate =
     LIBA32ANDROID_A32_JNI_DELETE_WEAK_GLOBAL_REF_SVC;
+inline constexpr std::uint32_t kA32JniExceptionCheckSvcImmediate =
+    LIBA32ANDROID_A32_JNI_EXCEPTION_CHECK_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -596,6 +599,7 @@ struct A32JniVmLayout {
     std::uint32_t call_static_object_method_stub_address{};
     std::uint32_t new_weak_global_ref_stub_address{};
     std::uint32_t delete_weak_global_ref_stub_address{};
+    std::uint32_t exception_check_stub_address{};
     std::uint32_t get_long_field_stub_address{};
     std::uint32_t set_long_field_stub_address{};
     std::uint32_t throw_new_stub_address{};

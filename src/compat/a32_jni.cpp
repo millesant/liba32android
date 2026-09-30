@@ -22,7 +22,7 @@ constexpr std::size_t kAttachCurrentThreadSlot = 4U;
 constexpr std::size_t kDetachCurrentThreadSlot = 5U;
 constexpr std::size_t kGetEnvSlot = 6U;
 constexpr std::size_t kJniEnvBytes = 4U;
-constexpr std::size_t kNativeTableWords = 228U;
+constexpr std::size_t kNativeTableWords = 229U;
 constexpr std::size_t kNativeTableBytes = kNativeTableWords * 4U;
 constexpr std::size_t kFindClassSlot = 6U;
 constexpr std::size_t kThrowNewSlot = 14U;
@@ -60,6 +60,7 @@ constexpr std::size_t kSetLongArrayRegionSlot = 212U;
 constexpr std::size_t kRegisterNativesSlot = 215U;
 constexpr std::size_t kNewWeakGlobalRefSlot = 226U;
 constexpr std::size_t kDeleteWeakGlobalRefSlot = 227U;
+constexpr std::size_t kExceptionCheckSlot = 228U;
 constexpr std::size_t kJniNativeMethodBytes = 12U;
 constexpr std::size_t kServiceStubBytes = 8U;
 constexpr std::size_t kMaxInstallRegionBytes = kNativeTableBytes;
@@ -1652,7 +1653,7 @@ bool A32JniVmService::layout_valid() const noexcept {
             kA32JniHardMaxByteArrayElements) {
         return false;
     }
-    const std::array<AddressRange, 46> ranges{{
+    const std::array<AddressRange, 47> ranges{{
         {layout_.java_vm_address, kJavaVmBytes},
         {layout_.invoke_table_address, kInvokeTableBytes},
         {layout_.jni_env_address, kJniEnvBytes},
@@ -1702,6 +1703,7 @@ bool A32JniVmService::layout_valid() const noexcept {
         {layout_.call_static_object_method_stub_address, kServiceStubBytes},
         {layout_.new_weak_global_ref_stub_address, kServiceStubBytes},
         {layout_.delete_weak_global_ref_stub_address, kServiceStubBytes},
+        {layout_.exception_check_stub_address, kServiceStubBytes},
     }};
 
     for (const AddressRange& range : ranges) {
@@ -1728,7 +1730,7 @@ A32JniVmInstallResult A32JniVmService::install(
         return {.error = A32JniVmInstallError::InvalidLayout};
     }
 
-    std::array<InstallRegion, 43> regions{{
+    std::array<InstallRegion, 44> regions{{
         {.address = layout_.java_vm_address, .size = kJavaVmBytes},
         {.address = layout_.invoke_table_address,
          .size = kInvokeTableBytes},
@@ -1812,6 +1814,8 @@ A32JniVmInstallResult A32JniVmService::install(
         {.address = layout_.new_weak_global_ref_stub_address,
          .size = kServiceStubBytes},
         {.address = layout_.delete_weak_global_ref_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.exception_check_stub_address,
          .size = kServiceStubBytes},
     }};
 
@@ -1979,6 +1983,10 @@ A32JniVmInstallResult A32JniVmService::install(
         regions[3].desired,
         kDeleteWeakGlobalRefSlot * 4U,
         layout_.delete_weak_global_ref_stub_address);
+    write_u32(
+        regions[3].desired,
+        kExceptionCheckSlot * 4U,
+        layout_.exception_check_stub_address);
 
     write_service_stub(
         regions[4].desired,
@@ -2097,6 +2105,9 @@ A32JniVmInstallResult A32JniVmService::install(
     write_service_stub(
         regions[42].desired,
         kA32JniDeleteWeakGlobalRefSvcImmediate);
+    write_service_stub(
+        regions[43].desired,
+        kA32JniExceptionCheckSvcImmediate);
 
     for (InstallRegion& region : regions) {
         if (!memory.read(
@@ -2189,7 +2200,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         svc_immediate == kA32JniCallStaticVoidMethodSvcImmediate ||
         svc_immediate == kA32JniCallStaticObjectMethodSvcImmediate ||
         svc_immediate == kA32JniNewWeakGlobalRefSvcImmediate ||
-        svc_immediate == kA32JniDeleteWeakGlobalRefSvcImmediate;
+        svc_immediate == kA32JniDeleteWeakGlobalRefSvcImmediate ||
+        svc_immediate == kA32JniExceptionCheckSvcImmediate;
     if (!known_service) {
         return runtime::A32HostServiceDisposition::Unhandled;
     }
@@ -2770,6 +2782,17 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
         registry_->clear_pending_exception();
         regs[0] = 0U;
+        return runtime::A32HostServiceDisposition::Handled;
+    }
+
+    if (svc_immediate == kA32JniExceptionCheckSvcImmediate) {
+        if (registry_ == nullptr || !registry_->valid()) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        regs[0] =
+            registry_->pending_exception() == nullptr
+                ? 0U
+                : 1U;
         return runtime::A32HostServiceDisposition::Handled;
     }
 

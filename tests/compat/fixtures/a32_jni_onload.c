@@ -63,6 +63,8 @@ struct JNINativeInterface {
         jclass,
         const JNINativeMethod*,
         jint);
+    void* reserved216_to_227[12];
+    jboolean (*ExceptionCheck)(JNIEnv*);
 };
 
 struct JNIEnv_ {
@@ -86,8 +88,8 @@ struct JavaVM_ {
 
 typedef char JNINativeMethod_must_be_12_bytes[
     sizeof(JNINativeMethod) == 12 ? 1 : -1];
-typedef char JNINativeInterface_must_be_216_words[
-    sizeof(struct JNINativeInterface) == (216 * 4) ? 1 : -1];
+typedef char JNINativeInterface_must_be_229_words[
+    sizeof(struct JNINativeInterface) == (229 * 4) ? 1 : -1];
 
 #define JNI_OK 0
 #define JNI_ERR (-1)
@@ -127,6 +129,9 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
         return JNI_ERR;
     }
     if (env == (JNIEnv*)0 || env->functions == (void*)0) {
+        return JNI_ERR;
+    }
+    if (env->functions->ExceptionCheck(env) != 0) {
         return JNI_ERR;
     }
     if (env->functions->GetArrayLength(

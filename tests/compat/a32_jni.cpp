@@ -71,6 +71,7 @@ using liba32android::compat::kA32JniCallStaticVoidMethodSvcImmediate;
 using liba32android::compat::kA32JniCallStaticObjectMethodSvcImmediate;
 using liba32android::compat::kA32JniNewWeakGlobalRefSvcImmediate;
 using liba32android::compat::kA32JniDeleteWeakGlobalRefSvcImmediate;
+using liba32android::compat::kA32JniExceptionCheckSvcImmediate;
 using liba32android::compat::kA32JniOk;
 using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
@@ -247,7 +248,7 @@ A32JniVmLayout layout() {
         .invoke_table_address = 0x1120U,
         .jni_env_address = 0x1160U,
         .native_table_address = 0x1180U,
-        .get_env_stub_address = 0x1510U,
+        .get_env_stub_address = 0x1518U,
         .find_class_stub_address = 0x1520U,
         .register_natives_stub_address = 0x1540U,
         .get_method_id_stub_address = 0x1560U,
@@ -283,6 +284,7 @@ A32JniVmLayout layout() {
         .call_static_object_method_stub_address = 0x1cc0U,
         .new_weak_global_ref_stub_address = 0x1ce0U,
         .delete_weak_global_ref_stub_address = 0x1cf0U,
+        .exception_check_stub_address = 0x1d00U,
         .get_long_field_stub_address = 0x1ae0U,
         .set_long_field_stub_address = 0x1b00U,
         .throw_new_stub_address = 0x1b20U,
@@ -414,7 +416,9 @@ int test_vm_install_and_getenv() {
         read_u32(memory, configured.native_table_address + 226U * 4U) !=
             configured.new_weak_global_ref_stub_address ||
         read_u32(memory, configured.native_table_address + 227U * 4U) !=
-            configured.delete_weak_global_ref_stub_address) {
+            configured.delete_weak_global_ref_stub_address ||
+        read_u32(memory, configured.native_table_address + 228U * 4U) !=
+            configured.exception_check_stub_address) {
         return fail("JNI VM pointer tables contain wrong guest pointers");
     }
 
@@ -428,7 +432,7 @@ int test_vm_install_and_getenv() {
             return fail("unsupported JavaVM invoke slot was non-null");
         }
     }
-    for (std::uint32_t index = 0U; index < 228U; ++index) {
+    for (std::uint32_t index = 0U; index < 229U; ++index) {
         if (index == 6U ||
             index == 14U ||
             index == 15U ||
@@ -464,7 +468,8 @@ int test_vm_install_and_getenv() {
             index == 212U ||
             index == 215U ||
             index == 226U ||
-            index == 227U) {
+            index == 227U ||
+            index == 228U) {
             continue;
         }
         if (read_u32(
@@ -474,7 +479,7 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::array<std::uint8_t, 8>, 39> expected_stubs{{
+    constexpr std::array<std::array<std::uint8_t, 8>, 40> expected_stubs{{
         {{0xD7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD8U, 0x00U, 0x00U, 0xEFU,
@@ -553,8 +558,10 @@ int test_vm_install_and_getenv() {
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xFDU, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xFEU, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    const std::array<std::uint32_t, 39> stub_addresses{{
+    const std::array<std::uint32_t, 40> stub_addresses{{
         configured.get_env_stub_address,
         configured.find_class_stub_address,
         configured.register_natives_stub_address,
@@ -594,6 +601,7 @@ int test_vm_install_and_getenv() {
         configured.call_static_object_method_stub_address,
         configured.new_weak_global_ref_stub_address,
         configured.delete_weak_global_ref_stub_address,
+        configured.exception_check_stub_address,
     }};
     for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
         std::array<std::uint8_t, 8> observed_stub{};
@@ -784,7 +792,7 @@ int test_vm_install_and_getenv() {
     regs = {};
     if (service.handle(
             memory,
-            kA32JniDeleteWeakGlobalRefSvcImmediate + 1U,
+            kA32JniExceptionCheckSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
@@ -2744,6 +2752,17 @@ int test_throw_new_pending_exception() {
     regs[0] = configured.jni_env_address;
     if (service.handle(
             memory,
+            kA32JniExceptionCheckSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI ExceptionCheck reported empty pending state");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    if (service.handle(
+            memory,
             kA32JniExceptionOccurredSvcImmediate,
             regs,
             cpsr) != A32HostServiceDisposition::Handled ||
@@ -2791,6 +2810,16 @@ int test_throw_new_pending_exception() {
         return fail("JNI ThrowNew stored wrong pending exception");
     }
     const std::uint32_t first_exception = pending->handle;
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    if (service.handle(
+            memory,
+            kA32JniExceptionCheckSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 1U) {
+        return fail("JNI ExceptionCheck missed pending exception");
+    }
     const auto pending_counts =
         registry.reference_counts(first_exception);
     if (!pending_counts.has_value() ||
@@ -2845,6 +2874,17 @@ int test_throw_new_pending_exception() {
         !registry.reference_counts(first_exception).has_value() ||
         registry.reference_counts(first_exception)->local != 1U) {
         return fail("JNI ExceptionClear destroyed returned local reference");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    if (service.handle(
+            memory,
+            kA32JniExceptionCheckSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI ExceptionCheck stayed set after ExceptionClear");
     }
 
     regs = {};

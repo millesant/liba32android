@@ -1,33 +1,26 @@
 # NEXT
 
-## JNI evidence discovery
+## Active JNI track
 
-Continue from validated explicit JNI_OnUnload revision
-`c599cd09b19847b7366b0ee21cd839ed569276bd`.
+Continue `post-roadmap-a32-jni-exception-check` from
+`44ebb794d1b643df8cc54451c59b763fa97f4942`.
 
-The supplied VLC ARMv7 artifacts now have bounded coverage for their observed
-JNI_OnLoad/JNI_OnUnload lifecycle hooks and the directly evidenced JNIEnv /
-JavaVM seams implemented so far.
+Supplied VLC ARMv7 `libvlc.so` JNI_OnLoad directly calls JNIEnv byte offset
+`0x390`, slot 228 (ExceptionCheck), and branches on the returned jboolean.
 
-Do not wire JNI_OnUnload directly to generic `dlclose` merely because both are
-unload-shaped. JNI defines JNI_OnUnload as a VM/class-loader native-library
-lifecycle hook; ordinary OS/ELF handle release is not by itself the same event.
-Any automatic invocation needs an explicit Java-library ownership trigger and
-ordering contract.
+Keep this slice read-only over the existing pending-exception state:
 
-For the next selected seam:
+- no pending state -> JNI_FALSE;
+- pending state -> JNI_TRUE;
+- no new jthrowable reference;
+- no clearing or other mutation.
 
-- require direct supplied-binary or accepted lifecycle evidence;
-- record exact ABI/slot/callsite or lifecycle trigger evidence;
-- define the smallest logical ownership/state contract;
-- add focused regressions before broadening implementation;
-- keep unrelated Java/framework behavior outside scope.
-
-Local frames, NewLocalRef-from-jweak, IsSameObject, GC/weak clearing, and
-automatic class-loader unload remain unselected until evidence proves a bounded
-need.
+The pinned ARM32 fixture should call the real slot in its no-pending path.
+ExceptionDescribe, automatic exception gating, stack traces, Java unwinding,
+and framework exception behavior stay separate.
 
 ## Validation
 
-After implementation, use exact-head commit checks once. Escalate only a
-failing or ambiguous check and leave CI immediately on terminal success.
+After the focused host/fixture coverage is committed, query exact-head commit
+checks. Escalate only failing checks, and leave CI immediately on terminal
+success.

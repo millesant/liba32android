@@ -255,6 +255,7 @@ int main(int argc, char** argv) {
         .call_static_object_method_stub_address = *stub_page + 0x480U,
         .new_weak_global_ref_stub_address = *stub_page + 0x4a0U,
         .delete_weak_global_ref_stub_address = *stub_page + 0x4c0U,
+        .exception_check_stub_address = *stub_page + 0x4e0U,
         .get_long_field_stub_address = *stub_page + 0x2e0U,
         .set_long_field_stub_address = *stub_page + 0x300U,
         .throw_new_stub_address = *stub_page + 0x320U,
@@ -319,7 +320,7 @@ int main(int argc, char** argv) {
         .stack_top = stack_top,
         .return_pc = *stop,
         .max_instructions = 1024U,
-        .max_service_calls = 25U,
+        .max_service_calls = 26U,
         .symbols = symbol_options(),
         .execution_context = &execution_context,
     };
@@ -334,7 +335,7 @@ int main(int argc, char** argv) {
         result.returned_version != kA32JniVersion16 ||
         !result.execution.has_value() ||
         !result.execution->stop_pc_reached ||
-        result.execution->services_handled != 25U ||
+        result.execution->services_handled != 26U ||
         !handler.saw_expected_context() ||
         execution_context.object_index.has_value()) {
         const std::uint32_t failing_svc =
