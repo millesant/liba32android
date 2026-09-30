@@ -1653,6 +1653,10 @@ int test_byte_array_elements() {
     if (!memory.write(configured.byte_array_scratch_address, kAborted)) {
         return fail("could not stage JNI byte-array abort bytes");
     }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kArray;
+    regs[2] = configured.byte_array_scratch_address;
     regs[3] = 2U;
     if (service.handle(
             memory,
