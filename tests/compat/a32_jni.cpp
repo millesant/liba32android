@@ -60,6 +60,7 @@ using liba32android::compat::kA32JniCallVoidMethodVSvcImmediate;
 using liba32android::compat::kA32JniGetByteArrayElementsSvcImmediate;
 using liba32android::compat::kA32JniReleaseByteArrayElementsSvcImmediate;
 using liba32android::compat::kA32JniCallVoidMethodSvcImmediate;
+using liba32android::compat::kA32JniGetIntFieldSvcImmediate;
 using liba32android::compat::kA32JniOk;
 using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
@@ -202,6 +203,7 @@ A32JniVmLayout layout() {
         .new_object_array_stub_address = 0x1a80U,
         .get_object_array_element_stub_address = 0x1aa0U,
         .set_object_array_element_stub_address = 0x1ac0U,
+        .get_int_field_stub_address = 0x1bc0U,
         .get_long_field_stub_address = 0x1ae0U,
         .set_long_field_stub_address = 0x1b00U,
         .throw_new_stub_address = 0x1b20U,
@@ -280,6 +282,8 @@ int test_vm_install_and_getenv() {
             configured.call_void_method_v_stub_address ||
         read_u32(memory, configured.native_table_address + 94U * 4U) !=
             configured.get_field_id_stub_address ||
+        read_u32(memory, configured.native_table_address + 100U * 4U) !=
+            configured.get_int_field_stub_address ||
         read_u32(memory, configured.native_table_address + 101U * 4U) !=
             configured.get_long_field_stub_address ||
         read_u32(memory, configured.native_table_address + 110U * 4U) !=
@@ -339,6 +343,7 @@ int test_vm_install_and_getenv() {
             index == 61U ||
             index == 62U ||
             index == 94U ||
+            index == 100U ||
             index == 101U ||
             index == 110U ||
             index == 144U ||
@@ -366,7 +371,7 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::array<std::uint8_t, 8>, 30> expected_stubs{{
+    constexpr std::array<std::array<std::uint8_t, 8>, 31> expected_stubs{{
         {{0xD7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD8U, 0x00U, 0x00U, 0xEFU,
@@ -427,8 +432,10 @@ int test_vm_install_and_getenv() {
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xF4U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xF5U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    const std::array<std::uint32_t, 30> stub_addresses{{
+    const std::array<std::uint32_t, 31> stub_addresses{{
         configured.get_env_stub_address,
         configured.find_class_stub_address,
         configured.register_natives_stub_address,
@@ -459,6 +466,7 @@ int test_vm_install_and_getenv() {
         configured.get_byte_array_elements_stub_address,
         configured.release_byte_array_elements_stub_address,
         configured.call_void_method_stub_address,
+        configured.get_int_field_stub_address,
     }};
     for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
         std::array<std::uint8_t, 8> observed_stub{};
@@ -649,7 +657,7 @@ int test_vm_install_and_getenv() {
     regs = {};
     if (service.handle(
             memory,
-            kA32JniCallVoidMethodSvcImmediate + 1U,
+            kA32JniGetIntFieldSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
@@ -1971,6 +1979,185 @@ int test_object_array_family() {
             regs,
             cpsr) != A32HostServiceDisposition::Failed) {
         return fail("JNI object-array access accepted dead array ref");
+    }
+
+    return 0;
+}
+
+int test_instance_int_field_value() {
+    LinearGuestMemory memory{0x1000U, 0x1000U};
+    const A32JniRegistryLimits limits{
+        .max_classes = 2U,
+        .max_registered_methods = 2U,
+        .max_methods_per_registration = 2U,
+        .max_member_ids = 4U,
+        .max_reference_handles = 4U,
+        .max_reference_count_per_handle = 4U,
+        .max_arrays = 2U,
+        .max_long_array_elements = 4U,
+        .max_byte_array_elements = 4U,
+        .max_object_array_elements = 4U,
+        .max_strings = 2U,
+        .max_modified_utf8_bytes = 8U,
+        .max_class_name_bytes = 32U,
+        .max_method_name_bytes = 32U,
+        .max_signature_bytes = 32U,
+    };
+    A32JniClassRegistry registry{limits};
+    constexpr std::uint32_t kClass = 0x44550000U;
+    constexpr std::uint32_t kObject = 0x44560000U;
+    constexpr std::uint32_t kDeadObject = 0x44560004U;
+    constexpr std::uint32_t kIntField = 0x44551000U;
+    constexpr std::uint32_t kUnsetIntField = 0x44551004U;
+    constexpr std::uint32_t kStaticField = 0x44551008U;
+    constexpr std::int32_t kSeeded = -123456789;
+    if (registry.add_class(kClass, "org/videolan/Fixture") !=
+            A32JniRegistryError::None ||
+        registry.add_reference_identity(kObject) !=
+            A32JniRegistryError::None ||
+        registry.add_reference_identity(kDeadObject) !=
+            A32JniRegistryError::None ||
+        !registry.retain_local_reference(kObject) ||
+        registry.add_member(
+            kClass,
+            A32JniMemberKind::InstanceField,
+            kIntField,
+            "value",
+            "I") != A32JniRegistryError::None ||
+        registry.add_member(
+            kClass,
+            A32JniMemberKind::InstanceField,
+            kUnsetIntField,
+            "unset",
+            "I") != A32JniRegistryError::None ||
+        registry.add_member(
+            kClass,
+            A32JniMemberKind::StaticField,
+            kStaticField,
+            "staticValue",
+            "I") != A32JniRegistryError::None ||
+        registry.set_instance_int_field_value(
+            kObject,
+            kIntField,
+            kSeeded) != A32JniRegistryError::None ||
+        registry.set_instance_int_field_value(
+            kObject,
+            kStaticField,
+            1) != A32JniRegistryError::InvalidMemberKind ||
+        registry.set_instance_int_field_value(
+            0x99887766U,
+            kIntField,
+            1) != A32JniRegistryError::InvalidReferenceHandle ||
+        registry.set_instance_int_field_value(
+            kObject,
+            0x99887766U,
+            1) != A32JniRegistryError::InvalidMemberHandle) {
+        return fail("could not seed bounded JNI instance-int field state");
+    }
+
+    const auto configured = layout();
+    A32JniVmService service{configured, &registry};
+    if (!service.install(memory)) {
+        return fail("JNI instance-int field service did not install");
+    }
+
+    std::uint32_t cpsr{};
+    std::array<std::uint32_t, 16> regs{};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kObject;
+    regs[2] = kIntField;
+    if (service.handle(
+            memory,
+            kA32JniGetIntFieldSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kSeeded)) {
+        return fail("JNI GetIntField returned wrong seeded jint bits");
+    }
+
+    if (registry.set_instance_int_field_value(
+            kObject,
+            kIntField,
+            42) != A32JniRegistryError::None ||
+        registry.instance_int_field_value(
+            kObject,
+            kIntField).value_or(0) != 42) {
+        return fail("JNI instance-int field update was not deterministic");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kObject;
+    regs[2] = kIntField;
+    if (service.handle(
+            memory,
+            kA32JniGetIntFieldSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 42U) {
+        return fail("JNI GetIntField missed updated value");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kDeadObject;
+    regs[2] = kIntField;
+    if (service.handle(
+            memory,
+            kA32JniGetIntFieldSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI GetIntField accepted dead receiver");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kObject;
+    regs[2] = kStaticField;
+    if (service.handle(
+            memory,
+            kA32JniGetIntFieldSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI GetIntField accepted wrong member kind");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kObject;
+    regs[2] = kUnsetIntField;
+    if (service.handle(
+            memory,
+            kA32JniGetIntFieldSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI GetIntField fabricated missing value");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kObject;
+    regs[2] = 0x99887766U;
+    if (service.handle(
+            memory,
+            kA32JniGetIntFieldSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI GetIntField accepted unknown field ID");
+    }
+
+    if (!registry.delete_local_reference(kObject)) {
+        return fail("could not retire JNI instance-int receiver");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kObject;
+    regs[2] = kIntField;
+    if (service.handle(
+            memory,
+            kA32JniGetIntFieldSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI GetIntField accepted retired receiver");
     }
 
     return 0;
@@ -3445,6 +3632,10 @@ int main() {
         return status;
     }
     if (const int status = test_object_array_family();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_instance_int_field_value();
         status != 0) {
         return status;
     }

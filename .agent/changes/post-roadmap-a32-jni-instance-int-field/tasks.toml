@@ -9,24 +9,24 @@ acceptance = "Record supplied VLC ARMv7 GetIntField machine-code evidence and de
 
 [[tasks]]
 id = "T002"
-status = "active"
+status = "implemented"
 depends_on = ["T001"]
 acceptance = "Add bounded caller-seeded logical-object/InstanceField signed 32-bit value state."
 
 [[tasks]]
 id = "T003"
-status = "pending"
+status = "implemented"
 depends_on = ["T002"]
 acceptance = "Publish GetIntField at exact JNIEnv slot 100 and implement live-object/member/value validation."
 
 [[tasks]]
 id = "T004"
-status = "pending"
+status = "implemented"
 depends_on = ["T003"]
 acceptance = "Add focused host regressions for table/stub bytes, signed values, updates, liveness, member kind/ID, and missing state."
 
 [[tasks]]
 id = "T005"
-status = "pending"
+status = "active"
 depends_on = ["T004"]
 acceptance = "Converge accepted spec/architecture/state/evidence and pass exact-head validation."
