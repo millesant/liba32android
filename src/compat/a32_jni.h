@@ -40,6 +40,7 @@
 #define LIBA32ANDROID_A32_JNI_NEW_WEAK_GLOBAL_REF_SVC 0xFC
 #define LIBA32ANDROID_A32_JNI_DELETE_WEAK_GLOBAL_REF_SVC 0xFD
 #define LIBA32ANDROID_A32_JNI_EXCEPTION_CHECK_SVC 0xFE
+#define LIBA32ANDROID_A32_JNI_GET_STATIC_OBJECT_FIELD_SVC 0xFF
 
 #ifdef __cplusplus
 
@@ -140,6 +141,8 @@ inline constexpr std::uint32_t kA32JniDeleteWeakGlobalRefSvcImmediate =
     LIBA32ANDROID_A32_JNI_DELETE_WEAK_GLOBAL_REF_SVC;
 inline constexpr std::uint32_t kA32JniExceptionCheckSvcImmediate =
     LIBA32ANDROID_A32_JNI_EXCEPTION_CHECK_SVC;
+inline constexpr std::uint32_t kA32JniGetStaticObjectFieldSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_STATIC_OBJECT_FIELD_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -329,6 +332,11 @@ struct A32JniStaticIntFieldValue {
     std::int32_t value{};
 };
 
+struct A32JniStaticObjectFieldValue {
+    std::uint32_t field_handle{};
+    std::uint32_t object_handle{};
+};
+
 struct A32JniInstanceIntFieldValue {
     std::uint32_t object_handle{};
     std::uint32_t field_handle{};
@@ -468,6 +476,11 @@ public:
         std::int32_t value);
     [[nodiscard]] std::optional<std::int32_t> static_int_field_value(
         std::uint32_t field_handle) const noexcept;
+    [[nodiscard]] A32JniRegistryError set_static_object_field_value(
+        std::uint32_t field_handle,
+        std::uint32_t object_handle);
+    [[nodiscard]] std::optional<std::uint32_t> static_object_field_value(
+        std::uint32_t field_handle) const noexcept;
     [[nodiscard]] A32JniRegistryError set_instance_int_field_value(
         std::uint32_t object_handle,
         std::uint32_t field_handle,
@@ -550,6 +563,7 @@ private:
     std::vector<A32JniStringInfo> strings_;
     std::vector<A32JniMemberId> members_;
     std::vector<A32JniStaticIntFieldValue> static_int_fields_;
+    std::vector<A32JniStaticObjectFieldValue> static_object_fields_;
     std::vector<A32JniInstanceIntFieldValue> instance_int_fields_;
     std::vector<A32JniInstanceLongFieldValue> instance_long_fields_;
     std::optional<A32JniPendingException> pending_exception_;
@@ -569,6 +583,7 @@ struct A32JniVmLayout {
     std::uint32_t get_method_id_stub_address{};
     std::uint32_t get_field_id_stub_address{};
     std::uint32_t get_static_field_id_stub_address{};
+    std::uint32_t get_static_object_field_stub_address{};
     std::uint32_t attach_current_thread_stub_address{};
     std::uint32_t detach_current_thread_stub_address{};
     std::uint32_t new_global_ref_stub_address{};

@@ -225,6 +225,7 @@ int main(int argc, char** argv) {
         .get_method_id_stub_address = *stub_page + 0x60U,
         .get_field_id_stub_address = *stub_page + 0x80U,
         .get_static_field_id_stub_address = *stub_page + 0xa0U,
+        .get_static_object_field_stub_address = *stub_page + 0x500U,
         .attach_current_thread_stub_address = *stub_page + 0xc0U,
         .detach_current_thread_stub_address = *stub_page + 0xe0U,
         .new_global_ref_stub_address = *stub_page + 0x100U,

@@ -1,0 +1,20 @@
+schema = 1
+change = "post-roadmap-a32-jni-static-object-field"
+
+[[evidence]]
+id = "vlc-libvlc-get-static-object-field-slot"
+kind = "artifact"
+status = "observed"
+claim = "Supplied VLC ARMv7 libvlc.so JNI_OnLoad directly calls JNIEnv GetStaticObjectField."
+source = "docs/research/evidence/arm32-jni-static-object-field-entrypoint-2026-09-30.md"
+result = "JNI_OnLoad resolves a static field through offset 0x240, then loads offset 0x244 / slot 145 and calls it with JNIEnv, jclass, and the returned jfieldID; the returned r0 object is then passed to GetStringUTFChars and later DeleteLocalRef."
+limitations = "This proves GetStaticObjectField read semantics only; it does not establish SetStaticObjectField, Java class initialization, GC/reachability, or field-type enforcement."
+
+[[evidence]]
+id = "focused-validation"
+kind = "validation"
+status = "pending"
+claim = "Focused host regressions prove exact slot/stub publication and bounded static-object stored identity/local-reference behavior."
+source = "GitHub exact-head checks"
+result = ""
+limitations = "Pending exact-head execution."

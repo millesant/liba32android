@@ -43,6 +43,7 @@ constexpr std::size_t kCallStaticObjectMethodSlot = 114U;
 constexpr std::size_t kSetLongFieldSlot = 110U;
 constexpr std::size_t kCallStaticVoidMethodSlot = 141U;
 constexpr std::size_t kGetStaticFieldIdSlot = 144U;
+constexpr std::size_t kGetStaticObjectFieldSlot = 145U;
 constexpr std::size_t kGetStaticIntFieldSlot = 150U;
 constexpr std::size_t kNewStringUtfSlot = 167U;
 constexpr std::size_t kGetStringUtfCharsSlot = 169U;
@@ -1374,6 +1375,51 @@ std::optional<std::int32_t> A32JniClassRegistry::static_int_field_value(
     return std::nullopt;
 }
 
+A32JniRegistryError A32JniClassRegistry::set_static_object_field_value(
+    std::uint32_t field_handle,
+    std::uint32_t object_handle) {
+    if (!valid()) {
+        return A32JniRegistryError::InvalidLimits;
+    }
+    const A32JniMemberId* member = find_member_by_handle(field_handle);
+    if (member == nullptr) {
+        return A32JniRegistryError::InvalidMemberHandle;
+    }
+    if (member->kind != A32JniMemberKind::StaticField) {
+        return A32JniRegistryError::InvalidMemberKind;
+    }
+    if (object_handle != 0U &&
+        find_reference_entry(object_handle) == nullptr) {
+        return A32JniRegistryError::InvalidReferenceHandle;
+    }
+    for (A32JniStaticObjectFieldValue& current : static_object_fields_) {
+        if (current.field_handle == field_handle) {
+            current.object_handle = object_handle;
+            return A32JniRegistryError::None;
+        }
+    }
+    if (static_object_fields_.size() >= limits_.max_member_ids) {
+        return A32JniRegistryError::MemberLimitExceeded;
+    }
+    static_object_fields_.push_back(A32JniStaticObjectFieldValue{
+        .field_handle = field_handle,
+        .object_handle = object_handle,
+    });
+    return A32JniRegistryError::None;
+}
+
+std::optional<std::uint32_t>
+A32JniClassRegistry::static_object_field_value(
+    std::uint32_t field_handle) const noexcept {
+    for (const A32JniStaticObjectFieldValue& current :
+         static_object_fields_) {
+        if (current.field_handle == field_handle) {
+            return current.object_handle;
+        }
+    }
+    return std::nullopt;
+}
+
 A32JniRegistryError A32JniClassRegistry::set_instance_int_field_value(
     std::uint32_t object_handle,
     std::uint32_t field_handle,
@@ -1653,7 +1699,7 @@ bool A32JniVmService::layout_valid() const noexcept {
             kA32JniHardMaxByteArrayElements) {
         return false;
     }
-    const std::array<AddressRange, 47> ranges{{
+    const std::array<AddressRange, 48> ranges{{
         {layout_.java_vm_address, kJavaVmBytes},
         {layout_.invoke_table_address, kInvokeTableBytes},
         {layout_.jni_env_address, kJniEnvBytes},
@@ -1704,6 +1750,7 @@ bool A32JniVmService::layout_valid() const noexcept {
         {layout_.new_weak_global_ref_stub_address, kServiceStubBytes},
         {layout_.delete_weak_global_ref_stub_address, kServiceStubBytes},
         {layout_.exception_check_stub_address, kServiceStubBytes},
+        {layout_.get_static_object_field_stub_address, kServiceStubBytes},
     }};
 
     for (const AddressRange& range : ranges) {
@@ -1730,7 +1777,7 @@ A32JniVmInstallResult A32JniVmService::install(
         return {.error = A32JniVmInstallError::InvalidLayout};
     }
 
-    std::array<InstallRegion, 44> regions{{
+    std::array<InstallRegion, 45> regions{{
         {.address = layout_.java_vm_address, .size = kJavaVmBytes},
         {.address = layout_.invoke_table_address,
          .size = kInvokeTableBytes},
@@ -1816,6 +1863,8 @@ A32JniVmInstallResult A32JniVmService::install(
         {.address = layout_.delete_weak_global_ref_stub_address,
          .size = kServiceStubBytes},
         {.address = layout_.exception_check_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.get_static_object_field_stub_address,
          .size = kServiceStubBytes},
     }};
 
@@ -1915,6 +1964,10 @@ A32JniVmInstallResult A32JniVmService::install(
         regions[3].desired,
         kGetStaticFieldIdSlot * 4U,
         layout_.get_static_field_id_stub_address);
+    write_u32(
+        regions[3].desired,
+        kGetStaticObjectFieldSlot * 4U,
+        layout_.get_static_object_field_stub_address);
     write_u32(
         regions[3].desired,
         kGetStaticIntFieldSlot * 4U,
@@ -2108,6 +2161,9 @@ A32JniVmInstallResult A32JniVmService::install(
     write_service_stub(
         regions[43].desired,
         kA32JniExceptionCheckSvcImmediate);
+    write_service_stub(
+        regions[44].desired,
+        kA32JniGetStaticObjectFieldSvcImmediate);
 
     for (InstallRegion& region : regions) {
         if (!memory.read(
@@ -2201,7 +2257,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         svc_immediate == kA32JniCallStaticObjectMethodSvcImmediate ||
         svc_immediate == kA32JniNewWeakGlobalRefSvcImmediate ||
         svc_immediate == kA32JniDeleteWeakGlobalRefSvcImmediate ||
-        svc_immediate == kA32JniExceptionCheckSvcImmediate;
+        svc_immediate == kA32JniExceptionCheckSvcImmediate ||
+        svc_immediate == kA32JniGetStaticObjectFieldSvcImmediate;
     if (!known_service) {
         return runtime::A32HostServiceDisposition::Unhandled;
     }
@@ -3076,6 +3133,31 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             return runtime::A32HostServiceDisposition::Failed;
         }
         regs[0] = static_cast<std::uint32_t>(*value);
+        return runtime::A32HostServiceDisposition::Handled;
+    }
+
+    if (svc_immediate == kA32JniGetStaticObjectFieldSvcImmediate) {
+        if (registry_ == nullptr || !registry_->valid() ||
+            !registry_->contains_class_handle(regs[1])) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        const A32JniMemberId* member =
+            registry_->find_member_by_handle(regs[2]);
+        if (member == nullptr ||
+            member->class_handle != regs[1] ||
+            member->kind != A32JniMemberKind::StaticField) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        const auto value =
+            registry_->static_object_field_value(member->handle);
+        if (!value.has_value()) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        if (*value != 0U &&
+            !registry_->retain_local_reference(*value)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        regs[0] = *value;
         return runtime::A32HostServiceDisposition::Handled;
     }
 

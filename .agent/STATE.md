@@ -6,8 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- JNI evidence discovery — inspect supplied ARMv7 artifacts and select the next
-  directly observed bounded JNI seam; do not preselect unsupported APIs.
+- `post-roadmap-a32-jni-static-object-field` — ACTIVE; add supplied VLC
+  ARMv7 GetStaticObjectField slot 145 / `0x244` with bounded caller-seeded
+  static object identity and one local reference per non-null read.
 
 ## Phase
 
@@ -288,3 +289,9 @@ The bounded ExceptionCheck slice is DONE at
 `0x390`; the service observes pending state as JNI_FALSE/JNI_TRUE without
 creating a throwable reference or mutating exception state. The pinned ARM32
 fixture executes the real slot, and all 11 required exact-head checks passed.
+
+Direct supplied VLC ARMv7 `libvlc.so` JNI_OnLoad evidence now proves
+`GetStaticObjectField` at JNIEnv slot 145 / `0x244`: the path first obtains
+a static jfieldID through slot 144, calls slot 145 with JNIEnv/jclass/jfieldID,
+then consumes the returned object through GetStringUTFChars and later
+DeleteLocalRef. This is the active bounded JNI seam.

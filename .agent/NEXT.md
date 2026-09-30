@@ -1,22 +1,26 @@
 # NEXT
 
-## JNI evidence discovery
+## Active JNI track
 
-Continue from validated ExceptionCheck revision `918e4b9bef49051e8ea84716e9b759fd11b0fb6c`.
+Continue `post-roadmap-a32-jni-static-object-field` from
+`500ff207eabbdede73f7af4cfab1b5e385a045e8`.
 
-Inspect the supplied ARMv7 VLC artifacts and choose the next bounded JNI seam
-only when a direct callsite or balanced lifecycle pair is observed. Do not
-preselect ExceptionDescribe, NewLocalRef, IsSameObject, local-frame APIs, GC
-behavior, or another method-call family merely because it remains unimplemented.
+Supplied VLC ARMv7 `libvlc.so` JNI_OnLoad directly proves
+`GetStaticObjectField` at JNIEnv slot 145 / byte offset `0x244`.
+The returned jobject is immediately used through GetStringUTFChars and later
+DeleteLocalRef.
 
-For the next selected seam:
+Keep the slice bounded to caller-seeded static object state on an existing
+StaticField ID. A seeded null returns null; a non-null known logical identity
+receives one local reference when read. Stored static-field identity is not a
+caller JNI local/global count and survives deletion of an earlier returned
+local reference.
 
-- record exact JNIEnv slot/byte offset and callsite evidence;
-- define the smallest logical state/identity/lifetime contract required;
-- add focused host coverage before broadening implementation;
-- keep unrelated Java/framework semantics explicitly outside the slice.
+Do not add SetStaticObjectField, Java class initialization, descriptor type
+enforcement, inheritance/assignability, garbage collection/reachability, or
+framework object semantics.
 
 ## Validation
 
-After implementation, query exact-head checks once. Escalate only a failing or
-ambiguous check, and leave CI immediately on terminal success.
+Run exact-head checks after the focused host regression is committed. Escalate
+only failing checks. Leave CI immediately on terminal success and converge.
