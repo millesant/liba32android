@@ -57,6 +57,8 @@ using liba32android::compat::kA32JniGetLongFieldSvcImmediate;
 using liba32android::compat::kA32JniSetLongFieldSvcImmediate;
 using liba32android::compat::kA32JniThrowNewSvcImmediate;
 using liba32android::compat::kA32JniCallVoidMethodVSvcImmediate;
+using liba32android::compat::kA32JniGetByteArrayElementsSvcImmediate;
+using liba32android::compat::kA32JniReleaseByteArrayElementsSvcImmediate;
 using liba32android::compat::kA32JniOk;
 using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
@@ -203,6 +205,10 @@ A32JniVmLayout layout() {
         .set_long_field_stub_address = 0x1b00U,
         .throw_new_stub_address = 0x1b20U,
         .call_void_method_v_stub_address = 0x1b40U,
+        .get_byte_array_elements_stub_address = 0x1b60U,
+        .release_byte_array_elements_stub_address = 0x1b80U,
+        .byte_array_scratch_address = 0x1e00U,
+        .byte_array_scratch_bytes = 64U,
     };
 }
 
@@ -294,8 +300,12 @@ int test_vm_install_and_getenv() {
             configured.set_object_array_element_stub_address ||
         read_u32(memory, configured.native_table_address + 180U * 4U) !=
             configured.new_long_array_stub_address ||
+        read_u32(memory, configured.native_table_address + 184U * 4U) !=
+            configured.get_byte_array_elements_stub_address ||
         read_u32(memory, configured.native_table_address + 188U * 4U) !=
             configured.get_long_array_elements_stub_address ||
+        read_u32(memory, configured.native_table_address + 192U * 4U) !=
+            configured.release_byte_array_elements_stub_address ||
         read_u32(memory, configured.native_table_address + 196U * 4U) !=
             configured.release_long_array_elements_stub_address ||
         read_u32(memory, configured.native_table_address + 212U * 4U) !=
@@ -336,7 +346,9 @@ int test_vm_install_and_getenv() {
             index == 173U ||
             index == 174U ||
             index == 180U ||
+            index == 184U ||
             index == 188U ||
+            index == 192U ||
             index == 196U ||
             index == 212U ||
             index == 215U) {
@@ -349,7 +361,7 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::array<std::uint8_t, 8>, 27> expected_stubs{{
+    constexpr std::array<std::array<std::uint8_t, 8>, 29> expected_stubs{{
         {{0xD7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD8U, 0x00U, 0x00U, 0xEFU,
@@ -404,8 +416,12 @@ int test_vm_install_and_getenv() {
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xF1U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xF2U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xF3U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    const std::array<std::uint32_t, 27> stub_addresses{{
+    const std::array<std::uint32_t, 29> stub_addresses{{
         configured.get_env_stub_address,
         configured.find_class_stub_address,
         configured.register_natives_stub_address,
@@ -433,6 +449,8 @@ int test_vm_install_and_getenv() {
         configured.set_long_field_stub_address,
         configured.throw_new_stub_address,
         configured.call_void_method_v_stub_address,
+        configured.get_byte_array_elements_stub_address,
+        configured.release_byte_array_elements_stub_address,
     }};
     for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
         std::array<std::uint8_t, 8> observed_stub{};
@@ -1512,6 +1530,234 @@ int test_long_array_family() {
             cpsr) != A32HostServiceDisposition::Handled ||
         regs[0] != 0U) {
         return fail("JNI NewLongArray exceeded element ceiling");
+    }
+
+    return 0;
+}
+
+int test_byte_array_elements() {
+    LinearGuestMemory memory{0x1000U, 0x1000U};
+    const A32JniRegistryLimits limits{
+        .max_classes = 2U,
+        .max_registered_methods = 2U,
+        .max_methods_per_registration = 2U,
+        .max_member_ids = 2U,
+        .max_reference_handles = 6U,
+        .max_reference_count_per_handle = 4U,
+        .max_arrays = 3U,
+        .max_long_array_elements = 4U,
+        .max_byte_array_elements = 4U,
+        .max_object_array_elements = 4U,
+        .max_strings = 2U,
+        .max_modified_utf8_bytes = 8U,
+        .max_class_name_bytes = 32U,
+        .max_method_name_bytes = 32U,
+        .max_signature_bytes = 32U,
+    };
+    A32JniClassRegistry registry{limits};
+    constexpr std::uint32_t kArray = 0x44582000U;
+    constexpr std::array<std::uint8_t, 3> kInitial{{0x01U, 0x80U, 0xffU}};
+    if (registry.add_byte_array(kArray, kInitial) !=
+            A32JniRegistryError::None ||
+        registry.array_length(kArray).value_or(99U) != 3U ||
+        registry.find_byte_array(kArray) == nullptr ||
+        registry.find_byte_array(kArray)->elements !=
+            std::vector<std::uint8_t>(kInitial.begin(), kInitial.end()) ||
+        !registry.reference_counts(kArray).has_value() ||
+        registry.reference_counts(kArray)->local != 1U) {
+        return fail("could not seed bounded JNI byte array");
+    }
+    constexpr std::array<std::uint8_t, 5> kTooMany{{1U, 2U, 3U, 4U, 5U}};
+    if (registry.add_byte_array(0x44582004U, kTooMany) !=
+            A32JniRegistryError::InvalidArrayLength) {
+        return fail("JNI byte-array seed exceeded element ceiling");
+    }
+
+    const auto configured = layout();
+    A32JniVmService service{configured, &registry};
+    if (!service.install(memory)) {
+        return fail("JNI byte-array service did not install");
+    }
+
+    std::uint32_t cpsr{};
+    std::array<std::uint32_t, 16> regs{};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kArray;
+    if (service.handle(
+            memory,
+            kA32JniGetArrayLengthSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 3U) {
+        return fail("JNI GetArrayLength missed seeded byte array");
+    }
+
+    constexpr std::uint32_t kIsCopy = 0x16f0U;
+    if (!write_u32(memory, kIsCopy, 0U)) {
+        return fail("could not seed JNI byte-array isCopy output");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kArray;
+    regs[2] = kIsCopy;
+    if (service.handle(
+            memory,
+            kA32JniGetByteArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != configured.byte_array_scratch_address ||
+        !service.byte_array_lease_active()) {
+        return fail("JNI GetByteArrayElements did not open copy lease");
+    }
+    std::array<std::uint8_t, 3> observed{};
+    std::array<std::uint8_t, 1> is_copy{};
+    if (!memory.read(configured.byte_array_scratch_address, observed) ||
+        observed != kInitial ||
+        !memory.read(kIsCopy, is_copy) ||
+        is_copy[0] != 1U) {
+        return fail("JNI GetByteArrayElements published wrong bytes/isCopy");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kArray;
+    if (service.handle(
+            memory,
+            kA32JniGetByteArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI GetByteArrayElements allowed overlapping lease");
+    }
+
+    constexpr std::array<std::uint8_t, 3> kCommitted{{0x10U, 0x20U, 0x30U}};
+    if (!memory.write(configured.byte_array_scratch_address, kCommitted)) {
+        return fail("could not stage JNI byte-array commit bytes");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kArray;
+    regs[2] = configured.byte_array_scratch_address;
+    regs[3] = 1U;
+    if (service.handle(
+            memory,
+            kA32JniReleaseByteArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        !service.byte_array_lease_active() ||
+        registry.find_byte_array(kArray)->elements !=
+            std::vector<std::uint8_t>(kCommitted.begin(), kCommitted.end())) {
+        return fail("JNI byte-array COMMIT did not copy/retain lease");
+    }
+
+    constexpr std::array<std::uint8_t, 3> kAborted{{0xaaU, 0xbbU, 0xccU}};
+    if (!memory.write(configured.byte_array_scratch_address, kAborted)) {
+        return fail("could not stage JNI byte-array abort bytes");
+    }
+    regs[3] = 2U;
+    if (service.handle(
+            memory,
+            kA32JniReleaseByteArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        service.byte_array_lease_active() ||
+        registry.find_byte_array(kArray)->elements !=
+            std::vector<std::uint8_t>(kCommitted.begin(), kCommitted.end())) {
+        return fail("JNI byte-array ABORT changed owned bytes or kept lease");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kArray;
+    if (service.handle(
+            memory,
+            kA32JniGetByteArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        !service.byte_array_lease_active()) {
+        return fail("JNI byte-array reacquire failed");
+    }
+    constexpr std::array<std::uint8_t, 3> kFinal{{0x7fU, 0x00U, 0x81U}};
+    if (!memory.write(configured.byte_array_scratch_address, kFinal)) {
+        return fail("could not stage JNI byte-array final bytes");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kArray;
+    regs[2] = configured.byte_array_scratch_address + 1U;
+    regs[3] = 0U;
+    if (service.handle(
+            memory,
+            kA32JniReleaseByteArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        !service.byte_array_lease_active()) {
+        return fail("JNI byte-array release accepted wrong pointer");
+    }
+    regs[2] = configured.byte_array_scratch_address;
+    regs[3] = 3U;
+    if (service.handle(
+            memory,
+            kA32JniReleaseByteArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        !service.byte_array_lease_active()) {
+        return fail("JNI byte-array release accepted invalid mode");
+    }
+    regs[3] = 0U;
+    if (service.handle(
+            memory,
+            kA32JniReleaseByteArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        service.byte_array_lease_active() ||
+        registry.find_byte_array(kArray)->elements !=
+            std::vector<std::uint8_t>(kFinal.begin(), kFinal.end())) {
+        return fail("JNI byte-array mode-0 release did not copy/release");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kArray;
+    if (service.handle(
+            memory,
+            kA32JniDeleteLocalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("could not retire seeded JNI byte array");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kArray;
+    if (service.handle(
+            memory,
+            kA32JniGetByteArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI GetByteArrayElements revived dead array reference");
+    }
+
+    A32JniClassRegistry memory_registry{limits};
+    if (memory_registry.add_byte_array(kArray, kInitial) !=
+            A32JniRegistryError::None) {
+        return fail("could not seed JNI byte array for memory failure");
+    }
+    A32JniVmService memory_service{configured, &memory_registry};
+    if (!memory_service.install(memory)) {
+        return fail("JNI byte-array memory-failure service did not install");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kArray;
+    regs[2] = 0x3000U;
+    if (memory_service.handle(
+            memory,
+            kA32JniGetByteArrayElementsSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        memory_service.byte_array_lease_active()) {
+        return fail("JNI GetByteArrayElements accepted unreadable isCopy output");
     }
 
     return 0;
@@ -3032,6 +3278,10 @@ int main() {
         return status;
     }
     if (const int status = test_long_array_family();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_byte_array_elements();
         status != 0) {
         return status;
     }

@@ -27,6 +27,8 @@
 #define LIBA32ANDROID_A32_JNI_SET_LONG_FIELD_SVC 0xEF
 #define LIBA32ANDROID_A32_JNI_THROW_NEW_SVC 0xF0
 #define LIBA32ANDROID_A32_JNI_CALL_VOID_METHOD_V_SVC 0xF1
+#define LIBA32ANDROID_A32_JNI_GET_BYTE_ARRAY_ELEMENTS_SVC 0xF2
+#define LIBA32ANDROID_A32_JNI_RELEASE_BYTE_ARRAY_ELEMENTS_SVC 0xF3
 
 #ifdef __cplusplus
 
@@ -101,6 +103,10 @@ inline constexpr std::uint32_t kA32JniThrowNewSvcImmediate =
     LIBA32ANDROID_A32_JNI_THROW_NEW_SVC;
 inline constexpr std::uint32_t kA32JniCallVoidMethodVSvcImmediate =
     LIBA32ANDROID_A32_JNI_CALL_VOID_METHOD_V_SVC;
+inline constexpr std::uint32_t kA32JniGetByteArrayElementsSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_BYTE_ARRAY_ELEMENTS_SVC;
+inline constexpr std::uint32_t kA32JniReleaseByteArrayElementsSvcImmediate =
+    LIBA32ANDROID_A32_JNI_RELEASE_BYTE_ARRAY_ELEMENTS_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -120,6 +126,7 @@ inline constexpr std::size_t kA32JniHardMaxReferenceHandles = 4096U;
 inline constexpr std::size_t kA32JniHardMaxReferenceCountPerHandle = 1U << 20U;
 inline constexpr std::size_t kA32JniHardMaxArrays = 4096U;
 inline constexpr std::size_t kA32JniHardMaxLongArrayElements = 65536U;
+inline constexpr std::size_t kA32JniHardMaxByteArrayElements = 65536U;
 inline constexpr std::size_t kA32JniHardMaxObjectArrayElements = 65536U;
 inline constexpr std::size_t kA32JniHardMaxStrings = 4096U;
 inline constexpr std::size_t kA32JniHardMaxStringBytes = 4096U;
@@ -149,6 +156,7 @@ struct A32JniRegistryLimits {
     std::size_t max_reference_count_per_handle{4096U};
     std::size_t max_arrays{512U};
     std::size_t max_long_array_elements{4096U};
+    std::size_t max_byte_array_elements{4096U};
     std::size_t max_object_array_elements{4096U};
     std::uint32_t dynamic_array_handle_base{0x75000000U};
     std::uint32_t dynamic_array_handle_stride{4U};
@@ -270,6 +278,11 @@ struct A32JniLongArrayInfo {
     std::vector<std::int64_t> elements;
 };
 
+struct A32JniByteArrayInfo {
+    std::uint32_t handle{};
+    std::vector<std::uint8_t> elements;
+};
+
 struct A32JniObjectArrayInfo {
     std::uint32_t handle{};
     std::uint32_t element_class_handle{};
@@ -333,6 +346,14 @@ public:
     [[nodiscard]] const A32JniLongArrayInfo* find_long_array(
         std::uint32_t handle) const noexcept;
     [[nodiscard]] A32JniLongArrayInfo* find_long_array(
+        std::uint32_t handle) noexcept;
+
+    [[nodiscard]] A32JniRegistryError add_byte_array(
+        std::uint32_t handle,
+        std::span<const std::uint8_t> elements);
+    [[nodiscard]] const A32JniByteArrayInfo* find_byte_array(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] A32JniByteArrayInfo* find_byte_array(
         std::uint32_t handle) noexcept;
 
     [[nodiscard]] A32JniRegistryError create_object_array(
@@ -440,6 +461,7 @@ private:
     std::vector<ReferenceEntry> references_;
     std::vector<A32JniArrayInfo> arrays_;
     std::vector<A32JniLongArrayInfo> long_arrays_;
+    std::vector<A32JniByteArrayInfo> byte_arrays_;
     std::vector<A32JniObjectArrayInfo> object_arrays_;
     std::vector<A32JniStringInfo> strings_;
     std::vector<A32JniMemberId> members_;
@@ -487,6 +509,10 @@ struct A32JniVmLayout {
     std::uint32_t set_long_field_stub_address{};
     std::uint32_t throw_new_stub_address{};
     std::uint32_t call_void_method_v_stub_address{};
+    std::uint32_t get_byte_array_elements_stub_address{};
+    std::uint32_t release_byte_array_elements_stub_address{};
+    std::uint32_t byte_array_scratch_address{};
+    std::uint32_t byte_array_scratch_bytes{};
 };
 
 enum class A32JniVmInstallError : std::uint8_t {
@@ -545,6 +571,9 @@ public:
     [[nodiscard]] bool long_array_lease_active() const noexcept {
         return active_long_array_.has_value();
     }
+    [[nodiscard]] bool byte_array_lease_active() const noexcept {
+        return active_byte_array_.has_value();
+    }
 
     [[nodiscard]] A32JniClassRegistry* registry() noexcept {
         return registry_;
@@ -563,6 +592,7 @@ private:
     bool attached_{};
     std::optional<std::uint32_t> active_utf_chars_string_;
     std::optional<std::uint32_t> active_long_array_;
+    std::optional<std::uint32_t> active_byte_array_;
 };
 
 struct A32JniOnLoadOptions {

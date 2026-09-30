@@ -248,6 +248,10 @@ int main(int argc, char** argv) {
         .set_long_field_stub_address = *stub_page + 0x300U,
         .throw_new_stub_address = *stub_page + 0x320U,
         .call_void_method_v_stub_address = *stub_page + 0x340U,
+        .get_byte_array_elements_stub_address = *stub_page + 0x360U,
+        .release_byte_array_elements_stub_address = *stub_page + 0x380U,
+        .byte_array_scratch_address = *data_page + 0xa00U,
+        .byte_array_scratch_bytes = 128U,
     };
     constexpr std::uint32_t kFixtureClassHandle = 0x44550000U;
     constexpr std::uint32_t kFixtureStaticFieldHandle = 0x44551000U;
