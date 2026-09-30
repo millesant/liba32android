@@ -693,9 +693,9 @@ struct A32JniOnLoadOptions {
     std::size_t max_instructions{};
     std::size_t max_service_calls{};
     elf::Elf32SymbolLookupOptions symbols{};
-    // Optional borrowed provenance context. During JNI_OnLoad it identifies
-    // exactly object_index so nested __aeabi_atexit registration can learn the
-    // same object/DSO ownership as constructor execution.
+    // Optional borrowed provenance context. During a JNI library entrypoint it
+    // identifies exactly object_index so nested lifecycle registrations learn
+    // the same object/DSO ownership as constructor execution.
     elf::Elf32LifecycleExecutionContext* execution_context{};
 };
 
@@ -743,6 +743,51 @@ struct A32JniOnLoadResult {
     std::uint32_t java_vm_address,
     runtime::A32HostServiceHandler& service_handler,
     const A32JniOnLoadOptions& options);
+
+using A32JniOnUnloadOptions = A32JniOnLoadOptions;
+
+enum class A32JniOnUnloadError : std::uint8_t {
+    None = 0,
+    InvalidOptions,
+    InvalidObject,
+    SymbolIndexFailed,
+    SymbolLookupFailed,
+    InvalidFunctionAddress,
+    MemoryFault,
+    CpuException,
+    ServiceLimitExceeded,
+    ServiceUnhandled,
+    ServiceFailed,
+    ServiceSuspended,
+    InstructionLimitExceeded,
+};
+
+struct A32JniOnUnloadResult {
+    A32JniOnUnloadError error{A32JniOnUnloadError::None};
+    elf::Elf32SymbolIndexError index_error{
+        elf::Elf32SymbolIndexError::None};
+    elf::Elf32SymbolLookupError lookup_error{
+        elf::Elf32SymbolLookupError::None};
+    elf::Elf32LinkerStringError string_error{
+        elf::Elf32LinkerStringError::None};
+    std::optional<runtime::A32ServiceDispatchResult> execution;
+    std::optional<std::uint32_t> failing_svc_immediate;
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return error == A32JniOnUnloadError::None;
+    }
+};
+
+// Resolve JNI_OnUnload from exactly object_index and execute it as
+// void JNI_OnUnload(JavaVM*, void*) with r1 == nullptr. This helper is an
+// explicit bounded invocation seam; automatic final-close wiring is separate.
+[[nodiscard]] A32JniOnUnloadResult invoke_a32_jni_on_unload(
+    memory::GuestMemory& memory,
+    const elf::Elf32DependencyGraph& graph,
+    std::size_t object_index,
+    std::uint32_t java_vm_address,
+    runtime::A32HostServiceHandler& service_handler,
+    const A32JniOnUnloadOptions& options);
 
 struct A32JniNativeInvokeOptions {
     std::uint32_t stack_top{};
@@ -799,6 +844,8 @@ invoke_a32_registered_native_noargs(
     A32JniVmInstallError error) noexcept;
 [[nodiscard]] const char* to_string(
     A32JniOnLoadError error) noexcept;
+[[nodiscard]] const char* to_string(
+    A32JniOnUnloadError error) noexcept;
 [[nodiscard]] const char* to_string(
     A32JniNativeInvokeError error) noexcept;
 

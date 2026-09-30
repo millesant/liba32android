@@ -23,11 +23,13 @@ using liba32android::compat::A32JniClassRegistry;
 using liba32android::compat::A32JniMemberKind;
 using liba32android::compat::A32JniNativeInvokeOptions;
 using liba32android::compat::A32JniOnLoadOptions;
+using liba32android::compat::A32JniOnUnloadOptions;
 using liba32android::compat::A32JniRegistryError;
 using liba32android::compat::A32JniVmLayout;
 using liba32android::compat::A32JniVmService;
 using liba32android::compat::kA32JniVersion16;
 using liba32android::compat::invoke_a32_jni_on_load;
+using liba32android::compat::invoke_a32_jni_on_unload;
 using liba32android::compat::invoke_a32_registered_native_noargs;
 using liba32android::elf::Elf32DependencyLoadOptions;
 using liba32android::elf::Elf32DependencyLoadSource;
@@ -444,6 +446,41 @@ int main(int argc, char** argv) {
                 native_result.error));
     }
 
+    const A32JniOnUnloadOptions unload_options{
+        .stack_top = stack_top,
+        .return_pc = *stop,
+        .max_instructions = 128U,
+        .max_service_calls = 2U,
+        .symbols = symbol_options(),
+        .execution_context = &execution_context,
+    };
+    const auto unload_result = invoke_a32_jni_on_unload(
+        memory,
+        loaded.graph,
+        0U,
+        vm_layout.java_vm_address,
+        handler,
+        unload_options);
+    if (!unload_result ||
+        !unload_result.execution.has_value() ||
+        !unload_result.execution->stop_pc_reached ||
+        unload_result.execution->services_handled != 1U ||
+        execution_context.object_index.has_value()) {
+        const std::uint32_t failing_svc =
+            unload_result.failing_svc_immediate.value_or(0U);
+        const std::size_t handled_services =
+            unload_result.execution.has_value()
+                ? unload_result.execution->services_handled
+                : 0U;
+        return fail(
+            std::string("ARM32 JNI_OnUnload execution failed: ") +
+            liba32android::compat::to_string(
+                unload_result.error) +
+            " svc=" + std::to_string(failing_svc) +
+            " handled=" +
+            std::to_string(handled_services));
+    }
+
     std::cout
         << "fixture.jni.object_count="
         << loaded.graph.objects.size() << '\n'
@@ -459,6 +496,8 @@ int main(int argc, char** argv) {
         << std::hex << registered->function << '\n'
         << "fixture.jni.native_return="
         << std::dec << native_result.returned_value << '\n'
+        << "fixture.jni.onunload_service_calls="
+        << std::dec << unload_result.execution->services_handled << '\n'
         << "fixture.jni.local_refs="
         << reference_counts->local << '\n'
         << "fixture.jni.global_refs="

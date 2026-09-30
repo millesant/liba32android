@@ -1,0 +1,20 @@
+schema = 1
+change = "post-roadmap-a32-jni-onunload"
+
+[[evidence]]
+id = "supplied-vlc-jni-onunload"
+kind = "artifact"
+status = "observed"
+claim = "Supplied VLC ARMv7 libraries export concrete JNI_OnUnload entrypoints that use already-supported JavaVM/JNIEnv services."
+source = "docs/research/evidence/arm32-jni-onunload-entrypoints-2026-09-30.md"
+result = "libmla.so exports Thumb JNI_OnUnload at 0x002614d1 (132 bytes); libvlcjni.so exports Thumb JNI_OnUnload at 0x00007b5d (500 bytes), calls JavaVM::GetEnv at invoke offset 0x18, then JNIEnv::DeleteGlobalRef at offset 0x58 across stored globals."
+limitations = "Artifact evidence establishes explicit unload entrypoint ABI and observed cleanup calls, not automatic VM/class-loader/dlclose ordering."
+
+[[evidence]]
+id = "focused-validation"
+kind = "validation"
+status = "pending"
+claim = "Focused host and pinned ARM32 fixture regressions prove exact-object JNI_OnUnload execution."
+source = "GitHub exact-head checks"
+result = ""
+limitations = "Pending exact-head execution."

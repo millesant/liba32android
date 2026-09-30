@@ -23,6 +23,8 @@ using liba32android::compat::A32JniNativeInvokeError;
 using liba32android::compat::A32JniNativeInvokeOptions;
 using liba32android::compat::A32JniOnLoadError;
 using liba32android::compat::A32JniOnLoadOptions;
+using liba32android::compat::A32JniOnUnloadError;
+using liba32android::compat::A32JniOnUnloadOptions;
 using liba32android::compat::A32JniRegistryError;
 using liba32android::compat::A32JniRegistryLimits;
 using liba32android::compat::A32JniVmInstallError;
@@ -76,6 +78,7 @@ using liba32android::compat::kA32JniVersion12;
 using liba32android::compat::kA32JniVersion14;
 using liba32android::compat::kA32JniVersion16;
 using liba32android::compat::invoke_a32_jni_on_load;
+using liba32android::compat::invoke_a32_jni_on_unload;
 using liba32android::compat::invoke_a32_registered_native_noargs;
 using liba32android::elf::Elf32DependencyEdge;
 using liba32android::elf::Elf32DependencyGraph;
@@ -4596,6 +4599,95 @@ int test_exact_object_onload_and_version_validation() {
     return 0;
 }
 
+int test_exact_object_onunload_execution() {
+    LinearGuestMemory memory{0x5000U, 0x1000U};
+    Elf32DependencyGraph graph;
+    graph.objects.resize(2U);
+
+    if (!stage_onload_object(
+            memory,
+            graph.objects[0],
+            0x1800U,
+            "NotOnUnload",
+            0U) ||
+        !stage_onload_object(
+            memory,
+            graph.objects[1],
+            0x2800U,
+            "JNI_OnUnload",
+            0U)) {
+        return fail("could not stage JNI_OnUnload symbol fixtures");
+    }
+    graph.objects[0].dependencies.push_back(
+        Elf32DependencyEdge{
+            .requested_name = "provider",
+            .target_object = 1U,
+        });
+
+    const std::array<A32HostServiceRegistryEntry, 0> entries{};
+    A32HostServiceRegistry registry{std::span{entries}};
+    const A32JniOnUnloadOptions options{
+        .stack_top = 0x5ff8U,
+        .return_pc = 0x6000U,
+        .max_instructions = 32U,
+        .max_service_calls = 1U,
+        .symbols = symbol_options(),
+    };
+
+    const auto exact_miss = invoke_a32_jni_on_unload(
+        memory,
+        graph,
+        0U,
+        0x1100U,
+        registry,
+        options);
+    if (exact_miss.error !=
+            A32JniOnUnloadError::SymbolLookupFailed ||
+        exact_miss.lookup_error !=
+            Elf32SymbolLookupError::SymbolNotFound) {
+        return fail("JNI_OnUnload lookup escaped exact object");
+    }
+
+    const auto executed = invoke_a32_jni_on_unload(
+        memory,
+        graph,
+        1U,
+        0x1100U,
+        registry,
+        options);
+    if (!executed ||
+        !executed.execution.has_value() ||
+        !executed.execution->stop_pc_reached ||
+        executed.execution->services_handled != 0U) {
+        return fail("exact-object JNI_OnUnload did not execute");
+    }
+
+    if (invoke_a32_jni_on_unload(
+            memory,
+            graph,
+            9U,
+            0x1100U,
+            registry,
+            options).error !=
+        A32JniOnUnloadError::InvalidObject) {
+        return fail("invalid JNI_OnUnload object index was accepted");
+    }
+
+    auto invalid_options = options;
+    invalid_options.max_service_calls = 0U;
+    if (invoke_a32_jni_on_unload(
+            memory,
+            graph,
+            1U,
+            0x1100U,
+            registry,
+            invalid_options).error !=
+        A32JniOnUnloadError::InvalidOptions) {
+        return fail("zero JNI_OnUnload service budget was accepted");
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -4676,5 +4768,10 @@ int main() {
         status != 0) {
         return status;
     }
-    return test_exact_object_onload_and_version_validation();
+    if (const int status =
+            test_exact_object_onload_and_version_validation();
+        status != 0) {
+        return status;
+    }
+    return test_exact_object_onunload_execution();
 }

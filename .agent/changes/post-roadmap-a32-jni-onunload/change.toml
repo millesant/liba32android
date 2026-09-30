@@ -1,0 +1,29 @@
+schema = 1
+id = "post-roadmap-a32-jni-onunload"
+kind = "feature"
+size = "S2"
+status = "active"
+workflow = "feature"
+control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
+base_revision = "e2972d984a6fe11608f4a36186e3c7d376c269aa"
+acceptance = [
+  "supplied VLC ARMv7 libvlcjni.so and libmla.so export JNI_OnUnload and execute JavaVM/GetEnv before cleanup",
+  "invoke_a32_jni_on_unload resolves JNI_OnUnload from exactly one requested loaded object and never from dependency/global scope",
+  "JNI_OnUnload executes as void JNI_OnUnload(JavaVM*, void*) with r0 set to the configured JavaVM, r1 null, bounded stack/instruction/service budgets, and exact object lifecycle provenance",
+  "Thumb/ARM STT_FUNC validation and service/memory/cpu/instruction failures are reported explicitly without applying JNI_OnLoad return-version validation",
+  "the pinned ARM32 JNI fixture exports JNI_OnUnload, calls JavaVM/GetEnv, and executes successfully after JNI_OnLoad plus registered-native dispatch",
+  "focused host regressions cover exact-object lookup, invalid object/options, successful void return, and the real ARM32 fixture",
+  "automatic invocation during final dlclose/class-loader teardown remains outside this slice",
+  "accepted spec/architecture/state/evidence converge and exact-head required checks pass"
+]
+
+[convergence]
+requirements = "aligned"
+specs = "aligned"
+implementation = "aligned"
+tests = "aligned"
+documentation = "pending"
+decisions = "not_applicable"
+tasks = "aligned"
+evidence = "pending"
+repository = "aligned"

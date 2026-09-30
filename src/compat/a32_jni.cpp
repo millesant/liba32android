@@ -314,6 +314,13 @@ private:
     return result;
 }
 
+[[nodiscard]] A32JniOnUnloadResult onunload_failure(
+    A32JniOnUnloadError error) {
+    A32JniOnUnloadResult result;
+    result.error = error;
+    return result;
+}
+
 template <typename ReadWord, typename ReadDoubleWord>
 [[nodiscard]] bool decode_a32_jni_arguments(
     std::string_view signature,
@@ -3435,6 +3442,138 @@ A32JniOnLoadResult invoke_a32_jni_on_load(
     return result;
 }
 
+A32JniOnUnloadResult invoke_a32_jni_on_unload(
+    memory::GuestMemory& memory,
+    const elf::Elf32DependencyGraph& graph,
+    std::size_t object_index,
+    std::uint32_t java_vm_address,
+    runtime::A32HostServiceHandler& service_handler,
+    const A32JniOnUnloadOptions& options) {
+    if (java_vm_address == 0U ||
+        (java_vm_address & 3U) != 0U ||
+        options.stack_top == 0U ||
+        (options.stack_top & 7U) != 0U ||
+        (options.return_pc & 3U) != 0U ||
+        options.max_instructions == 0U ||
+        options.max_service_calls == 0U) {
+        return onunload_failure(
+            A32JniOnUnloadError::InvalidOptions);
+    }
+    if (object_index >= graph.objects.size()) {
+        return onunload_failure(
+            A32JniOnUnloadError::InvalidObject);
+    }
+
+    const auto& object = graph.objects[object_index];
+    const auto index = elf::build_elf32_symbol_index(
+        memory,
+        object.linker_metadata,
+        options.symbols);
+    if (!index) {
+        auto result = onunload_failure(
+            A32JniOnUnloadError::SymbolIndexFailed);
+        result.index_error = index.error;
+        return result;
+    }
+
+    const auto lookup = elf::lookup_elf32_symbol(
+        memory,
+        object.load.load_bias,
+        object.linker_metadata,
+        index.index,
+        "JNI_OnUnload",
+        options.symbols);
+    if (!lookup) {
+        auto result = onunload_failure(
+            A32JniOnUnloadError::SymbolLookupFailed);
+        result.lookup_error = lookup.error;
+        result.string_error = lookup.string_error;
+        return result;
+    }
+
+    constexpr std::uint8_t kSttFunc = 2U;
+    const std::uint32_t function = lookup.symbol.guest_value;
+    const bool thumb = (function & 1U) != 0U;
+    const std::uint32_t entry_pc = function & ~1U;
+    if (lookup.symbol.symbol.type != kSttFunc ||
+        function == 0U ||
+        function == std::numeric_limits<std::uint32_t>::max() ||
+        entry_pc == options.return_pc ||
+        (!thumb && (entry_pc & 3U) != 0U)) {
+        return onunload_failure(
+            A32JniOnUnloadError::InvalidFunctionAddress);
+    }
+
+    cpu::ExecutionRequest request{};
+    request.instruction_set =
+        thumb ? cpu::InstructionSet::Thumb
+              : cpu::InstructionSet::Arm;
+    request.entry_pc = entry_pc;
+    request.regs[0] = java_vm_address;
+    request.regs[1] = 0U;
+    request.regs[13] = options.stack_top;
+    request.regs[14] =
+        options.return_pc | (thumb ? 1U : 0U);
+    request.instruction_count = options.max_instructions;
+    request.stop_pc = options.return_pc;
+
+    JniExecutionContextScope context_scope{
+        options.execution_context,
+        object_index};
+
+    auto execution = runtime::execute_a32_with_services(
+        memory,
+        request,
+        service_handler,
+        options.max_service_calls);
+
+    A32JniOnUnloadResult result;
+    result.execution = execution;
+    if (execution.service_suspended) {
+        result.error =
+            A32JniOnUnloadError::ServiceSuspended;
+        result.failing_svc_immediate =
+            execution.suspended_svc_immediate;
+        return result;
+    }
+
+    switch (execution.error) {
+    case runtime::A32ServiceDispatchError::None:
+        break;
+    case runtime::A32ServiceDispatchError::MemoryFault:
+        result.error = A32JniOnUnloadError::MemoryFault;
+        break;
+    case runtime::A32ServiceDispatchError::CpuException:
+        result.error = A32JniOnUnloadError::CpuException;
+        break;
+    case runtime::A32ServiceDispatchError::ServiceLimitExceeded:
+        result.error =
+            A32JniOnUnloadError::ServiceLimitExceeded;
+        break;
+    case runtime::A32ServiceDispatchError::ServiceUnhandled:
+        result.error =
+            A32JniOnUnloadError::ServiceUnhandled;
+        break;
+    case runtime::A32ServiceDispatchError::ServiceFailed:
+        result.error = A32JniOnUnloadError::ServiceFailed;
+        break;
+    case runtime::A32ServiceDispatchError::InstructionLimitExceeded:
+        result.error =
+            A32JniOnUnloadError::InstructionLimitExceeded;
+        break;
+    }
+    if (result.error != A32JniOnUnloadError::None) {
+        result.failing_svc_immediate =
+            execution.failing_svc_immediate;
+        return result;
+    }
+    if (!execution.stop_pc_reached) {
+        result.error =
+            A32JniOnUnloadError::InstructionLimitExceeded;
+    }
+    return result;
+}
+
 A32JniNativeInvokeResult
 invoke_a32_registered_native_noargs(
     memory::GuestMemory& memory,
@@ -3672,6 +3811,39 @@ const char* to_string(
         return "instruction_limit_exceeded";
     case A32JniOnLoadError::UnsupportedVersion:
         return "unsupported_version";
+    }
+    return "unknown";
+}
+
+const char* to_string(
+    A32JniOnUnloadError error) noexcept {
+    switch (error) {
+    case A32JniOnUnloadError::None:
+        return "none";
+    case A32JniOnUnloadError::InvalidOptions:
+        return "invalid_options";
+    case A32JniOnUnloadError::InvalidObject:
+        return "invalid_object";
+    case A32JniOnUnloadError::SymbolIndexFailed:
+        return "symbol_index_failed";
+    case A32JniOnUnloadError::SymbolLookupFailed:
+        return "symbol_lookup_failed";
+    case A32JniOnUnloadError::InvalidFunctionAddress:
+        return "invalid_function_address";
+    case A32JniOnUnloadError::MemoryFault:
+        return "memory_fault";
+    case A32JniOnUnloadError::CpuException:
+        return "cpu_exception";
+    case A32JniOnUnloadError::ServiceLimitExceeded:
+        return "service_limit_exceeded";
+    case A32JniOnUnloadError::ServiceUnhandled:
+        return "service_unhandled";
+    case A32JniOnUnloadError::ServiceFailed:
+        return "service_failed";
+    case A32JniOnUnloadError::ServiceSuspended:
+        return "service_suspended";
+    case A32JniOnUnloadError::InstructionLimitExceeded:
+        return "instruction_limit_exceeded";
     }
     return "unknown";
 }

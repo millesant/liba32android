@@ -271,3 +271,22 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
 
     return JNI_VERSION_1_6;
 }
+
+
+__attribute__((visibility("default"), noinline))
+void JNI_OnUnload(JavaVM* vm, void* reserved) {
+    JNIEnv* env = (JNIEnv*)0;
+
+    if (vm == (JavaVM*)0 || reserved != (void*)0) {
+        return;
+    }
+    if (vm->functions->GetEnv(
+            vm,
+            (void**)&env,
+            JNI_VERSION_1_6) != JNI_OK) {
+        return;
+    }
+    if (env == (JNIEnv*)0 || env->functions == (void*)0) {
+        return;
+    }
+}
