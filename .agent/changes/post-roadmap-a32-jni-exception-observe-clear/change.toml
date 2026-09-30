@@ -2,10 +2,11 @@ schema = 1
 id = "post-roadmap-a32-jni-exception-observe-clear"
 kind = "feature"
 size = "S2"
-status = "active"
+status = "done"
 workflow = "feature"
 control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
 base_revision = "3e2323a85b396e85dea0e84331d76e9d18fe3aab"
+result_revision = "8490e1b059792c5cbaa34def21c13356536d9db7"
 acceptance = [
   "supplied VLC ARMv7 libvlcjni evidence records ExceptionOccurred at JNIEnv slot 15 / offset 0x3c and ExceptionClear at slot 17 / offset 0x44",
   "the JNIEnv table publishes exactly those two new exception entries through distinct private ARM service stubs",
@@ -26,5 +27,5 @@ tests = "aligned"
 documentation = "aligned"
 decisions = "not_applicable"
 tasks = "aligned"
-evidence = "pending"
+evidence = "aligned"
 repository = "aligned"

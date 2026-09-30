@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: raw CallVoidMethod, byte-array element leases, and GetIntField validated; ExceptionOccurred/ExceptionClear in progress
+Status: raw CallVoidMethod, byte-array element leases, GetIntField, and ExceptionOccurred/ExceptionClear validated
 
 ## Goal
 

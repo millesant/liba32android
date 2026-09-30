@@ -161,11 +161,11 @@ For ownership/dependency rules, see
 ## Roadmap
 
 The public roadmap is in [ROADMAP.md](ROADMAP.md). The immediate compatibility
-track has completed the first class/native-registration, member-ID,
-JavaVM attach/detach, strong/local-reference, seeded GetArrayLength,
-GetStaticIntField, modified-UTF-8 string, jlong-array, object-array, and
-instance-long-field seams. Current work is adding bounded ThrowNew pending state
-before broader object/method, weak-reference, and remaining exception behavior.
+track has completed class/native registration, member IDs, JavaVM
+attach/detach, strong/local references, bounded string/array/field seams,
+ThrowNew pending state, CallVoidMethod/CallVoidMethodV, GetIntField, and
+ExceptionOccurred/ExceptionClear. New JNI coverage is selected from direct
+ARMv7 binary evidence rather than table adjacency.
 
 ## Contributing
 

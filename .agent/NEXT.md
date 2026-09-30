@@ -2,25 +2,20 @@
 
 ## Active JNI track
 
-Continue `post-roadmap-a32-jni-exception-observe-clear` from validated
-GetIntField revision `3e2323a85b396e85dea0e84331d76e9d18fe3aab`.
+Start from validated ExceptionOccurred/ExceptionClear revision
+`8490e1b059792c5cbaa34def21c13356536d9db7`.
 
-The supplied VLC ARMv7 `libvlcjni.so` directly proves:
+Scan the supplied ARMv7 VLC/FMOD artifacts for the next unsupported JNIEnv or
+JavaVM table load. Prefer a callsite with a narrow state contract that composes
+with the accepted logical-reference, member-ID, method-call, array, field, and
+pending-exception models.
 
-- `ExceptionOccurred` at JNIEnv slot 15 / byte offset `0x3c`;
-- `ExceptionClear` at JNIEnv slot 17 / byte offset `0x44`.
-
-This slice adds a bounded logical pending-exception identity so
-ExceptionOccurred can return a real logical jthrowable handle without exposing
-a host pointer or reusing the jclass handle. ExceptionClear clears the pending
-root while preserving any local/global reference already returned.
-
-Keep ExceptionCheck, ExceptionDescribe, stack traces, Java unwinding,
-automatic pending-exception gating across all JNI calls, and framework
-exception behavior separate.
+Do not select a JNI family from table adjacency alone. Record the exact binary,
+symbol/callsite, native-table byte offset, derived slot, and ARM32 argument /
+return convention before mutation.
 
 ## Validation
 
-Run the focused JNI host regression through the exact-head check surface.
-Escalate to job steps/logs only on failure. After terminal success, leave CI
-and converge the change state.
+Open one bounded change for the selected evidenced seam, add focused host
+coverage first, then use exact-head checks. After terminal CI success, leave CI
+and converge the accepted state.

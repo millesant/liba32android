@@ -6,10 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-exception-observe-clear` — ACTIVE; publish the
-  supplied VLC ARMv7-evidenced ExceptionOccurred/ExceptionClear entries with a
-  bounded logical pending-exception identity and explicit local-reference
-  lifetime.
+- evidence-driven JNI continuation — scan the supplied ARMv7 VLC/FMOD
+  artifacts for the next unsupported JNI table entry before opening another
+  bounded compatibility slice.
 
 ## Phase
 
@@ -213,3 +212,12 @@ Also deferred are broader Bionic/pthread/TLS coverage, full Android linker/APK
 search semantics, true lazy binding, caller-relative RTLD_NEXT, process-exit
 Global/NODELETE teardown, concurrent graph mutation, `DT_PREINIT_ARRAY`, and
 general process argv/envp constructor ABI.
+
+The bounded exception observation/clear slice is DONE at
+`8490e1b059792c5cbaa34def21c13356536d9db7`. Supplied VLC ARMv7 `libvlcjni.so` proved
+ExceptionOccurred slot 15 / `0x3c` and ExceptionClear slot 17 / `0x44`.
+ThrowNew now reserves a bounded logical pending-exception identity;
+ExceptionOccurred creates a local reference to that exact identity without
+clearing pending state, and ExceptionClear preserves already returned
+references while reclaiming an unobserved zero-reference pending identity.
+All 11 required exact-head checks passed.

@@ -1484,3 +1484,32 @@ state fails rather than fabricating a Java field.
 Object-class assignability, Java field layout/offsets, inheritance, volatile
 semantics, `SetIntField`, reflection, and other field families remain
 separate slices.
+
+## L32-C052 — ARM32 JNI bounded exception observation and clear
+
+Supplied VLC ARMv7 `libvlcjni.so` machine code identifies
+`ExceptionOccurred` at JNIEnv slot 15 / byte offset `0x3c` and
+`ExceptionClear` at slot 17 / byte offset `0x44` in
+`Java_org_videolan_libvlc_Media_nativeNewFromFd`.
+
+A successful ThrowNew reserves one bounded logical exception handle in a
+dedicated namespace with zero initial local/global JNI reference counts. The
+pending root keeps that logical exception identity available for observation
+without exposing a host pointer or reusing the jclass handle.
+
+`ExceptionOccurred` requires the exact configured JNIEnv and an attached
+context. With no pending exception it returns null. Otherwise it retains one
+local JNI reference to the exact pending exception handle, returns that handle
+in ARM32 r0, and leaves pending state intact.
+
+`ExceptionClear` requires the exact configured JNIEnv and an attached context.
+It is an empty-state no-op. When an exception is pending, it clears the pending
+root while preserving local/global references already returned for that
+exception. If the pending identity was never observed and has zero JNI
+reference counts, clear reclaims that reserved identity immediately. A later
+ThrowNew does not alias an exception identity that remains in the logical
+reference ledger.
+
+ExceptionCheck, ExceptionDescribe, Java stack traces, Java-frame unwinding,
+automatic pending-exception gating of unrelated JNI calls, and framework
+exception behavior remain separate slices.

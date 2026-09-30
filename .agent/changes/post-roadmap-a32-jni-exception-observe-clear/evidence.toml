@@ -13,8 +13,8 @@ limitations = "This evidence identifies the two JNI entrypoints; it does not est
 [[evidence]]
 id = "focused-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host regressions prove exact exception slots/stubs and bounded pending-identity observation/clear semantics."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending exact-head execution."
+source = "GitHub exact-head checks at 8490e1b059792c5cbaa34def21c13356536d9db7"
+result = "All 11 required exact-head checks concluded success, including Linux A32 smoke check 109837606848 and ARM32 JNI registration integration check 109837606520."
+limitations = "The validated surface is limited to ThrowNew logical pending identity plus ExceptionOccurred/ExceptionClear; ExceptionCheck, ExceptionDescribe, stack traces, Java unwinding, automatic global exception gating, and framework exception behavior remain outside this slice."
