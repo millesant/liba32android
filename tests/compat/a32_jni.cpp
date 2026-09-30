@@ -61,6 +61,8 @@ using liba32android::compat::kA32JniGetByteArrayElementsSvcImmediate;
 using liba32android::compat::kA32JniReleaseByteArrayElementsSvcImmediate;
 using liba32android::compat::kA32JniCallVoidMethodSvcImmediate;
 using liba32android::compat::kA32JniGetIntFieldSvcImmediate;
+using liba32android::compat::kA32JniExceptionOccurredSvcImmediate;
+using liba32android::compat::kA32JniExceptionClearSvcImmediate;
 using liba32android::compat::kA32JniOk;
 using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
@@ -204,6 +206,8 @@ A32JniVmLayout layout() {
         .get_object_array_element_stub_address = 0x1aa0U,
         .set_object_array_element_stub_address = 0x1ac0U,
         .get_int_field_stub_address = 0x1bc0U,
+        .exception_occurred_stub_address = 0x1be0U,
+        .exception_clear_stub_address = 0x1c40U,
         .get_long_field_stub_address = 0x1ae0U,
         .set_long_field_stub_address = 0x1b00U,
         .throw_new_stub_address = 0x1b20U,
@@ -268,6 +272,10 @@ int test_vm_install_and_getenv() {
             configured.find_class_stub_address ||
         read_u32(memory, configured.native_table_address + 14U * 4U) !=
             configured.throw_new_stub_address ||
+        read_u32(memory, configured.native_table_address + 15U * 4U) !=
+            configured.exception_occurred_stub_address ||
+        read_u32(memory, configured.native_table_address + 17U * 4U) !=
+            configured.exception_clear_stub_address ||
         read_u32(memory, configured.native_table_address + 21U * 4U) !=
             configured.new_global_ref_stub_address ||
         read_u32(memory, configured.native_table_address + 22U * 4U) !=
@@ -336,6 +344,8 @@ int test_vm_install_and_getenv() {
     for (std::uint32_t index = 0U; index < 216U; ++index) {
         if (index == 6U ||
             index == 14U ||
+            index == 15U ||
+            index == 17U ||
             index == 21U ||
             index == 22U ||
             index == 23U ||
@@ -371,7 +381,7 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::array<std::uint8_t, 8>, 31> expected_stubs{{
+    constexpr std::array<std::array<std::uint8_t, 8>, 33> expected_stubs{{
         {{0xD7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD8U, 0x00U, 0x00U, 0xEFU,
@@ -434,8 +444,12 @@ int test_vm_install_and_getenv() {
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xF5U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xF6U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xF7U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    const std::array<std::uint32_t, 31> stub_addresses{{
+    const std::array<std::uint32_t, 33> stub_addresses{{
         configured.get_env_stub_address,
         configured.find_class_stub_address,
         configured.register_natives_stub_address,
@@ -467,6 +481,8 @@ int test_vm_install_and_getenv() {
         configured.release_byte_array_elements_stub_address,
         configured.call_void_method_stub_address,
         configured.get_int_field_stub_address,
+        configured.exception_occurred_stub_address,
+        configured.exception_clear_stub_address,
     }};
     for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
         std::array<std::uint8_t, 8> observed_stub{};
@@ -657,7 +673,7 @@ int test_vm_install_and_getenv() {
     regs = {};
     if (service.handle(
             memory,
-            kA32JniGetIntFieldSvcImmediate + 1U,
+            kA32JniExceptionClearSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
@@ -2396,6 +2412,28 @@ int test_throw_new_pending_exception() {
         return fail("JNI ThrowNew service did not install");
     }
 
+    std::uint32_t cpsr{};
+    std::array<std::uint32_t, 16> regs{};
+    regs[0] = configured.jni_env_address;
+    if (service.handle(
+            memory,
+            kA32JniExceptionOccurredSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI ExceptionOccurred fabricated pending exception");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    if (service.handle(
+            memory,
+            kA32JniExceptionClearSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        registry.pending_exception() != nullptr) {
+        return fail("JNI ExceptionClear failed empty-state no-op");
+    }
+
     constexpr std::uint32_t kBoom = 0x1600U;
     constexpr std::uint32_t kLater = 0x1620U;
     constexpr std::uint32_t kTooLong = 0x1640U;
@@ -2405,8 +2443,7 @@ int test_throw_new_pending_exception() {
         return fail("could not stage JNI ThrowNew messages");
     }
 
-    std::uint32_t cpsr{};
-    std::array<std::uint32_t, 16> regs{};
+    regs = {};
     regs[0] = configured.jni_env_address;
     regs[1] = kClass;
     regs[2] = kBoom;
@@ -2420,10 +2457,38 @@ int test_throw_new_pending_exception() {
     }
     const auto* pending = registry.pending_exception();
     if (pending == nullptr ||
+        pending->handle != limits.dynamic_exception_handle_base ||
         pending->class_handle != kClass ||
         pending->class_name != "java/lang/IllegalStateException" ||
         pending->message != "boom") {
         return fail("JNI ThrowNew stored wrong pending exception");
+    }
+    const std::uint32_t first_exception = pending->handle;
+    const auto pending_counts =
+        registry.reference_counts(first_exception);
+    if (!pending_counts.has_value() ||
+        pending_counts->local != 0U ||
+        pending_counts->global != 0U) {
+        return fail("JNI ThrowNew exposed an implicit local exception ref");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    if (service.handle(
+            memory,
+            kA32JniExceptionOccurredSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != first_exception ||
+        registry.pending_exception() == nullptr) {
+        return fail("JNI ExceptionOccurred did not expose pending identity");
+    }
+    const auto occurred_counts =
+        registry.reference_counts(first_exception);
+    if (!occurred_counts.has_value() ||
+        occurred_counts->local != 1U ||
+        occurred_counts->global != 0U) {
+        return fail("JNI ExceptionOccurred did not create one local ref");
     }
 
     regs = {};
@@ -2437,13 +2502,35 @@ int test_throw_new_pending_exception() {
             cpsr) != A32HostServiceDisposition::Handled ||
         regs[0] != static_cast<std::uint32_t>(kA32JniErr) ||
         registry.pending_exception() == nullptr ||
+        registry.pending_exception()->handle != first_exception ||
         registry.pending_exception()->message != "boom") {
         return fail("JNI ThrowNew overwrote existing pending exception");
     }
 
-    registry.clear_pending_exception();
-    if (registry.pending_exception() != nullptr) {
-        return fail("JNI pending-exception host clear failed");
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    if (service.handle(
+            memory,
+            kA32JniExceptionClearSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        registry.pending_exception() != nullptr ||
+        !registry.reference_counts(first_exception).has_value() ||
+        registry.reference_counts(first_exception)->local != 1U) {
+        return fail("JNI ExceptionClear destroyed returned local reference");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = first_exception;
+    if (service.handle(
+            memory,
+            kA32JniDeleteLocalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        !registry.reference_counts(first_exception).has_value() ||
+        registry.reference_counts(first_exception)->local != 0U) {
+        return fail("JNI returned exception local ref did not release");
     }
 
     regs = {};
@@ -2497,10 +2584,18 @@ int test_throw_new_pending_exception() {
             cpsr) != A32HostServiceDisposition::Handled ||
         regs[0] != static_cast<std::uint32_t>(kA32JniOk) ||
         registry.pending_exception() == nullptr ||
+        registry.pending_exception()->handle !=
+            first_exception + limits.dynamic_exception_handle_stride ||
         registry.pending_exception()->message != "later") {
-        return fail("JNI ThrowNew did not work after host clear");
+        return fail("JNI ThrowNew did not allocate distinct later exception");
     }
+    const std::uint32_t unobserved_exception =
+        registry.pending_exception()->handle;
     registry.clear_pending_exception();
+    if (registry.pending_exception() != nullptr ||
+        registry.reference_counts(unobserved_exception).has_value()) {
+        return fail("host clear retained unobserved exception identity");
+    }
 
     return 0;
 }

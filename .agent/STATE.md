@@ -6,9 +6,10 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- adjacent VLC ARMv7 exception evidence — design the next bounded
-  ExceptionOccurred / ExceptionClear state transition without inventing
-  Throwable identity or broad Java exception propagation.
+- `post-roadmap-a32-jni-exception-observe-clear` — ACTIVE; publish the
+  supplied VLC ARMv7-evidenced ExceptionOccurred/ExceptionClear entries with a
+  bounded logical pending-exception identity and explicit local-reference
+  lifetime.
 
 ## Phase
 

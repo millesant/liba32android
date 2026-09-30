@@ -31,6 +31,8 @@
 #define LIBA32ANDROID_A32_JNI_RELEASE_BYTE_ARRAY_ELEMENTS_SVC 0xF3
 #define LIBA32ANDROID_A32_JNI_CALL_VOID_METHOD_SVC 0xF4
 #define LIBA32ANDROID_A32_JNI_GET_INT_FIELD_SVC 0xF5
+#define LIBA32ANDROID_A32_JNI_EXCEPTION_OCCURRED_SVC 0xF6
+#define LIBA32ANDROID_A32_JNI_EXCEPTION_CLEAR_SVC 0xF7
 
 #ifdef __cplusplus
 
@@ -113,6 +115,10 @@ inline constexpr std::uint32_t kA32JniCallVoidMethodSvcImmediate =
     LIBA32ANDROID_A32_JNI_CALL_VOID_METHOD_SVC;
 inline constexpr std::uint32_t kA32JniGetIntFieldSvcImmediate =
     LIBA32ANDROID_A32_JNI_GET_INT_FIELD_SVC;
+inline constexpr std::uint32_t kA32JniExceptionOccurredSvcImmediate =
+    LIBA32ANDROID_A32_JNI_EXCEPTION_OCCURRED_SVC;
+inline constexpr std::uint32_t kA32JniExceptionClearSvcImmediate =
+    LIBA32ANDROID_A32_JNI_EXCEPTION_CLEAR_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -171,6 +177,8 @@ struct A32JniRegistryLimits {
     std::size_t max_exception_message_bytes{1024U};
     std::uint32_t dynamic_string_handle_base{0x74000000U};
     std::uint32_t dynamic_string_handle_stride{4U};
+    std::uint32_t dynamic_exception_handle_base{0x73000000U};
+    std::uint32_t dynamic_exception_handle_stride{4U};
     std::size_t max_class_name_bytes{256U};
     std::size_t max_method_name_bytes{256U};
     std::size_t max_signature_bytes{256U};
@@ -302,6 +310,7 @@ struct A32JniObjectArrayInfo {
 };
 
 struct A32JniPendingException {
+    std::uint32_t handle{};
     std::uint32_t class_handle{};
     std::string class_name;
     std::string message;
@@ -426,9 +435,7 @@ public:
             ? &*pending_exception_
             : nullptr;
     }
-    void clear_pending_exception() noexcept {
-        pending_exception_.reset();
-    }
+    void clear_pending_exception() noexcept;
 
     [[nodiscard]] const A32JniRegisteredNative* find_native(
         std::uint32_t class_handle,
@@ -526,6 +533,8 @@ struct A32JniVmLayout {
     std::uint32_t get_object_array_element_stub_address{};
     std::uint32_t set_object_array_element_stub_address{};
     std::uint32_t get_int_field_stub_address{};
+    std::uint32_t exception_occurred_stub_address{};
+    std::uint32_t exception_clear_stub_address{};
     std::uint32_t get_long_field_stub_address{};
     std::uint32_t set_long_field_stub_address{};
     std::uint32_t throw_new_stub_address{};

@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: raw CallVoidMethod, byte-array element leases, and GetIntField validated
+Status: raw CallVoidMethod, byte-array element leases, and GetIntField validated; ExceptionOccurred/ExceptionClear in progress
 
 ## Goal
 
@@ -593,3 +593,20 @@ and value presence before returning the exact jint bits in r0.
 
 This does not model Java object layout, class assignability, inheritance,
 volatile semantics, or `SetIntField`.
+
+## Exception observation and clear
+
+Direct supplied VLC ARMv7 `libvlcjni.so` evidence selects
+`ExceptionOccurred` at slot 15 / `0x3c` and `ExceptionClear` at slot 17 /
+`0x44`.
+
+A successful ThrowNew now reserves one bounded logical exception identity in a
+dedicated handle namespace without creating an implicit local reference.
+`ExceptionOccurred` returns null when no exception is pending; otherwise it
+returns that exact logical identity and creates one local reference while
+leaving the exception pending. `ExceptionClear` clears pending state but
+preserves any local/global reference already returned to the guest. An
+unobserved zero-reference pending identity is reclaimed when cleared.
+
+No host Throwable pointer, Java stack trace, unwinding, ExceptionCheck,
+ExceptionDescribe, or automatic global JNI exception gating is introduced.

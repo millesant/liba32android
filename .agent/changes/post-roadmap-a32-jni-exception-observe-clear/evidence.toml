@@ -1,0 +1,20 @@
+schema = 1
+change = "post-roadmap-a32-jni-exception-observe-clear"
+
+[[evidence]]
+id = "vlc-libvlcjni-exception-observe-clear-slots"
+kind = "artifact"
+status = "observed"
+claim = "Supplied VLC ARMv7 libvlcjni directly calls JNIEnv ExceptionOccurred and ExceptionClear."
+source = "docs/research/evidence/arm32-jni-exception-observe-clear-entrypoint-2026-09-30.md"
+result = "Java_org_videolan_libvlc_Media_nativeNewFromFd loads native-table offsets 0x3c / slot 15 and 0x44 / slot 17 after its GetIntField call."
+limitations = "This evidence identifies the two JNI entrypoints; it does not establish ExceptionCheck, ExceptionDescribe, stack traces, unwinding, or global exception gating."
+
+[[evidence]]
+id = "focused-validation"
+kind = "validation"
+status = "pending"
+claim = "Focused host regressions prove exact exception slots/stubs and bounded pending-identity observation/clear semantics."
+source = "GitHub exact-head checks"
+result = ""
+limitations = "Pending exact-head execution."

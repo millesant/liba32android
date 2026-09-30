@@ -1,0 +1,32 @@
+schema = 1
+change = "post-roadmap-a32-jni-exception-observe-clear"
+
+[[tasks]]
+id = "T001"
+status = "verified"
+depends_on = []
+acceptance = "Record supplied VLC ARMv7 ExceptionOccurred/ExceptionClear slot evidence and define the bounded logical exception-identity contract."
+
+[[tasks]]
+id = "T002"
+status = "implemented"
+depends_on = ["T001"]
+acceptance = "Extend pending ThrowNew state with a bounded logical exception identity and deterministic zero-reference reclamation."
+
+[[tasks]]
+id = "T003"
+status = "implemented"
+depends_on = ["T002"]
+acceptance = "Publish slots 15/17 and implement ExceptionOccurred local-reference creation plus ExceptionClear state transition."
+
+[[tasks]]
+id = "T004"
+status = "implemented"
+depends_on = ["T003"]
+acceptance = "Add focused regressions for exact slots/stubs, observation/clear transitions, retained local references, distinct later identity, and host-clear reclamation."
+
+[[tasks]]
+id = "T005"
+status = "active"
+depends_on = ["T004"]
+acceptance = "Converge accepted spec/architecture/state/evidence and pass exact-head validation."
