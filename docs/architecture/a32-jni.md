@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: raw CallStaticVoidMethod and raw CallStaticObjectMethod validated
+Status: raw static calls validated; weak global references in progress
 
 ## Goal
 
@@ -674,3 +674,19 @@ Unknown identities fail rather than creating implicit Java heap state.
 
 CallStaticObjectMethodV/A, other return-valued static families, Java class
 initialization/dispatch, and framework object creation remain separate.
+
+## Weak global references
+
+Balanced supplied VLC ARMv7 evidence identifies `NewWeakGlobalRef` at JNIEnv
+slot 226 / `0x388` in `VLCJniObject_newFromLibVlc` and
+`DeleteWeakGlobalRef` at slot 227 / `0x38c` in
+`VLCJniObject_release`.
+
+The bounded registry uses the same logical object handle for the weak alias and
+tracks weak ownership separately from local/global strong counts. A weak
+reference can be created only from a currently strong-live logical identity and
+does not contribute to strong liveness. DeleteWeakGlobalRef removes only weak
+ownership.
+
+This slice does not model garbage collection, automatic weak clearing,
+resurrection, NewLocalRef-from-jweak, IsSameObject, or Java heap reachability.

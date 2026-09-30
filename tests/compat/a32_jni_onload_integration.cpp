@@ -251,6 +251,8 @@ int main(int argc, char** argv) {
         .get_static_method_id_stub_address = *stub_page + 0x440U,
         .call_static_void_method_stub_address = *stub_page + 0x460U,
         .call_static_object_method_stub_address = *stub_page + 0x480U,
+        .new_weak_global_ref_stub_address = *stub_page + 0x4a0U,
+        .delete_weak_global_ref_stub_address = *stub_page + 0x4c0U,
         .get_long_field_stub_address = *stub_page + 0x2e0U,
         .set_long_field_stub_address = *stub_page + 0x300U,
         .throw_new_stub_address = *stub_page + 0x320U,

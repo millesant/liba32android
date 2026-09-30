@@ -37,6 +37,8 @@
 #define LIBA32ANDROID_A32_JNI_GET_STATIC_METHOD_ID_SVC 0xF9
 #define LIBA32ANDROID_A32_JNI_CALL_STATIC_VOID_METHOD_SVC 0xFA
 #define LIBA32ANDROID_A32_JNI_CALL_STATIC_OBJECT_METHOD_SVC 0xFB
+#define LIBA32ANDROID_A32_JNI_NEW_WEAK_GLOBAL_REF_SVC 0xFC
+#define LIBA32ANDROID_A32_JNI_DELETE_WEAK_GLOBAL_REF_SVC 0xFD
 
 #ifdef __cplusplus
 
@@ -131,6 +133,10 @@ inline constexpr std::uint32_t kA32JniCallStaticVoidMethodSvcImmediate =
     LIBA32ANDROID_A32_JNI_CALL_STATIC_VOID_METHOD_SVC;
 inline constexpr std::uint32_t kA32JniCallStaticObjectMethodSvcImmediate =
     LIBA32ANDROID_A32_JNI_CALL_STATIC_OBJECT_METHOD_SVC;
+inline constexpr std::uint32_t kA32JniNewWeakGlobalRefSvcImmediate =
+    LIBA32ANDROID_A32_JNI_NEW_WEAK_GLOBAL_REF_SVC;
+inline constexpr std::uint32_t kA32JniDeleteWeakGlobalRefSvcImmediate =
+    LIBA32ANDROID_A32_JNI_DELETE_WEAK_GLOBAL_REF_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -307,6 +313,7 @@ public:
 struct A32JniReferenceCounts {
     std::uint32_t local{};
     std::uint32_t global{};
+    std::uint32_t weak{};
 };
 
 struct A32JniArrayInfo {
@@ -391,9 +398,13 @@ public:
         std::uint32_t handle) noexcept;
     [[nodiscard]] std::uint32_t new_global_reference(
         std::uint32_t handle) noexcept;
+    [[nodiscard]] std::uint32_t new_weak_global_reference(
+        std::uint32_t handle) noexcept;
     [[nodiscard]] bool delete_local_reference(
         std::uint32_t handle) noexcept;
     [[nodiscard]] bool delete_global_reference(
+        std::uint32_t handle) noexcept;
+    [[nodiscard]] bool delete_weak_global_reference(
         std::uint32_t handle) noexcept;
     [[nodiscard]] std::optional<A32JniReferenceCounts> reference_counts(
         std::uint32_t handle) const noexcept;
@@ -513,6 +524,7 @@ private:
         std::uint32_t handle{};
         std::uint32_t local_count{};
         std::uint32_t global_count{};
+        std::uint32_t weak_count{};
     };
 
     [[nodiscard]] const ReferenceEntry* find_reference_entry(
@@ -582,6 +594,8 @@ struct A32JniVmLayout {
     std::uint32_t get_static_method_id_stub_address{};
     std::uint32_t call_static_void_method_stub_address{};
     std::uint32_t call_static_object_method_stub_address{};
+    std::uint32_t new_weak_global_ref_stub_address{};
+    std::uint32_t delete_weak_global_ref_stub_address{};
     std::uint32_t get_long_field_stub_address{};
     std::uint32_t set_long_field_stub_address{};
     std::uint32_t throw_new_stub_address{};

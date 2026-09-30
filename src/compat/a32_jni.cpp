@@ -22,7 +22,7 @@ constexpr std::size_t kAttachCurrentThreadSlot = 4U;
 constexpr std::size_t kDetachCurrentThreadSlot = 5U;
 constexpr std::size_t kGetEnvSlot = 6U;
 constexpr std::size_t kJniEnvBytes = 4U;
-constexpr std::size_t kNativeTableWords = 216U;
+constexpr std::size_t kNativeTableWords = 228U;
 constexpr std::size_t kNativeTableBytes = kNativeTableWords * 4U;
 constexpr std::size_t kFindClassSlot = 6U;
 constexpr std::size_t kThrowNewSlot = 14U;
@@ -58,6 +58,8 @@ constexpr std::size_t kReleaseByteArrayElementsSlot = 192U;
 constexpr std::size_t kReleaseLongArrayElementsSlot = 196U;
 constexpr std::size_t kSetLongArrayRegionSlot = 212U;
 constexpr std::size_t kRegisterNativesSlot = 215U;
+constexpr std::size_t kNewWeakGlobalRefSlot = 226U;
+constexpr std::size_t kDeleteWeakGlobalRefSlot = 227U;
 constexpr std::size_t kJniNativeMethodBytes = 12U;
 constexpr std::size_t kServiceStubBytes = 8U;
 constexpr std::size_t kMaxInstallRegionBytes = kNativeTableBytes;
@@ -801,6 +803,22 @@ std::uint32_t A32JniClassRegistry::new_global_reference(
     return handle;
 }
 
+std::uint32_t A32JniClassRegistry::new_weak_global_reference(
+    std::uint32_t handle) noexcept {
+    if (handle == 0U) {
+        return 0U;
+    }
+    ReferenceEntry* entry = find_reference_entry(handle);
+    if (entry == nullptr ||
+        (entry->local_count == 0U && entry->global_count == 0U) ||
+        entry->weak_count >=
+            limits_.max_reference_count_per_handle) {
+        return 0U;
+    }
+    ++entry->weak_count;
+    return handle;
+}
+
 bool A32JniClassRegistry::delete_local_reference(
     std::uint32_t handle) noexcept {
     if (handle == 0U) {
@@ -827,6 +845,19 @@ bool A32JniClassRegistry::delete_global_reference(
     return true;
 }
 
+bool A32JniClassRegistry::delete_weak_global_reference(
+    std::uint32_t handle) noexcept {
+    if (handle == 0U) {
+        return true;
+    }
+    ReferenceEntry* entry = find_reference_entry(handle);
+    if (entry == nullptr || entry->weak_count == 0U) {
+        return false;
+    }
+    --entry->weak_count;
+    return true;
+}
+
 std::optional<A32JniReferenceCounts>
 A32JniClassRegistry::reference_counts(
     std::uint32_t handle) const noexcept {
@@ -837,6 +868,7 @@ A32JniClassRegistry::reference_counts(
     return A32JniReferenceCounts{
         .local = entry->local_count,
         .global = entry->global_count,
+        .weak = entry->weak_count,
     };
 }
 
@@ -1612,7 +1644,7 @@ bool A32JniVmService::layout_valid() const noexcept {
             kA32JniHardMaxByteArrayElements) {
         return false;
     }
-    const std::array<AddressRange, 44> ranges{{
+    const std::array<AddressRange, 46> ranges{{
         {layout_.java_vm_address, kJavaVmBytes},
         {layout_.invoke_table_address, kInvokeTableBytes},
         {layout_.jni_env_address, kJniEnvBytes},
@@ -1660,6 +1692,8 @@ bool A32JniVmService::layout_valid() const noexcept {
         {layout_.get_static_method_id_stub_address, kServiceStubBytes},
         {layout_.call_static_void_method_stub_address, kServiceStubBytes},
         {layout_.call_static_object_method_stub_address, kServiceStubBytes},
+        {layout_.new_weak_global_ref_stub_address, kServiceStubBytes},
+        {layout_.delete_weak_global_ref_stub_address, kServiceStubBytes},
     }};
 
     for (const AddressRange& range : ranges) {
@@ -1686,7 +1720,7 @@ A32JniVmInstallResult A32JniVmService::install(
         return {.error = A32JniVmInstallError::InvalidLayout};
     }
 
-    std::array<InstallRegion, 41> regions{{
+    std::array<InstallRegion, 43> regions{{
         {.address = layout_.java_vm_address, .size = kJavaVmBytes},
         {.address = layout_.invoke_table_address,
          .size = kInvokeTableBytes},
@@ -1766,6 +1800,10 @@ A32JniVmInstallResult A32JniVmService::install(
         {.address = layout_.call_static_void_method_stub_address,
          .size = kServiceStubBytes},
         {.address = layout_.call_static_object_method_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.new_weak_global_ref_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.delete_weak_global_ref_stub_address,
          .size = kServiceStubBytes},
     }};
 
@@ -1925,6 +1963,14 @@ A32JniVmInstallResult A32JniVmService::install(
         regions[3].desired,
         kRegisterNativesSlot * 4U,
         layout_.register_natives_stub_address);
+    write_u32(
+        regions[3].desired,
+        kNewWeakGlobalRefSlot * 4U,
+        layout_.new_weak_global_ref_stub_address);
+    write_u32(
+        regions[3].desired,
+        kDeleteWeakGlobalRefSlot * 4U,
+        layout_.delete_weak_global_ref_stub_address);
 
     write_service_stub(
         regions[4].desired,
@@ -2037,6 +2083,12 @@ A32JniVmInstallResult A32JniVmService::install(
     write_service_stub(
         regions[40].desired,
         kA32JniCallStaticObjectMethodSvcImmediate);
+    write_service_stub(
+        regions[41].desired,
+        kA32JniNewWeakGlobalRefSvcImmediate);
+    write_service_stub(
+        regions[42].desired,
+        kA32JniDeleteWeakGlobalRefSvcImmediate);
 
     for (InstallRegion& region : regions) {
         if (!memory.read(
@@ -2127,7 +2179,9 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         svc_immediate == kA32JniNewObjectVSvcImmediate ||
         svc_immediate == kA32JniGetStaticMethodIdSvcImmediate ||
         svc_immediate == kA32JniCallStaticVoidMethodSvcImmediate ||
-        svc_immediate == kA32JniCallStaticObjectMethodSvcImmediate;
+        svc_immediate == kA32JniCallStaticObjectMethodSvcImmediate ||
+        svc_immediate == kA32JniNewWeakGlobalRefSvcImmediate ||
+        svc_immediate == kA32JniDeleteWeakGlobalRefSvcImmediate;
     if (!known_service) {
         return runtime::A32HostServiceDisposition::Unhandled;
     }
@@ -2214,7 +2268,9 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
     const bool reference_service =
         svc_immediate == kA32JniNewGlobalRefSvcImmediate ||
         svc_immediate == kA32JniDeleteGlobalRefSvcImmediate ||
-        svc_immediate == kA32JniDeleteLocalRefSvcImmediate;
+        svc_immediate == kA32JniDeleteLocalRefSvcImmediate ||
+        svc_immediate == kA32JniNewWeakGlobalRefSvcImmediate ||
+        svc_immediate == kA32JniDeleteWeakGlobalRefSvcImmediate;
     if (reference_service) {
         if (registry_ == nullptr) {
             regs[0] = 0U;
@@ -2228,10 +2284,16 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             regs[0] = registry_->new_global_reference(reference);
             return runtime::A32HostServiceDisposition::Handled;
         }
+        if (svc_immediate == kA32JniNewWeakGlobalRefSvcImmediate) {
+            regs[0] = registry_->new_weak_global_reference(reference);
+            return runtime::A32HostServiceDisposition::Handled;
+        }
         const bool deleted =
             svc_immediate == kA32JniDeleteGlobalRefSvcImmediate
                 ? registry_->delete_global_reference(reference)
-                : registry_->delete_local_reference(reference);
+                : svc_immediate == kA32JniDeleteWeakGlobalRefSvcImmediate
+                    ? registry_->delete_weak_global_reference(reference)
+                    : registry_->delete_local_reference(reference);
         if (!deleted) {
             return runtime::A32HostServiceDisposition::Failed;
         }

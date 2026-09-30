@@ -1,0 +1,20 @@
+schema = 1
+change = "post-roadmap-a32-jni-weak-global-refs"
+
+[[evidence]]
+id = "vlc-libvlcjni-weak-global-ref-slots"
+kind = "artifact"
+status = "observed"
+claim = "Supplied VLC ARMv7 libvlcjni directly uses balanced NewWeakGlobalRef and DeleteWeakGlobalRef entrypoints."
+source = "docs/research/evidence/arm32-jni-weak-global-ref-entrypoints-2026-09-30.md"
+result = "VLCJniObject_newFromLibVlc loads JNIEnv offset 0x388 / slot 226 and stores the returned weak handle; VLCJniObject_release later loads offset 0x38c / slot 227 and deletes that stored weak handle."
+limitations = "This evidence does not establish GC, automatic weak nullification, resurrection, NewLocalRef-from-jweak, IsSameObject, or local-frame semantics."
+
+[[evidence]]
+id = "focused-validation"
+kind = "validation"
+status = "pending"
+claim = "Focused host regressions prove exact weak-ref slots/stubs and bounded weak ownership separate from strong liveness."
+source = "GitHub exact-head checks"
+result = ""
+limitations = "Pending exact-head execution."

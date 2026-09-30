@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-weak-global-refs` — NEXT; use balanced supplied VLC
-  ARMv7 NewWeakGlobalRef/DeleteWeakGlobalRef evidence to define bounded weak
-  reference lifetime without treating weak ownership as strong liveness.
+- `post-roadmap-a32-jni-weak-global-refs` — ACTIVE; publish balanced supplied
+  VLC ARMv7 NewWeakGlobalRef/DeleteWeakGlobalRef slots with weak ownership kept
+  separate from local/global strong liveness.
 
 ## Phase
 

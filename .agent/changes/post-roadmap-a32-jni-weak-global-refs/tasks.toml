@@ -1,0 +1,32 @@
+schema = 1
+change = "post-roadmap-a32-jni-weak-global-refs"
+
+[[tasks]]
+id = "T001"
+status = "verified"
+depends_on = []
+acceptance = "Record balanced supplied VLC ARMv7 NewWeakGlobalRef/DeleteWeakGlobalRef evidence and define the bounded weak-ownership contract."
+
+[[tasks]]
+id = "T002"
+status = "implemented"
+depends_on = ["T001"]
+acceptance = "Extend the reference ledger with bounded weak ownership that does not contribute to strong liveness."
+
+[[tasks]]
+id = "T003"
+status = "implemented"
+depends_on = ["T002"]
+acceptance = "Extend the JNIEnv table through slots 226/227 and implement NewWeakGlobalRef/DeleteWeakGlobalRef services."
+
+[[tasks]]
+id = "T004"
+status = "implemented"
+depends_on = ["T003"]
+acceptance = "Add focused host regressions for exact slots/stubs, null handling, weak creation/deletion, and weak-vs-strong lifetime separation."
+
+[[tasks]]
+id = "T005"
+status = "active"
+depends_on = ["T004"]
+acceptance = "Converge accepted spec/architecture/state/evidence and pass exact-head validation."
