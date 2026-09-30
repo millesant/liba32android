@@ -2927,6 +2927,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
                       method.signature,
                       regs[3],
                       registry_->limits().max_method_arguments,
+                      false,
                       arguments)
                 : decode_a32_jni_raw_arguments(
                       memory,
@@ -2934,6 +2935,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
                       regs[3],
                       regs[13],
                       registry_->limits().max_method_arguments,
+                      false,
                       arguments);
         if (!decoded) {
             return runtime::A32HostServiceDisposition::Failed;
