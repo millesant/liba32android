@@ -30,6 +30,7 @@ constexpr std::size_t kNewGlobalRefSlot = 21U;
 constexpr std::size_t kDeleteGlobalRefSlot = 22U;
 constexpr std::size_t kDeleteLocalRefSlot = 23U;
 constexpr std::size_t kGetMethodIdSlot = 33U;
+constexpr std::size_t kCallVoidMethodSlot = 61U;
 constexpr std::size_t kCallVoidMethodVSlot = 62U;
 constexpr std::size_t kGetFieldIdSlot = 94U;
 constexpr std::size_t kGetLongFieldSlot = 101U;
@@ -304,11 +305,12 @@ private:
     return result;
 }
 
-[[nodiscard]] bool decode_a32_jni_va_arguments(
-    const memory::GuestMemory& memory,
+template <typename ReadWord, typename ReadDoubleWord>
+[[nodiscard]] bool decode_a32_jni_arguments(
     std::string_view signature,
-    std::uint32_t va_list_address,
     std::size_t max_arguments,
+    ReadWord& read_word,
+    ReadDoubleWord& read_double_word,
     std::vector<A32JniValue>& output) {
     output.clear();
     if (signature.size() < 3U ||
@@ -319,48 +321,6 @@ private:
     }
 
     std::size_t descriptor = 1U;
-    std::uint64_t cursor = va_list_address;
-
-    const auto read_word = [&](std::uint32_t& value) {
-        if (cursor >
-            static_cast<std::uint64_t>(
-                std::numeric_limits<std::uint32_t>::max()) - 3U) {
-            return false;
-        }
-        if (!read_guest_u32(
-                memory,
-                static_cast<std::uint32_t>(cursor),
-                value)) {
-            return false;
-        }
-        cursor += 4U;
-        return true;
-    };
-    const auto read_double_word = [&](std::uint64_t& value) {
-        cursor = (cursor + 7U) & ~std::uint64_t{7U};
-        if (cursor >
-            static_cast<std::uint64_t>(
-                std::numeric_limits<std::uint32_t>::max()) - 7U) {
-            return false;
-        }
-        std::uint32_t low{};
-        std::uint32_t high{};
-        if (!read_guest_u32(
-                memory,
-                static_cast<std::uint32_t>(cursor),
-                low) ||
-            !read_guest_u32(
-                memory,
-                static_cast<std::uint32_t>(cursor + 4U),
-                high)) {
-            return false;
-        }
-        cursor += 8U;
-        value = static_cast<std::uint64_t>(low) |
-                (static_cast<std::uint64_t>(high) << 32U);
-        return true;
-    };
-
     while (descriptor < signature.size() &&
            signature[descriptor] != ')') {
         if (output.size() >= max_arguments) {
@@ -480,6 +440,124 @@ private:
     ++descriptor;
     return descriptor + 1U == signature.size() &&
            signature[descriptor] == 'V';
+}
+
+[[nodiscard]] bool decode_a32_jni_va_arguments(
+    const memory::GuestMemory& memory,
+    std::string_view signature,
+    std::uint32_t va_list_address,
+    std::size_t max_arguments,
+    std::vector<A32JniValue>& output) {
+    std::uint64_t cursor = va_list_address;
+    const auto read_word = [&](std::uint32_t& value) {
+        if (cursor >
+            static_cast<std::uint64_t>(
+                std::numeric_limits<std::uint32_t>::max()) - 3U) {
+            return false;
+        }
+        if (!read_guest_u32(
+                memory,
+                static_cast<std::uint32_t>(cursor),
+                value)) {
+            return false;
+        }
+        cursor += 4U;
+        return true;
+    };
+    const auto read_double_word = [&](std::uint64_t& value) {
+        cursor = (cursor + 7U) & ~std::uint64_t{7U};
+        if (cursor >
+            static_cast<std::uint64_t>(
+                std::numeric_limits<std::uint32_t>::max()) - 7U) {
+            return false;
+        }
+        std::uint32_t low{};
+        std::uint32_t high{};
+        if (!read_guest_u32(
+                memory,
+                static_cast<std::uint32_t>(cursor),
+                low) ||
+            !read_guest_u32(
+                memory,
+                static_cast<std::uint32_t>(cursor + 4U),
+                high)) {
+            return false;
+        }
+        cursor += 8U;
+        value = static_cast<std::uint64_t>(low) |
+                (static_cast<std::uint64_t>(high) << 32U);
+        return true;
+    };
+    return decode_a32_jni_arguments(
+        signature,
+        max_arguments,
+        read_word,
+        read_double_word,
+        output);
+}
+
+[[nodiscard]] bool decode_a32_jni_raw_arguments(
+    const memory::GuestMemory& memory,
+    std::string_view signature,
+    std::uint32_t first_variadic_word,
+    std::uint32_t stack_address,
+    std::size_t max_arguments,
+    std::vector<A32JniValue>& output) {
+    bool core_word_available = true;
+    std::uint64_t cursor = stack_address;
+    const auto read_word = [&](std::uint32_t& value) {
+        if (core_word_available) {
+            value = first_variadic_word;
+            core_word_available = false;
+            return true;
+        }
+        if (cursor >
+            static_cast<std::uint64_t>(
+                std::numeric_limits<std::uint32_t>::max()) - 3U) {
+            return false;
+        }
+        if (!read_guest_u32(
+                memory,
+                static_cast<std::uint32_t>(cursor),
+                value)) {
+            return false;
+        }
+        cursor += 4U;
+        return true;
+    };
+    const auto read_double_word = [&](std::uint64_t& value) {
+        // r3 is an odd core register. AAPCS32 cannot split an aligned
+        // double-word variadic value across r3 and the stack.
+        core_word_available = false;
+        cursor = (cursor + 7U) & ~std::uint64_t{7U};
+        if (cursor >
+            static_cast<std::uint64_t>(
+                std::numeric_limits<std::uint32_t>::max()) - 7U) {
+            return false;
+        }
+        std::uint32_t low{};
+        std::uint32_t high{};
+        if (!read_guest_u32(
+                memory,
+                static_cast<std::uint32_t>(cursor),
+                low) ||
+            !read_guest_u32(
+                memory,
+                static_cast<std::uint32_t>(cursor + 4U),
+                high)) {
+            return false;
+        }
+        cursor += 8U;
+        value = static_cast<std::uint64_t>(low) |
+                (static_cast<std::uint64_t>(high) << 32U);
+        return true;
+    };
+    return decode_a32_jni_arguments(
+        signature,
+        max_arguments,
+        read_word,
+        read_double_word,
+        output);
 }
 
 [[nodiscard]] A32JniNativeInvokeResult native_invoke_failure(
@@ -1367,7 +1445,7 @@ bool A32JniVmService::layout_valid() const noexcept {
             kA32JniHardMaxByteArrayElements) {
         return false;
     }
-    const std::array<AddressRange, 36> ranges{{
+    const std::array<AddressRange, 37> ranges{{
         {layout_.java_vm_address, kJavaVmBytes},
         {layout_.invoke_table_address, kInvokeTableBytes},
         {layout_.jni_env_address, kJniEnvBytes},
@@ -1407,6 +1485,7 @@ bool A32JniVmService::layout_valid() const noexcept {
         {layout_.release_byte_array_elements_stub_address, kServiceStubBytes},
         {layout_.byte_array_scratch_address,
          layout_.byte_array_scratch_bytes},
+        {layout_.call_void_method_stub_address, kServiceStubBytes},
     }};
 
     for (const AddressRange& range : ranges) {
@@ -1433,7 +1512,7 @@ A32JniVmInstallResult A32JniVmService::install(
         return {.error = A32JniVmInstallError::InvalidLayout};
     }
 
-    std::array<InstallRegion, 33> regions{{
+    std::array<InstallRegion, 34> regions{{
         {.address = layout_.java_vm_address, .size = kJavaVmBytes},
         {.address = layout_.invoke_table_address,
          .size = kInvokeTableBytes},
@@ -1498,6 +1577,8 @@ A32JniVmInstallResult A32JniVmService::install(
          .size = kServiceStubBytes},
         {.address = layout_.release_byte_array_elements_stub_address,
          .size = kServiceStubBytes},
+        {.address = layout_.call_void_method_stub_address,
+         .size = kServiceStubBytes},
     }};
 
     write_u32(
@@ -1544,6 +1625,10 @@ A32JniVmInstallResult A32JniVmService::install(
         regions[3].desired,
         kGetMethodIdSlot * 4U,
         layout_.get_method_id_stub_address);
+    write_u32(
+        regions[3].desired,
+        kCallVoidMethodSlot * 4U,
+        layout_.call_void_method_stub_address);
     write_u32(
         regions[3].desired,
         kCallVoidMethodVSlot * 4U,
@@ -1712,6 +1797,9 @@ A32JniVmInstallResult A32JniVmService::install(
     write_service_stub(
         regions[32].desired,
         kA32JniReleaseByteArrayElementsSvcImmediate);
+    write_service_stub(
+        regions[33].desired,
+        kA32JniCallVoidMethodSvcImmediate);
 
     for (InstallRegion& region : regions) {
         if (!memory.read(
@@ -1794,7 +1882,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         svc_immediate == kA32JniThrowNewSvcImmediate ||
         svc_immediate == kA32JniCallVoidMethodVSvcImmediate ||
         svc_immediate == kA32JniGetByteArrayElementsSvcImmediate ||
-        svc_immediate == kA32JniReleaseByteArrayElementsSvcImmediate;
+        svc_immediate == kA32JniReleaseByteArrayElementsSvcImmediate ||
+        svc_immediate == kA32JniCallVoidMethodSvcImmediate;
     if (!known_service) {
         return runtime::A32HostServiceDisposition::Unhandled;
     }
@@ -2344,7 +2433,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         return runtime::A32HostServiceDisposition::Handled;
     }
 
-    if (svc_immediate == kA32JniCallVoidMethodVSvcImmediate) {
+    if (svc_immediate == kA32JniCallVoidMethodVSvcImmediate ||
+        svc_immediate == kA32JniCallVoidMethodSvcImmediate) {
         if (registry_ == nullptr ||
             method_call_bridge_ == nullptr ||
             !registry_->valid()) {
@@ -2368,12 +2458,22 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         const A32JniMemberId method = *found;
 
         std::vector<A32JniValue> arguments;
-        if (!decode_a32_jni_va_arguments(
-                memory,
-                method.signature,
-                regs[3],
-                registry_->limits().max_method_arguments,
-                arguments)) {
+        const bool decoded =
+            svc_immediate == kA32JniCallVoidMethodVSvcImmediate
+                ? decode_a32_jni_va_arguments(
+                      memory,
+                      method.signature,
+                      regs[3],
+                      registry_->limits().max_method_arguments,
+                      arguments)
+                : decode_a32_jni_raw_arguments(
+                      memory,
+                      method.signature,
+                      regs[3],
+                      regs[13],
+                      registry_->limits().max_method_arguments,
+                      arguments);
+        if (!decoded) {
             return runtime::A32HostServiceDisposition::Failed;
         }
 

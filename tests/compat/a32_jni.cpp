@@ -59,6 +59,7 @@ using liba32android::compat::kA32JniThrowNewSvcImmediate;
 using liba32android::compat::kA32JniCallVoidMethodVSvcImmediate;
 using liba32android::compat::kA32JniGetByteArrayElementsSvcImmediate;
 using liba32android::compat::kA32JniReleaseByteArrayElementsSvcImmediate;
+using liba32android::compat::kA32JniCallVoidMethodSvcImmediate;
 using liba32android::compat::kA32JniOk;
 using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
@@ -205,6 +206,7 @@ A32JniVmLayout layout() {
         .set_long_field_stub_address = 0x1b00U,
         .throw_new_stub_address = 0x1b20U,
         .call_void_method_v_stub_address = 0x1b40U,
+        .call_void_method_stub_address = 0x1ba0U,
         .get_byte_array_elements_stub_address = 0x1b60U,
         .release_byte_array_elements_stub_address = 0x1b80U,
         .byte_array_scratch_address = 0x1e00U,
@@ -272,6 +274,8 @@ int test_vm_install_and_getenv() {
             configured.delete_local_ref_stub_address ||
         read_u32(memory, configured.native_table_address + 33U * 4U) !=
             configured.get_method_id_stub_address ||
+        read_u32(memory, configured.native_table_address + 61U * 4U) !=
+            configured.call_void_method_stub_address ||
         read_u32(memory, configured.native_table_address + 62U * 4U) !=
             configured.call_void_method_v_stub_address ||
         read_u32(memory, configured.native_table_address + 94U * 4U) !=
@@ -332,6 +336,7 @@ int test_vm_install_and_getenv() {
             index == 22U ||
             index == 23U ||
             index == 33U ||
+            index == 61U ||
             index == 62U ||
             index == 94U ||
             index == 101U ||
@@ -361,7 +366,7 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::array<std::uint8_t, 8>, 29> expected_stubs{{
+    constexpr std::array<std::array<std::uint8_t, 8>, 30> expected_stubs{{
         {{0xD7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD8U, 0x00U, 0x00U, 0xEFU,
@@ -420,8 +425,10 @@ int test_vm_install_and_getenv() {
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xF3U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xF4U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    const std::array<std::uint32_t, 29> stub_addresses{{
+    const std::array<std::uint32_t, 30> stub_addresses{{
         configured.get_env_stub_address,
         configured.find_class_stub_address,
         configured.register_natives_stub_address,
@@ -451,6 +458,7 @@ int test_vm_install_and_getenv() {
         configured.call_void_method_v_stub_address,
         configured.get_byte_array_elements_stub_address,
         configured.release_byte_array_elements_stub_address,
+        configured.call_void_method_stub_address,
     }};
     for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
         std::array<std::uint8_t, 8> observed_stub{};
@@ -641,7 +649,7 @@ int test_vm_install_and_getenv() {
     regs = {};
     if (service.handle(
             memory,
-            kA32JniReleaseByteArrayElementsSvcImmediate + 1U,
+            kA32JniCallVoidMethodSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
@@ -2400,6 +2408,7 @@ int test_call_void_method_v_bridge() {
     }
 
     constexpr std::uint32_t kVa = 0x1604U;
+    constexpr std::uint32_t kRawStack = 0x1800U;
     if (!write_u32(memory, kVa + 0x00U, 0xfffffffbU) ||
         !write_u32(memory, kVa + 0x04U, 1U) ||
         !write_u32(memory, kVa + 0x08U, 0xffffff80U) ||
@@ -2412,8 +2421,20 @@ int test_call_void_method_v_bridge() {
         !write_u32(memory, kVa + 0x24U, 0x00000000U) ||
         !write_u32(memory, kVa + 0x28U, 0xc0020000U) ||
         !write_u32(memory, kVa + 0x2cU, kString) ||
-        !write_u32(memory, kVa + 0x30U, kArray)) {
-        return fail("could not stage JNI CallVoidMethodV va_list");
+        !write_u32(memory, kVa + 0x30U, kArray) ||
+        !write_u32(memory, kRawStack + 0x00U, 1U) ||
+        !write_u32(memory, kRawStack + 0x04U, 0xffffff80U) ||
+        !write_u32(memory, kRawStack + 0x08U, 0x000000e9U) ||
+        !write_u32(memory, kRawStack + 0x0cU, 0xffff8001U) ||
+        !write_u32(memory, kRawStack + 0x10U, 0x89abcdefU) ||
+        !write_u32(memory, kRawStack + 0x14U, 0x01234567U) ||
+        !write_u32(memory, kRawStack + 0x20U, 0x00000000U) ||
+        !write_u32(memory, kRawStack + 0x24U, 0x3ff80000U) ||
+        !write_u32(memory, kRawStack + 0x28U, 0x00000000U) ||
+        !write_u32(memory, kRawStack + 0x2cU, 0xc0020000U) ||
+        !write_u32(memory, kRawStack + 0x30U, kString) ||
+        !write_u32(memory, kRawStack + 0x34U, kArray)) {
+        return fail("could not stage JNI method-call arguments");
     }
 
     const auto configured = layout();
@@ -2477,6 +2498,61 @@ int test_call_void_method_v_bridge() {
         return fail("JNI CallVoidMethodV rejected zero-argument method");
     }
 
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kObject;
+    regs[2] = kMixedMethod;
+    regs[3] = 0xfffffffbU;
+    regs[13] = kRawStack;
+    if (service.handle(
+            memory,
+            kA32JniCallVoidMethodSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        bridge.calls != 3U ||
+        bridge.receiver != kObject ||
+        bridge.method_handle != kMixedMethod ||
+        bridge.signature != kMixedSignature ||
+        bridge.arguments.size() != 10U ||
+        bridge.arguments[0].kind != A32JniValueKind::Int ||
+        bridge.arguments[0].bits != 0xfffffffbU ||
+        bridge.arguments[1].kind != A32JniValueKind::Boolean ||
+        bridge.arguments[1].bits != 1U ||
+        bridge.arguments[2].kind != A32JniValueKind::Byte ||
+        bridge.arguments[2].bits != 0xffffff80U ||
+        bridge.arguments[3].kind != A32JniValueKind::Char ||
+        bridge.arguments[3].bits != 0x000000e9U ||
+        bridge.arguments[4].kind != A32JniValueKind::Short ||
+        bridge.arguments[4].bits != 0xffff8001U ||
+        bridge.arguments[5].kind != A32JniValueKind::Long ||
+        bridge.arguments[5].bits != UINT64_C(0x0123456789abcdef) ||
+        bridge.arguments[6].kind != A32JniValueKind::Float ||
+        bridge.arguments[6].bits != 0x3fc00000U ||
+        bridge.arguments[7].kind != A32JniValueKind::Double ||
+        bridge.arguments[7].bits != UINT64_C(0xc002000000000000) ||
+        bridge.arguments[8].kind != A32JniValueKind::Reference ||
+        bridge.arguments[8].bits != kString ||
+        bridge.arguments[9].kind != A32JniValueKind::Reference ||
+        bridge.arguments[9].bits != kArray) {
+        return fail("JNI CallVoidMethod decoded raw r3/stack arguments incorrectly");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kObject;
+    regs[2] = kNoArgsMethod;
+    regs[3] = 0xdeadbeefU;
+    regs[13] = 0U;
+    if (service.handle(
+            memory,
+            kA32JniCallVoidMethodSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        bridge.calls != 4U ||
+        !bridge.arguments.empty()) {
+        return fail("JNI CallVoidMethod rejected zero-argument method");
+    }
+
     const std::size_t calls_after_success = bridge.calls;
     regs = {};
     regs[0] = configured.jni_env_address + 4U;
@@ -2518,6 +2594,21 @@ int test_call_void_method_v_bridge() {
 
     regs = {};
     regs[0] = configured.jni_env_address;
+    regs[1] = kObject;
+    regs[2] = kWrongReturnMethod;
+    regs[3] = 0U;
+    regs[13] = kRawStack;
+    if (service.handle(
+            memory,
+            kA32JniCallVoidMethodSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        bridge.calls != calls_before_failures) {
+        return fail("JNI CallVoidMethod accepted invalid method metadata");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
     regs[1] = kDeadObject;
     regs[2] = kNoArgsMethod;
     if (service.handle(
@@ -2526,6 +2617,15 @@ int test_call_void_method_v_bridge() {
             regs,
             cpsr) != A32HostServiceDisposition::Failed) {
         return fail("JNI CallVoidMethodV accepted dead receiver");
+    }
+    regs[3] = 0U;
+    regs[13] = kRawStack;
+    if (service.handle(
+            memory,
+            kA32JniCallVoidMethodSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI CallVoidMethod accepted dead receiver");
     }
 
     regs = {};
@@ -2539,6 +2639,20 @@ int test_call_void_method_v_bridge() {
             regs,
             cpsr) != A32HostServiceDisposition::Failed) {
         return fail("JNI CallVoidMethodV accepted unreadable va_list");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kObject;
+    regs[2] = kMixedMethod;
+    regs[3] = 0xfffffffbU;
+    regs[13] = 0x2ffcU;
+    if (service.handle(
+            memory,
+            kA32JniCallVoidMethodSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI CallVoidMethod accepted unreadable guest stack");
     }
 
     if (!registry.delete_local_reference(kString)) {
@@ -2556,6 +2670,19 @@ int test_call_void_method_v_bridge() {
             cpsr) != A32HostServiceDisposition::Failed) {
         return fail("JNI CallVoidMethodV accepted dead reference argument");
     }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kObject;
+    regs[2] = kMixedMethod;
+    regs[3] = 0xfffffffbU;
+    regs[13] = kRawStack;
+    if (service.handle(
+            memory,
+            kA32JniCallVoidMethodSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI CallVoidMethod accepted dead reference argument");
+    }
     if (!registry.retain_local_reference(kString)) {
         return fail("could not restore JNI CallVoidMethodV reference argument");
     }
@@ -2572,6 +2699,15 @@ int test_call_void_method_v_bridge() {
             cpsr) != A32HostServiceDisposition::Failed) {
         return fail("JNI CallVoidMethodV hid embedding bridge failure");
     }
+    regs[3] = 0U;
+    regs[13] = 0U;
+    if (service.handle(
+            memory,
+            kA32JniCallVoidMethodSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI CallVoidMethod hid embedding bridge failure");
+    }
 
     A32JniVmService without_bridge{configured, &registry};
     if (!without_bridge.install(memory)) {
@@ -2587,6 +2723,15 @@ int test_call_void_method_v_bridge() {
             regs,
             cpsr) != A32HostServiceDisposition::Failed) {
         return fail("JNI CallVoidMethodV ran without embedding bridge");
+    }
+    regs[3] = 0U;
+    regs[13] = 0U;
+    if (without_bridge.handle(
+            memory,
+            kA32JniCallVoidMethodSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI CallVoidMethod ran without embedding bridge");
     }
 
     const std::size_t calls_before_detach = bridge.calls;
@@ -2611,6 +2756,16 @@ int test_call_void_method_v_bridge() {
             cpsr) != A32HostServiceDisposition::Failed ||
         bridge.calls != calls_before_detach) {
         return fail("JNI CallVoidMethodV accepted detached context");
+    }
+    regs[3] = 0U;
+    regs[13] = 0U;
+    if (service.handle(
+            memory,
+            kA32JniCallVoidMethodSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        bridge.calls != calls_before_detach) {
+        return fail("JNI CallVoidMethod accepted detached context");
     }
 
     return 0;

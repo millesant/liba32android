@@ -9,24 +9,24 @@ acceptance = "Record supplied VLC ARMv7 raw CallVoidMethod slot and AAPCS32 vari
 
 [[tasks]]
 id = "T002"
-status = "active"
+status = "implemented"
 depends_on = ["T001"]
 acceptance = "Implement bounded raw variadic JNI descriptor decoding from r3 plus guest stack."
 
 [[tasks]]
 id = "T003"
-status = "pending"
+status = "implemented"
 depends_on = ["T002"]
 acceptance = "Publish raw CallVoidMethod at exact JNIEnv slot 61 and route it through the existing method-call bridge validation boundary."
 
 [[tasks]]
 id = "T004"
-status = "pending"
+status = "implemented"
 depends_on = ["T003"]
 acceptance = "Add focused host regressions for r3/stack decoding, 64-bit alignment, float promotion, validation failures, table/stub bytes, and bridge behavior."
 
 [[tasks]]
 id = "T005"
-status = "pending"
+status = "active"
 depends_on = ["T004"]
 acceptance = "Converge accepted spec/architecture/state/evidence and pass exact-head validation."

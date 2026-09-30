@@ -29,6 +29,7 @@
 #define LIBA32ANDROID_A32_JNI_CALL_VOID_METHOD_V_SVC 0xF1
 #define LIBA32ANDROID_A32_JNI_GET_BYTE_ARRAY_ELEMENTS_SVC 0xF2
 #define LIBA32ANDROID_A32_JNI_RELEASE_BYTE_ARRAY_ELEMENTS_SVC 0xF3
+#define LIBA32ANDROID_A32_JNI_CALL_VOID_METHOD_SVC 0xF4
 
 #ifdef __cplusplus
 
@@ -107,6 +108,8 @@ inline constexpr std::uint32_t kA32JniGetByteArrayElementsSvcImmediate =
     LIBA32ANDROID_A32_JNI_GET_BYTE_ARRAY_ELEMENTS_SVC;
 inline constexpr std::uint32_t kA32JniReleaseByteArrayElementsSvcImmediate =
     LIBA32ANDROID_A32_JNI_RELEASE_BYTE_ARRAY_ELEMENTS_SVC;
+inline constexpr std::uint32_t kA32JniCallVoidMethodSvcImmediate =
+    LIBA32ANDROID_A32_JNI_CALL_VOID_METHOD_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -509,6 +512,7 @@ struct A32JniVmLayout {
     std::uint32_t set_long_field_stub_address{};
     std::uint32_t throw_new_stub_address{};
     std::uint32_t call_void_method_v_stub_address{};
+    std::uint32_t call_void_method_stub_address{};
     std::uint32_t get_byte_array_elements_stub_address{};
     std::uint32_t release_byte_array_elements_stub_address{};
     std::uint32_t byte_array_scratch_address{};

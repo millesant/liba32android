@@ -21,8 +21,8 @@ acceptance = [
 [convergence]
 requirements = "aligned"
 specs = "aligned"
-implementation = "pending"
-tests = "pending"
+implementation = "aligned"
+tests = "aligned"
 documentation = "aligned"
 decisions = "not_applicable"
 tasks = "aligned"
