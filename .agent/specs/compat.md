@@ -1651,3 +1651,24 @@ failures remain explicit.
 This slice exposes explicit invocation only. Automatic invocation is not tied
 to generic ELF `dlclose`: JNI library unload is a VM/class-loader lifecycle
 concern and requires a separate ownership/ordering contract.
+
+## L32-C059 — ARM32 JNI bounded ExceptionCheck observation
+
+Supplied VLC ARMv7 `libvlc.so` JNI_OnLoad directly loads JNIEnv byte offset
+`0x390`, slot 228, calls that function pointer, compares r0 against zero, and
+branches on the returned jboolean. This identifies `ExceptionCheck`.
+
+The guest JNIEnv table extends exactly through slot 228 and publishes one
+distinct private ARM service stub for `ExceptionCheck`. The service requires
+the exact configured JNIEnv and attached bounded JNI context.
+
+`ExceptionCheck` is a pure observation of the existing bounded pending-
+exception state: it returns JNI_FALSE when no exception is pending and JNI_TRUE
+when pending state exists. It does not allocate or retain a jthrowable
+reference, clear state, alter reference counts, or mutate the stored
+class/message identity.
+
+Existing `ExceptionOccurred` and `ExceptionClear` semantics remain
+unchanged. `ExceptionDescribe`, automatic exception gating across unrelated
+JNI calls, Java stack traces/unwinding, and framework exception behavior remain
+outside this slice.

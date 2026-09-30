@@ -1,26 +1,22 @@
 # NEXT
 
-## Active JNI track
+## JNI evidence discovery
 
-Continue `post-roadmap-a32-jni-exception-check` from
-`44ebb794d1b643df8cc54451c59b763fa97f4942`.
+Continue from validated ExceptionCheck revision `918e4b9bef49051e8ea84716e9b759fd11b0fb6c`.
 
-Supplied VLC ARMv7 `libvlc.so` JNI_OnLoad directly calls JNIEnv byte offset
-`0x390`, slot 228 (ExceptionCheck), and branches on the returned jboolean.
+Inspect the supplied ARMv7 VLC artifacts and choose the next bounded JNI seam
+only when a direct callsite or balanced lifecycle pair is observed. Do not
+preselect ExceptionDescribe, NewLocalRef, IsSameObject, local-frame APIs, GC
+behavior, or another method-call family merely because it remains unimplemented.
 
-Keep this slice read-only over the existing pending-exception state:
+For the next selected seam:
 
-- no pending state -> JNI_FALSE;
-- pending state -> JNI_TRUE;
-- no new jthrowable reference;
-- no clearing or other mutation.
-
-The pinned ARM32 fixture should call the real slot in its no-pending path.
-ExceptionDescribe, automatic exception gating, stack traces, Java unwinding,
-and framework exception behavior stay separate.
+- record exact JNIEnv slot/byte offset and callsite evidence;
+- define the smallest logical state/identity/lifetime contract required;
+- add focused host coverage before broadening implementation;
+- keep unrelated Java/framework semantics explicitly outside the slice.
 
 ## Validation
 
-After the focused host/fixture coverage is committed, query exact-head commit
-checks. Escalate only failing checks, and leave CI immediately on terminal
-success.
+After implementation, query exact-head checks once. Escalate only a failing or
+ambiguous check, and leave CI immediately on terminal success.

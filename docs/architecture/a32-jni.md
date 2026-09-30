@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: raw static calls and bounded weak global references validated
+Status: raw static calls, bounded weak globals, and ExceptionCheck validated
 
 ## Goal
 
@@ -22,7 +22,7 @@ The JavaVM invocation table follows the Android ABI and now publishes
 AttachCurrentThread at slot 4 / byte offset `0x10`, DetachCurrentThread at
 slot 5 / byte offset `0x14`, and GetEnv at slot 6 / byte offset `0x18`.
 
-The JNIEnv native table spans slots 0 through 215. Current evidence-backed
+The JNIEnv native table spans slots 0 through 228. Current evidence-backed
 entries include:
 
 - `FindClass` — slot 6 / byte offset `0x18`;
@@ -56,7 +56,10 @@ entries include:
 - `ReleaseByteArrayElements` — slot 192 / byte offset `0x300`;
 - `ReleaseLongArrayElements` — slot 196 / byte offset `0x310`;
 - `SetLongArrayRegion` — slot 212 / byte offset `0x350`;
-- `RegisterNatives` — slot 215 / byte offset `0x35c`.
+- `RegisterNatives` — slot 215 / byte offset `0x35c`;
+- `NewWeakGlobalRef` — slot 226 / byte offset `0x388`;
+- `DeleteWeakGlobalRef` — slot 227 / byte offset `0x38c`;
+- `ExceptionCheck` — slot 228 / byte offset `0x390`.
 
 Unsupported entries remain null.
 
@@ -631,8 +634,9 @@ leaving the exception pending. `ExceptionClear` clears pending state but
 preserves any local/global reference already returned to the guest. An
 unobserved zero-reference pending identity is reclaimed when cleared.
 
-No host Throwable pointer, Java stack trace, unwinding, ExceptionCheck,
-ExceptionDescribe, or automatic global JNI exception gating is introduced.
+No host Throwable pointer, Java stack trace, unwinding, ExceptionDescribe, or
+automatic global JNI exception gating is introduced. ExceptionCheck is now
+implemented separately as a read-only observation of this pending state.
 
 ## NewObjectV construction bridge
 
@@ -709,3 +713,14 @@ ownership.
 
 This slice does not model garbage collection, automatic weak clearing,
 resurrection, NewLocalRef-from-jweak, IsSameObject, or Java heap reachability.
+
+## ExceptionCheck observation
+
+Supplied VLC ARMv7 `libvlc.so` JNI_OnLoad directly selects JNIEnv slot 228 /
+`0x390`. The service reads only the bounded pending-exception state and
+returns JNI_FALSE or JNI_TRUE. It creates no local/global reference, preserves
+the existing pending exception unchanged, and composes with the accepted
+ExceptionOccurred/ExceptionClear model.
+
+The pinned ARM32 JNI fixture executes the real slot-228 call in its no-pending
+path. Exact-head validation passed with the updated expected service-call count.

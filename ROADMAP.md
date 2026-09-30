@@ -28,8 +28,9 @@ modified-UTF-8 string, jlong-array, object-array, instance-long-field,
 ThrowNew pending-exception, CallVoidMethodV, raw CallVoidMethod, seeded
 byte-array element lease, GetIntField, ExceptionOccurred/ExceptionClear, and
 NewObjectV, GetStaticMethodID, raw CallStaticVoidMethod,
-CallStaticObjectMethod, balanced NewWeakGlobalRef/DeleteWeakGlobalRef, and
-explicit bounded JNI_OnUnload invocation are complete.
+CallStaticObjectMethod, balanced NewWeakGlobalRef/DeleteWeakGlobalRef,
+explicit bounded JNI_OnUnload invocation, and read-only ExceptionCheck are
+complete.
 
 The next JNI step remains evidence discovery rather than API guesswork. Inspect
 the supplied ARMv7 artifacts and accepted JNI lifecycle requirements for

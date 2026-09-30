@@ -13,8 +13,8 @@ limitations = "This proves ExceptionCheck observation only; it does not establis
 [[evidence]]
 id = "focused-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host and pinned ARM32 fixture regressions prove exact slot/stub publication and read-only pending-state observation."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending exact-head execution."
+source = "GitHub exact-head checks at 918e4b9bef49051e8ea84716e9b759fd11b0fb6c"
+result = "All 11 required exact-head checks concluded success. ARM32 JNI registration integration passed with the real slot-228 fixture call and updated service-call evidence count 26."
+limitations = "The validated surface is read-only ExceptionCheck only; ExceptionDescribe, automatic exception gating, Java stack traces/unwinding, and framework exception behavior remain outside scope."

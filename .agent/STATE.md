@@ -6,9 +6,8 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-exception-check` — ACTIVE; add supplied VLC ARMv7
-  ExceptionCheck slot 228 / `0x390` as a pure bounded observation of the
-  existing pending-exception state.
+- JNI evidence discovery — inspect supplied ARMv7 artifacts and select the next
+  directly observed bounded JNI seam; do not preselect unsupported APIs.
 
 ## Phase
 
@@ -283,3 +282,9 @@ JNI_OnLoad path: the function dereferences JNIEnv, loads byte offset `0x390`
 (slot 228), calls it, and branches on the returned jboolean. This is a read-only
 observation seam over the already accepted pending-exception model; no new
 Throwable identity or clearing behavior is required.
+
+The bounded ExceptionCheck slice is DONE at
+`918e4b9bef49051e8ea84716e9b759fd11b0fb6c`. Supplied VLC ARMv7 `libvlc.so` proved JNIEnv slot 228 /
+`0x390`; the service observes pending state as JNI_FALSE/JNI_TRUE without
+creating a throwable reference or mutating exception state. The pinned ARM32
+fixture executes the real slot, and all 11 required exact-head checks passed.
