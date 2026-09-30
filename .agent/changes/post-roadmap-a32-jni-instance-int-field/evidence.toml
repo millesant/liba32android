@@ -13,8 +13,8 @@ limitations = "The same function also calls ExceptionOccurred and ExceptionClear
 [[evidence]]
 id = "focused-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host regressions prove exact GetIntField publication plus bounded logical-object/InstanceField signed 32-bit value behavior."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending implementation and exact-head execution."
+source = "GitHub exact-head checks at 1408748de1a226ee3e0dce544e52237d8765530e"
+result = "All 11 required exact-head checks concluded success, including Linux A32 smoke, ARM32 JNI registration integration, the Android arm64-v8a cross-build, and public repository/API validation."
+limitations = "The validated surface is GetIntField only; SetIntField, object-class assignability, Java field layout/inheritance, volatile semantics, and the adjacent exception APIs remain outside this slice."

@@ -25,12 +25,13 @@ Implemented and regression-tested foundations include:
 The first registration, observed member-ID, bounded JavaVM attach/detach,
 strong/local-reference, seeded GetArrayLength, GetStaticIntField,
 modified-UTF-8 string, jlong-array, object-array, instance-long-field,
-ThrowNew pending-exception, CallVoidMethodV, raw CallVoidMethod, and seeded
-byte-array element lease steps are complete. Direct supplied-binary evidence
-now drives another bounded instance-field seam:
+ThrowNew pending-exception, CallVoidMethodV, raw CallVoidMethod, seeded
+byte-array element lease, and GetIntField steps are complete. Direct
+supplied-binary evidence now exposes the next bounded exception-state seam:
 
-1. GetIntField at observed slot 100 / offset `0x190`, with caller-seeded
-   logical jobject + InstanceField signed 32-bit state;
+1. ExceptionOccurred at slot 15 / offset `0x3c` and ExceptionClear at slot 17 /
+   `0x44`, with an explicit logical pending-exception identity model before
+   publication;
 2. remaining reference lifetime, including weak/local-frame behavior when
    balanced evidence exists;
 3. object construction and broader method invocation / exception APIs;

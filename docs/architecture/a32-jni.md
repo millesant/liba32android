@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: raw CallVoidMethod and byte-array element leases validated; GetIntField in progress
+Status: raw CallVoidMethod, byte-array element leases, and GetIntField validated
 
 ## Goal
 
@@ -34,6 +34,7 @@ entries include:
 - `CallVoidMethod` — slot 61 / byte offset `0xf4`;
 - `CallVoidMethodV` — slot 62 / byte offset `0xf8`;
 - `GetFieldID` — slot 94 / byte offset `0x178`;
+- `GetIntField` — slot 100 / byte offset `0x190`;
 - `GetLongField` — slot 101 / byte offset `0x194`;
 - `SetLongField` — slot 110 / byte offset `0x1b8`;
 - `GetStaticFieldID` — slot 144 / byte offset `0x240`;
@@ -581,3 +582,14 @@ Planned order after the registration slice:
       plumbing.
 
 The goal is broad native-facing JNI compatibility, not reimplementation of ART.
+
+## Instance int fields
+
+Direct supplied VLC ARMv7 `libvlcjni.so` evidence selects
+`GetIntField` at JNIEnv slot 100 / `0x190`. Caller-seeded signed 32-bit
+values are keyed by a live logical jobject and an existing InstanceField ID.
+The service validates exact JNIEnv/attachment, reference liveness, member kind,
+and value presence before returning the exact jint bits in r0.
+
+This does not model Java object layout, class assignability, inheritance,
+volatile semantics, or `SetIntField`.

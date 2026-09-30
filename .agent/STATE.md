@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-instance-int-field` — ACTIVE; add the supplied VLC
-  ARMv7-evidenced GetIntField slot with bounded caller-seeded logical
-  jobject/InstanceField signed 32-bit value state.
+- adjacent VLC ARMv7 exception evidence — design the next bounded
+  ExceptionOccurred / ExceptionClear state transition without inventing
+  Throwable identity or broad Java exception propagation.
 
 ## Phase
 
@@ -155,12 +155,15 @@ the first promoted 32-bit argument from r3, continues on the guest stack,
 aligns 64-bit/default-promoted floating values per AAPCS32, and reuses the
 accepted logical-value method-call bridge. All 11 exact-head checks passed.
 
-The active instance-int-field slice is direct evidence from the same supplied
-VLC ARMv7 `libvlcjni.so`: `Java_org_videolan_libvlc_Media_nativeNewFromFd`
-loads JNIEnv offset `0x190`, slot 100 (`GetIntField`), passes JNIEnv,
-jobject, and cached jfieldID in r0-r2, and receives the jint result in r0.
-The same function also exposes future ExceptionOccurred/ExceptionClear evidence,
-but those APIs remain separate from this bounded field slice.
+The bounded instance-int-field slice is DONE at
+`1408748de1a226ee3e0dce544e52237d8765530e`. Supplied VLC ARMv7 `libvlcjni.so` proved JNIEnv slot 100 /
+`0x190` (`GetIntField`); caller-seeded signed 32-bit values are keyed by a
+live logical jobject plus an existing InstanceField ID and return exact jint
+bits in r0. All 11 exact-head checks passed.
+
+The same supplied function also proves future ExceptionOccurred at slot 15 /
+`0x3c` and ExceptionClear at slot 17 / `0x44`; those remain a separate
+bounded state-model slice.
 
 ## Public repository readiness
 

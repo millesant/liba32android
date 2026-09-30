@@ -1462,3 +1462,25 @@ CallVoidMethodV. No host pointer is published to the guest.
 CallVoidMethodA, return-valued/static/nonvirtual call families, NewObject,
 inheritance/virtual dispatch, Java frames, and framework method
 implementations remain separate slices.
+
+## L32-C051 — ARM32 JNI bounded instance int field reads
+
+Supplied VLC ARMv7 `libvlcjni.so` machine code identifies
+`GetIntField` at JNIEnv slot 100 / byte offset `0x190` in
+`Java_org_videolan_libvlc_Media_nativeNewFromFd`. The call forwards JNIEnv,
+jobject, and cached jfieldID in r0-r2 and consumes the jint result from r0.
+
+The registry stores caller-seeded signed 32-bit values keyed by a logical
+jobject handle plus an existing InstanceField ID. Existing pairs update
+deterministically under the bounded member-state ceiling. Storage never derives
+or exposes a host Java object address.
+
+`GetIntField` requires the exact configured JNIEnv, an attached context, a
+currently live logical jobject, an existing InstanceField member ID, and an
+existing seeded value for that exact object/member pair. It returns the signed
+32-bit value bit-for-bit in ARM32 r0. Missing, dead, mismatched, or wrong-kind
+state fails rather than fabricating a Java field.
+
+Object-class assignability, Java field layout/offsets, inheritance, volatile
+semantics, `SetIntField`, reflection, and other field families remain
+separate slices.
