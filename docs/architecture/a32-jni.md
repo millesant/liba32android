@@ -493,6 +493,24 @@ context after return.
 Dalvik/ART load semantics accept exactly JNI 1.2, 1.4, or 1.6 from JNI_OnLoad.
 The transaction mirrors that rule.
 
+## JNI_OnUnload transaction
+
+`invoke_a32_jni_on_unload` reuses the exact-object symbol and bounded
+service-aware execution boundary for the optional
+`void JNI_OnUnload(JavaVM*, void*)` hook. It resolves only the requested
+loaded object, executes with r0=JavaVM* and r1=null, scopes optional lifecycle
+provenance to that object, and requires the caller stop PC to be reached within
+the configured instruction/service budgets.
+
+Unlike JNI_OnLoad, there is no returned-version validation. The supplied VLC
+ARMv7 `libmla.so` and `libvlcjni.so` exports prove the hook is relevant;
+`libvlcjni.so` acquires JNIEnv through GetEnv and deletes stored global
+references during unload.
+
+This is explicit invocation, not generic `dlclose` policy. JNI_OnUnload is a
+VM/class-loader lifecycle hook, so automatic triggering requires a separate
+Java-library ownership model rather than being inferred from ELF handle count.
+
 ## Validation state
 
 Host regressions cover:
@@ -504,7 +522,8 @@ Host regressions cover:
 - bounded RegisterNatives parsing and transactional rejection;
 - exact registered-native lookup;
 - one zero-argument reverse-dispatch execution;
-- exact-object JNI_OnLoad isolation and return-version validation.
+- exact-object JNI_OnLoad isolation and return-version validation;
+- exact-object JNI_OnUnload isolation and bounded void execution.
 
 The pinned-NDK ARM32 integration fixture now performs the complete bounded
 registration path: JNI_OnLoad calls GetEnv, FindClass, and RegisterNatives
@@ -520,8 +539,8 @@ including the ARM32 JNI registration integration.
 
 The current compatibility surface still does not provide a general Java object
 runtime, inheritance/virtual dispatch, A-form or return-valued method-call
-families, general native argument marshalling, JNI_OnUnload, framework classes,
-graphics, or audio. Existing references, members, strings/arrays, fields,
+families, general native argument marshalling, automatic VM/class-loader JNI library
+unload ownership, framework classes, graphics, or audio. Existing references, members, strings/arrays, fields,
 thread attachment, pending ThrowNew state, CallVoidMethodV, and byte-array
 element leases are deliberately bounded seams rather than full Java semantics.
 

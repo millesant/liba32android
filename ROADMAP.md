@@ -28,14 +28,15 @@ modified-UTF-8 string, jlong-array, object-array, instance-long-field,
 ThrowNew pending-exception, CallVoidMethodV, raw CallVoidMethod, seeded
 byte-array element lease, GetIntField, ExceptionOccurred/ExceptionClear, and
 NewObjectV, GetStaticMethodID, raw CallStaticVoidMethod,
-CallStaticObjectMethod, and balanced NewWeakGlobalRef/DeleteWeakGlobalRef are
-complete.
+CallStaticObjectMethod, balanced NewWeakGlobalRef/DeleteWeakGlobalRef, and
+explicit bounded JNI_OnUnload invocation are complete.
 
-The next JNI step is evidence discovery rather than API guesswork: inspect the
-supplied VLC ARMv7 artifact for another directly observed bounded lifecycle or
-call seam, then implement only that proven surface. Local frames, NewLocalRef,
-IsSameObject, GC behavior, and other JNI families remain unselected until
-artifact evidence justifies them.
+The next JNI step remains evidence discovery rather than API guesswork. Inspect
+the supplied ARMv7 artifacts and accepted JNI lifecycle requirements for
+another bounded seam, then implement only the proven surface. In particular,
+generic ELF dlclose is not treated as equivalent to VM/class-loader
+JNI_OnUnload ownership. Local frames, NewLocalRef, IsSameObject, GC behavior,
+and other JNI families remain unselected until evidence justifies them.
 3. object construction and broader method invocation / exception APIs;
 4. remaining string/primitive-array/field families beyond the currently
    evidence-backed seams;

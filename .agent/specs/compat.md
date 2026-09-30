@@ -1624,3 +1624,30 @@ Pending-exception cleanup preserves an identity that still has weak ownership.
 Garbage collection, automatic weak clearing, resurrection,
 `NewLocalRef` from jweak, `IsSameObject`, local frames, and general Java
 heap reachability remain separate evidence-driven work.
+
+## L32-C058 — ARM32 bounded JNI_OnUnload invocation
+
+Supplied VLC ARMv7 `libmla.so` and `libvlcjni.so` export concrete
+`JNI_OnUnload(JavaVM*, void*)` entrypoints. The latter directly uses the
+already-supported JavaVM `GetEnv` and JNIEnv `DeleteGlobalRef` services
+during cleanup.
+
+`invoke_a32_jni_on_unload` targets one exact already-loaded dependency-graph
+object. It builds that object's bounded symbol index and resolves
+`JNI_OnUnload` only inside the target object; dependencies and global scope
+never satisfy a missing symbol. The resolved symbol must be a non-null STT_FUNC
+with valid ARM/Thumb entry alignment.
+
+Execution uses r0 for the configured logical JavaVM address, r1=null, a
+caller-owned aligned stack, stop PC, instruction ceiling, and service-call
+ceiling. Optional lifecycle provenance is scoped to the exact object for the
+duration of the call and restored on every return.
+
+The entrypoint returns void, so success is bounded service-aware execution that
+reaches the caller stop PC; no JNI version result is interpreted. Invalid
+options/objects/functions and memory, CPU, service, suspension, or instruction
+failures remain explicit.
+
+This slice exposes explicit invocation only. Automatic invocation is not tied
+to generic ELF `dlclose`: JNI library unload is a VM/class-loader lifecycle
+concern and requires a separate ownership/ordering contract.

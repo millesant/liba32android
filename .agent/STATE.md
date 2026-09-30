@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- next evidence-backed JNI seam — inspect the supplied VLC ARMv7 artifact and
-  select only a directly observed, bounded lifecycle or call boundary; no
-  unsupported JNI API is preselected.
+- next evidence-backed JNI seam — explicit JNI_OnUnload is now validated;
+  continue artifact/spec-driven discovery without equating generic ELF dlclose
+  with VM/class-loader native-library unload.
 
 ## Phase
 
@@ -266,3 +266,14 @@ The bounded weak-global-reference slice is DONE at
 separately from strong local/global liveness, weak-only identities cannot seed
 NewGlobalRef, and pending-exception cleanup preserves weak-owned identities.
 All 11 required exact-head checks passed.
+
+The bounded JNI_OnUnload invocation slice is DONE at
+`c599cd09b19847b7366b0ee21cd839ed569276bd`. Supplied VLC ARMv7 `libmla.so` and `libvlcjni.so` export real
+JNI_OnUnload hooks; the latter uses JavaVM GetEnv and JNIEnv DeleteGlobalRef
+during cleanup. The runtime now resolves and executes the hook from one exact
+loaded object with bounded ARM/Thumb service-aware execution and no return
+version contract. All 11 required exact-head checks passed.
+
+Automatic JNI_OnUnload triggering remains separate. JNI unload belongs to the
+VM/class-loader library lifecycle, so generic final ELF handle release is not
+treated as sufficient evidence for invocation.
