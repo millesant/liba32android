@@ -26,12 +26,13 @@ The first registration, observed member-ID, bounded JavaVM attach/detach,
 strong/local-reference, seeded GetArrayLength, GetStaticIntField,
 modified-UTF-8 string, jlong-array, object-array, instance-long-field,
 ThrowNew pending-exception, CallVoidMethodV, raw CallVoidMethod, seeded
-byte-array element lease, GetIntField, and ExceptionOccurred/ExceptionClear
-steps are complete. The next JNI slice will be selected only after another
-direct scan of the supplied ARMv7 artifacts:
+byte-array element lease, GetIntField, ExceptionOccurred/ExceptionClear, and
+NewObjectV steps are complete. The next JNI slice will be selected only after
+another direct scan of the supplied ARMv7 artifacts:
 
-1. next unsupported JNI table entry with direct machine-code evidence from the
-   supplied VLC/FMOD binaries;
+1. next unsupported JNI table entry with direct machine-code evidence and a
+   coherent bounded lifetime/state contract from the supplied VLC/FMOD
+   binaries;
 2. remaining reference lifetime, including weak/local-frame behavior when
    balanced evidence exists;
 3. object construction and broader method invocation / exception APIs;

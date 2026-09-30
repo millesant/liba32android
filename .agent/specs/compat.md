@@ -1513,3 +1513,29 @@ reference ledger.
 ExceptionCheck, ExceptionDescribe, Java stack traces, Java-frame unwinding,
 automatic pending-exception gating of unrelated JNI calls, and framework
 exception behavior remain separate slices.
+
+## L32-C053 — ARM32 JNI bounded NewObjectV bridge
+
+Supplied ARMv7 `libmla.so` machine code from the weak C++
+`_JNIEnv::NewObject(_jclass*, _jmethodID*, ...)` wrapper identifies JNIEnv
+`NewObjectV` at slot 29 / byte offset `0x74`. The wrapper constructs an
+ARM32 `va_list` and forwards JNIEnv, jclass, jmethodID, and that `va_list`
+in r0-r3. Raw `NewObject` slot 28 and `NewObjectA` slot 30 remain null in
+this slice.
+
+`NewObjectV` requires the exact configured JNIEnv, an attached context, a
+currently live logical jclass, an existing InstanceMethod ID owned by that
+exact class and named `<init>`, a valid void-return method descriptor, and
+the existing embedding-owned method-call bridge. Constructor arguments reuse
+the bounded descriptor / ARM32 `va_list` decoder accepted for
+`CallVoidMethodV`; every non-null reference argument must be a live logical
+identity.
+
+The embedding bridge may return one fresh nonzero logical jobject handle. The
+registry rejects collisions or invalid identities and creates exactly one local
+reference for an accepted result. No host object pointer is published to the
+guest.
+
+Raw `NewObject`, `NewObjectA`, Java heap/object layout, class
+assignability/inheritance, constructor bytecode execution, and framework object
+behavior remain separate slices.

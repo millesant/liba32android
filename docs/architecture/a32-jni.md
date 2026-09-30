@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: ExceptionOccurred/ExceptionClear validated; evidence-backed NewObjectV in progress
+Status: ExceptionOccurred/ExceptionClear and evidence-backed NewObjectV validated
 
 ## Goal
 
@@ -27,9 +27,12 @@ entries include:
 
 - `FindClass` — slot 6 / byte offset `0x18`;
 - `ThrowNew` — slot 14 / byte offset `0x38`;
+- `ExceptionOccurred` — slot 15 / byte offset `0x3c`;
+- `ExceptionClear` — slot 17 / byte offset `0x44`;
 - `NewGlobalRef` — slot 21 / byte offset `0x54`;
 - `DeleteGlobalRef` — slot 22 / byte offset `0x58`;
 - `DeleteLocalRef` — slot 23 / byte offset `0x5c`;
+- `NewObjectV` — slot 29 / byte offset `0x74`;
 - `GetMethodID` — slot 33 / byte offset `0x84`;
 - `CallVoidMethod` — slot 61 / byte offset `0xf4`;
 - `CallVoidMethodV` — slot 62 / byte offset `0xf8`;

@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-new-object-v` — ACTIVE; add the supplied ARMv7
-  libmla-evidenced NewObjectV slot with bounded constructor argument decoding
-  and an embedding-owned fresh logical jobject result.
+- evidence-driven JNI continuation — scan the supplied ARMv7 VLC/FMOD
+  artifacts for the next unsupported JNI table entry with a coherent bounded
+  lifetime/state contract.
 
 ## Phase
 
@@ -220,4 +220,12 @@ ThrowNew now reserves a bounded logical pending-exception identity;
 ExceptionOccurred creates a local reference to that exact identity without
 clearing pending state, and ExceptionClear preserves already returned
 references while reclaiming an unobserved zero-reference pending identity.
+All 11 required exact-head checks passed.
+
+The bounded NewObjectV slice is DONE at
+`eb676dda5eac4682d3ce29c488df63ef0be3ed04`. Supplied ARMv7
+`libmla.so` proved JNIEnv slot 29 / `0x74`; the existing bounded
+descriptor/`va_list` decoder feeds an embedding-owned constructor boundary
+which may return one fresh logical jobject identity, accepted with exactly one
+local reference. Raw NewObject slot 28 and NewObjectA slot 30 remain null.
 All 11 required exact-head checks passed.

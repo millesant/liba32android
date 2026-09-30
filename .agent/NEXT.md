@@ -2,20 +2,24 @@
 
 ## Active JNI track
 
-Continue `post-roadmap-a32-jni-new-object-v` from validated exception-state
-revision `629566d175f03d209d0f90ed702fda580c98f1e1`.
+Start from validated NewObjectV revision
+`eb676dda5eac4682d3ce29c488df63ef0be3ed04`.
 
-Supplied ARMv7 `libmla.so`
-(`sha256:4ad00d934ea348d535ef35581c41d778abd4919790e32a8c8fc741b22db08962`)
-contains a weak C++ `_JNIEnv::NewObject(...)` wrapper that constructs a
-`va_list` and loads JNIEnv offset `0x74`, slot 29 (`NewObjectV`).
+Scan the supplied ARMv7 VLC/FMOD artifacts for the next unsupported JNIEnv or
+JavaVM table load. Record the exact artifact, symbol/callsite, byte offset,
+derived table slot, and ARM32 argument/return convention before mutation.
 
-Keep this slice bounded to exact slot 29, existing constructor method metadata,
-the accepted descriptor/`va_list` decoder, and a caller-owned fresh logical
-jobject result with one local reference. Leave raw NewObject/NewObjectA, Java
-heap layout, inheritance/assignability, and constructor bytecode separate.
+A direct `libmla.so` wrapper already proves `NewWeakGlobalRef` at JNIEnv
+slot 226 / offset `0x388`, but no matching `DeleteWeakGlobalRef` evidence
+was found in the current scan. Do not open a weak-reference lifetime slice from
+that unbalanced observation alone; prefer another evidenced seam with a
+coherent creation/use/release contract, or obtain balanced weak-reference
+evidence first.
+
+Do not infer support from table adjacency.
 
 ## Validation
 
-Run focused host coverage first, then exact-head checks. After terminal success,
-leave CI and converge evidence/state.
+Open one bounded change for the selected seam, add focused host coverage first,
+then use exact-head checks. After terminal success, leave CI and converge
+evidence/state.

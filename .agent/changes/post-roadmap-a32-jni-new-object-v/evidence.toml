@@ -13,8 +13,8 @@ limitations = "This evidence does not prove raw NewObject slot 28, NewObjectA sl
 [[evidence]]
 id = "focused-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host regressions prove exact NewObjectV publication, bounded constructor decoding, and fresh logical local-object identity behavior."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending exact-head execution."
+source = "GitHub exact-head checks at eb676dda5eac4682d3ce29c488df63ef0be3ed04"
+result = "All 11 required exact-head checks concluded success, including Linux A32 smoke check 109842070906 and ARM32 JNI registration integration check 109842070597."
+limitations = "The validated surface is NewObjectV only; raw NewObject, NewObjectA, Java heap/object layout, inheritance/class assignability, constructor bytecode execution, and framework behavior remain outside this slice."
