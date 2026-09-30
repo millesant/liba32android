@@ -31,6 +31,7 @@ constexpr std::size_t kExceptionClearSlot = 17U;
 constexpr std::size_t kNewGlobalRefSlot = 21U;
 constexpr std::size_t kDeleteGlobalRefSlot = 22U;
 constexpr std::size_t kDeleteLocalRefSlot = 23U;
+constexpr std::size_t kNewObjectVSlot = 29U;
 constexpr std::size_t kGetMethodIdSlot = 33U;
 constexpr std::size_t kCallVoidMethodSlot = 61U;
 constexpr std::size_t kCallVoidMethodVSlot = 62U;
@@ -1559,7 +1560,7 @@ bool A32JniVmService::layout_valid() const noexcept {
             kA32JniHardMaxByteArrayElements) {
         return false;
     }
-    const std::array<AddressRange, 40> ranges{{
+    const std::array<AddressRange, 41> ranges{{
         {layout_.java_vm_address, kJavaVmBytes},
         {layout_.invoke_table_address, kInvokeTableBytes},
         {layout_.jni_env_address, kJniEnvBytes},
@@ -1603,6 +1604,7 @@ bool A32JniVmService::layout_valid() const noexcept {
         {layout_.get_int_field_stub_address, kServiceStubBytes},
         {layout_.exception_occurred_stub_address, kServiceStubBytes},
         {layout_.exception_clear_stub_address, kServiceStubBytes},
+        {layout_.new_object_v_stub_address, kServiceStubBytes},
     }};
 
     for (const AddressRange& range : ranges) {
@@ -1629,7 +1631,7 @@ A32JniVmInstallResult A32JniVmService::install(
         return {.error = A32JniVmInstallError::InvalidLayout};
     }
 
-    std::array<InstallRegion, 37> regions{{
+    std::array<InstallRegion, 38> regions{{
         {.address = layout_.java_vm_address, .size = kJavaVmBytes},
         {.address = layout_.invoke_table_address,
          .size = kInvokeTableBytes},
@@ -1702,6 +1704,8 @@ A32JniVmInstallResult A32JniVmService::install(
          .size = kServiceStubBytes},
         {.address = layout_.exception_clear_stub_address,
          .size = kServiceStubBytes},
+        {.address = layout_.new_object_v_stub_address,
+         .size = kServiceStubBytes},
     }};
 
     write_u32(
@@ -1752,6 +1756,10 @@ A32JniVmInstallResult A32JniVmService::install(
         regions[3].desired,
         kDeleteLocalRefSlot * 4U,
         layout_.delete_local_ref_stub_address);
+    write_u32(
+        regions[3].desired,
+        kNewObjectVSlot * 4U,
+        layout_.new_object_v_stub_address);
     write_u32(
         regions[3].desired,
         kGetMethodIdSlot * 4U,
@@ -1944,6 +1952,9 @@ A32JniVmInstallResult A32JniVmService::install(
     write_service_stub(
         regions[36].desired,
         kA32JniExceptionClearSvcImmediate);
+    write_service_stub(
+        regions[37].desired,
+        kA32JniNewObjectVSvcImmediate);
 
     for (InstallRegion& region : regions) {
         if (!memory.read(
@@ -2030,7 +2041,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         svc_immediate == kA32JniCallVoidMethodSvcImmediate ||
         svc_immediate == kA32JniGetIntFieldSvcImmediate ||
         svc_immediate == kA32JniExceptionOccurredSvcImmediate ||
-        svc_immediate == kA32JniExceptionClearSvcImmediate;
+        svc_immediate == kA32JniExceptionClearSvcImmediate ||
+        svc_immediate == kA32JniNewObjectVSvcImmediate;
     if (!known_service) {
         return runtime::A32HostServiceDisposition::Unhandled;
     }
@@ -2603,6 +2615,74 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
         registry_->clear_pending_exception();
         regs[0] = 0U;
+        return runtime::A32HostServiceDisposition::Handled;
+    }
+
+    if (svc_immediate == kA32JniNewObjectVSvcImmediate) {
+        if (registry_ == nullptr ||
+            method_call_bridge_ == nullptr ||
+            !registry_->valid()) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        if (!registry_->contains_class_handle(regs[1])) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        const auto class_counts =
+            registry_->reference_counts(regs[1]);
+        if (!class_counts.has_value() ||
+            (class_counts->local == 0U &&
+             class_counts->global == 0U)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+
+        const A32JniMemberId* found =
+            registry_->find_member_by_handle(regs[2]);
+        if (found == nullptr ||
+            found->kind != A32JniMemberKind::InstanceMethod ||
+            found->class_handle != regs[1] ||
+            found->name != "<init>") {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        const A32JniMemberId constructor = *found;
+
+        std::vector<A32JniValue> arguments;
+        if (!decode_a32_jni_va_arguments(
+                memory,
+                constructor.signature,
+                regs[3],
+                registry_->limits().max_method_arguments,
+                arguments)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        for (const A32JniValue& argument : arguments) {
+            if (argument.kind != A32JniValueKind::Reference ||
+                argument.bits == 0U) {
+                continue;
+            }
+            const auto counts = registry_->reference_counts(
+                static_cast<std::uint32_t>(argument.bits));
+            if (!counts.has_value() ||
+                (counts->local == 0U &&
+                 counts->global == 0U)) {
+                return runtime::A32HostServiceDisposition::Failed;
+            }
+        }
+
+        std::uint32_t object_handle{};
+        if (!method_call_bridge_->new_object(
+                regs[1],
+                constructor,
+                std::span<const A32JniValue>{arguments},
+                object_handle) ||
+            object_handle == 0U) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        if (registry_->add_reference_identity(object_handle) !=
+                A32JniRegistryError::None ||
+            !registry_->retain_local_reference(object_handle)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        regs[0] = object_handle;
         return runtime::A32HostServiceDisposition::Handled;
     }
 

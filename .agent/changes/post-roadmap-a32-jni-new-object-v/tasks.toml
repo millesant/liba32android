@@ -1,0 +1,32 @@
+schema = 1
+change = "post-roadmap-a32-jni-new-object-v"
+
+[[tasks]]
+id = "T001"
+status = "verified"
+depends_on = []
+acceptance = "Record supplied ARMv7 libmla NewObject-to-NewObjectV machine-code evidence and define the bounded constructor bridge contract."
+
+[[tasks]]
+id = "T002"
+status = "implemented"
+depends_on = ["T001"]
+acceptance = "Extend the embedding method-call bridge with an optional fresh-logical-object constructor result."
+
+[[tasks]]
+id = "T003"
+status = "implemented"
+depends_on = ["T002"]
+acceptance = "Publish NewObjectV at exact slot 29 and validate class/constructor/argument state before registering one local object identity."
+
+[[tasks]]
+id = "T004"
+status = "implemented"
+depends_on = ["T003"]
+acceptance = "Add focused host regressions for table/stub bytes, decoding, returned identity, invalid class/method/memory state, duplicate handles, and missing bridge."
+
+[[tasks]]
+id = "T005"
+status = "active"
+depends_on = ["T004"]
+acceptance = "Converge accepted spec/architecture/state/evidence and pass exact-head validation."

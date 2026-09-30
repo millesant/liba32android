@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: raw CallVoidMethod, byte-array element leases, GetIntField, and ExceptionOccurred/ExceptionClear validated
+Status: ExceptionOccurred/ExceptionClear validated; evidence-backed NewObjectV in progress
 
 ## Goal
 
@@ -610,3 +610,20 @@ unobserved zero-reference pending identity is reclaimed when cleared.
 
 No host Throwable pointer, Java stack trace, unwinding, ExceptionCheck,
 ExceptionDescribe, or automatic global JNI exception gating is introduced.
+
+## NewObjectV construction bridge
+
+The supplied ARMv7 `libmla.so` C++ `_JNIEnv::NewObject(...)` wrapper
+constructs a `va_list` and loads JNIEnv byte offset `0x74`, slot 29, before
+the indirect call. That is the ABI's `NewObjectV` entry; raw NewObject slot 28
+remains outside this slice.
+
+The existing bounded JNI descriptor/`va_list` decoder is reused for constructor
+arguments. The service requires a live logical jclass, an InstanceMethod ID
+owned by that exact class, constructor name `<init>`, a void-return descriptor,
+and the existing embedding-owned method-call bridge. The bridge may return a
+fresh nonzero logical jobject handle; the registry accepts it only if it is not
+already an identity, then creates exactly one local reference.
+
+No host object pointer, Java heap layout, inheritance/assignability engine,
+constructor bytecode execution, raw NewObject, or NewObjectA is introduced.

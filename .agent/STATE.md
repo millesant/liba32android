@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- evidence-driven JNI continuation — scan the supplied ARMv7 VLC/FMOD
-  artifacts for the next unsupported JNI table entry before opening another
-  bounded compatibility slice.
+- `post-roadmap-a32-jni-new-object-v` — ACTIVE; add the supplied ARMv7
+  libmla-evidenced NewObjectV slot with bounded constructor argument decoding
+  and an embedding-owned fresh logical jobject result.
 
 ## Phase
 

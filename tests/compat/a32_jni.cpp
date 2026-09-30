@@ -63,6 +63,7 @@ using liba32android::compat::kA32JniCallVoidMethodSvcImmediate;
 using liba32android::compat::kA32JniGetIntFieldSvcImmediate;
 using liba32android::compat::kA32JniExceptionOccurredSvcImmediate;
 using liba32android::compat::kA32JniExceptionClearSvcImmediate;
+using liba32android::compat::kA32JniNewObjectVSvcImmediate;
 using liba32android::compat::kA32JniOk;
 using liba32android::compat::kA32JniRegisterNativesSvcImmediate;
 using liba32android::compat::kA32JniVersion11;
@@ -156,6 +157,12 @@ public:
     std::uint32_t method_handle{};
     std::string signature;
     std::vector<A32JniValue> arguments;
+    bool accept_new_objects{true};
+    std::uint32_t next_object_handle{0x4456f000U};
+    std::size_t construction_calls{};
+    std::uint32_t construction_class{};
+    std::uint32_t constructor_handle{};
+    std::vector<A32JniValue> construction_arguments;
 
     bool call_void_method(
         std::uint32_t next_receiver,
@@ -169,6 +176,21 @@ public:
             next_arguments.begin(),
             next_arguments.end());
         return accept_calls;
+    }
+
+    bool new_object(
+        std::uint32_t class_handle,
+        const liba32android::compat::A32JniMemberId& constructor,
+        std::span<const A32JniValue> next_arguments,
+        std::uint32_t& object_handle) override {
+        ++construction_calls;
+        construction_class = class_handle;
+        constructor_handle = constructor.handle;
+        construction_arguments.assign(
+            next_arguments.begin(),
+            next_arguments.end());
+        object_handle = next_object_handle;
+        return accept_new_objects;
     }
 };
 
@@ -208,6 +230,7 @@ A32JniVmLayout layout() {
         .get_int_field_stub_address = 0x1bc0U,
         .exception_occurred_stub_address = 0x1be0U,
         .exception_clear_stub_address = 0x1c40U,
+        .new_object_v_stub_address = 0x1c60U,
         .get_long_field_stub_address = 0x1ae0U,
         .set_long_field_stub_address = 0x1b00U,
         .throw_new_stub_address = 0x1b20U,
@@ -282,6 +305,8 @@ int test_vm_install_and_getenv() {
             configured.delete_global_ref_stub_address ||
         read_u32(memory, configured.native_table_address + 23U * 4U) !=
             configured.delete_local_ref_stub_address ||
+        read_u32(memory, configured.native_table_address + 29U * 4U) !=
+            configured.new_object_v_stub_address ||
         read_u32(memory, configured.native_table_address + 33U * 4U) !=
             configured.get_method_id_stub_address ||
         read_u32(memory, configured.native_table_address + 61U * 4U) !=
@@ -349,6 +374,7 @@ int test_vm_install_and_getenv() {
             index == 21U ||
             index == 22U ||
             index == 23U ||
+            index == 29U ||
             index == 33U ||
             index == 61U ||
             index == 62U ||
@@ -381,7 +407,7 @@ int test_vm_install_and_getenv() {
         }
     }
 
-    constexpr std::array<std::array<std::uint8_t, 8>, 33> expected_stubs{{
+    constexpr std::array<std::array<std::uint8_t, 8>, 34> expected_stubs{{
         {{0xD7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xD8U, 0x00U, 0x00U, 0xEFU,
@@ -448,8 +474,10 @@ int test_vm_install_and_getenv() {
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
         {{0xF7U, 0x00U, 0x00U, 0xEFU,
           0x1EU, 0xFFU, 0x2FU, 0xE1U}},
+        {{0xF8U, 0x00U, 0x00U, 0xEFU,
+          0x1EU, 0xFFU, 0x2FU, 0xE1U}},
     }};
-    const std::array<std::uint32_t, 33> stub_addresses{{
+    const std::array<std::uint32_t, 34> stub_addresses{{
         configured.get_env_stub_address,
         configured.find_class_stub_address,
         configured.register_natives_stub_address,
@@ -483,6 +511,7 @@ int test_vm_install_and_getenv() {
         configured.get_int_field_stub_address,
         configured.exception_occurred_stub_address,
         configured.exception_clear_stub_address,
+        configured.new_object_v_stub_address,
     }};
     for (std::size_t index = 0U; index < stub_addresses.size(); ++index) {
         std::array<std::uint8_t, 8> observed_stub{};
@@ -673,7 +702,7 @@ int test_vm_install_and_getenv() {
     regs = {};
     if (service.handle(
             memory,
-            kA32JniExceptionClearSvcImmediate + 1U,
+            kA32JniNewObjectVSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
@@ -2600,6 +2629,178 @@ int test_throw_new_pending_exception() {
     return 0;
 }
 
+int test_new_object_v_bridge() {
+    LinearGuestMemory memory{0x2000U, 0x1000U};
+    const A32JniRegistryLimits limits{
+        .max_classes = 2U,
+        .max_registered_methods = 2U,
+        .max_methods_per_registration = 2U,
+        .max_member_ids = 4U,
+        .max_reference_handles = 8U,
+        .max_reference_count_per_handle = 4U,
+        .max_arrays = 2U,
+        .max_long_array_elements = 4U,
+        .max_byte_array_elements = 4U,
+        .max_object_array_elements = 4U,
+        .max_strings = 2U,
+        .max_modified_utf8_bytes = 8U,
+        .max_exception_message_bytes = 8U,
+        .max_class_name_bytes = 64U,
+        .max_method_name_bytes = 32U,
+        .max_signature_bytes = 64U,
+        .max_method_arguments = 4U,
+    };
+    A32JniClassRegistry registry{limits};
+    constexpr std::uint32_t kClass = 0x44550000U;
+    constexpr std::uint32_t kDeadClass = 0x44550004U;
+    constexpr std::uint32_t kReference = 0x44560010U;
+    constexpr std::uint32_t kConstructor = 0x44551000U;
+    constexpr std::uint32_t kNotConstructor = 0x44551004U;
+    if (registry.add_class(kClass, "org/videolan/Fixture") !=
+            A32JniRegistryError::None ||
+        registry.add_class(kDeadClass, "org/videolan/DeadFixture") !=
+            A32JniRegistryError::None ||
+        !registry.retain_local_reference(kClass) ||
+        registry.add_reference_identity(kReference) !=
+            A32JniRegistryError::None ||
+        !registry.retain_local_reference(kReference) ||
+        registry.add_member(
+            kClass,
+            A32JniMemberKind::InstanceMethod,
+            kConstructor,
+            "<init>",
+            "(ILjava/lang/Object;)V") != A32JniRegistryError::None ||
+        registry.add_member(
+            kClass,
+            A32JniMemberKind::InstanceMethod,
+            kNotConstructor,
+            "notConstructor",
+            "()V") != A32JniRegistryError::None) {
+        return fail("could not seed JNI NewObjectV state");
+    }
+
+    constexpr std::uint32_t kArgs = 0x1800U;
+    if (!write_u32(memory, kArgs, 42U) ||
+        !write_u32(memory, kArgs + 4U, kReference)) {
+        return fail("could not stage JNI NewObjectV arguments");
+    }
+
+    const auto configured = layout();
+    RecordingMethodCallBridge bridge;
+    bridge.next_object_handle = 0x44560020U;
+    A32JniVmService service{configured, &registry, &bridge};
+    if (!service.install(memory)) {
+        return fail("JNI NewObjectV service did not install");
+    }
+
+    std::uint32_t cpsr{};
+    std::array<std::uint32_t, 16> regs{};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    regs[2] = kConstructor;
+    regs[3] = kArgs;
+    if (service.handle(
+            memory,
+            kA32JniNewObjectVSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != bridge.next_object_handle ||
+        bridge.construction_calls != 1U ||
+        bridge.construction_class != kClass ||
+        bridge.constructor_handle != kConstructor ||
+        bridge.construction_arguments.size() != 2U ||
+        bridge.construction_arguments[0].kind != A32JniValueKind::Int ||
+        bridge.construction_arguments[0].bits != 42U ||
+        bridge.construction_arguments[1].kind !=
+            A32JniValueKind::Reference ||
+        bridge.construction_arguments[1].bits != kReference) {
+        return fail("JNI NewObjectV decoded/bridged wrong constructor call");
+    }
+    const auto created_counts =
+        registry.reference_counts(bridge.next_object_handle);
+    if (!created_counts.has_value() ||
+        created_counts->local != 1U ||
+        created_counts->global != 0U) {
+        return fail("JNI NewObjectV did not create local object identity");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    regs[2] = kNotConstructor;
+    regs[3] = kArgs;
+    if (service.handle(
+            memory,
+            kA32JniNewObjectVSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        bridge.construction_calls != 1U) {
+        return fail("JNI NewObjectV accepted non-constructor method");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kDeadClass;
+    regs[2] = kConstructor;
+    regs[3] = kArgs;
+    if (service.handle(
+            memory,
+            kA32JniNewObjectVSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        bridge.construction_calls != 1U) {
+        return fail("JNI NewObjectV accepted dead class reference");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    regs[2] = kConstructor;
+    regs[3] = 0x3000U;
+    if (service.handle(
+            memory,
+            kA32JniNewObjectVSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        bridge.construction_calls != 1U) {
+        return fail("JNI NewObjectV accepted unreadable va_list");
+    }
+
+    bridge.next_object_handle = kReference;
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    regs[2] = kConstructor;
+    regs[3] = kArgs;
+    if (service.handle(
+            memory,
+            kA32JniNewObjectVSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed ||
+        bridge.construction_calls != 2U) {
+        return fail("JNI NewObjectV accepted duplicate returned identity");
+    }
+
+    A32JniVmService no_bridge{configured, &registry};
+    if (!no_bridge.install(memory)) {
+        return fail("JNI NewObjectV no-bridge service did not install");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    regs[2] = kConstructor;
+    regs[3] = kArgs;
+    if (no_bridge.handle(
+            memory,
+            kA32JniNewObjectVSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("JNI NewObjectV accepted missing construction bridge");
+    }
+
+    return 0;
+}
+
 int test_call_void_method_v_bridge() {
     LinearGuestMemory memory{0x2000U, 0x1000U};
     const A32JniRegistryLimits limits{
@@ -3739,6 +3940,10 @@ int main() {
         return status;
     }
     if (const int status = test_throw_new_pending_exception();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_new_object_v_bridge();
         status != 0) {
         return status;
     }

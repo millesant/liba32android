@@ -33,6 +33,7 @@
 #define LIBA32ANDROID_A32_JNI_GET_INT_FIELD_SVC 0xF5
 #define LIBA32ANDROID_A32_JNI_EXCEPTION_OCCURRED_SVC 0xF6
 #define LIBA32ANDROID_A32_JNI_EXCEPTION_CLEAR_SVC 0xF7
+#define LIBA32ANDROID_A32_JNI_NEW_OBJECT_V_SVC 0xF8
 
 #ifdef __cplusplus
 
@@ -119,6 +120,8 @@ inline constexpr std::uint32_t kA32JniExceptionOccurredSvcImmediate =
     LIBA32ANDROID_A32_JNI_EXCEPTION_OCCURRED_SVC;
 inline constexpr std::uint32_t kA32JniExceptionClearSvcImmediate =
     LIBA32ANDROID_A32_JNI_EXCEPTION_CLEAR_SVC;
+inline constexpr std::uint32_t kA32JniNewObjectVSvcImmediate =
+    LIBA32ANDROID_A32_JNI_NEW_OBJECT_V_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -259,6 +262,17 @@ public:
         std::uint32_t receiver,
         const A32JniMemberId& method,
         std::span<const A32JniValue> arguments) = 0;
+
+    // Optional constructor boundary. A successful implementation returns a
+    // fresh nonzero logical jobject handle in object_handle.
+    [[nodiscard]] virtual bool new_object(
+        std::uint32_t,
+        const A32JniMemberId&,
+        std::span<const A32JniValue>,
+        std::uint32_t& object_handle) {
+        object_handle = 0U;
+        return false;
+    }
 };
 
 struct A32JniReferenceCounts {
@@ -535,6 +549,7 @@ struct A32JniVmLayout {
     std::uint32_t get_int_field_stub_address{};
     std::uint32_t exception_occurred_stub_address{};
     std::uint32_t exception_clear_stub_address{};
+    std::uint32_t new_object_v_stub_address{};
     std::uint32_t get_long_field_stub_address{};
     std::uint32_t set_long_field_stub_address{};
     std::uint32_t throw_new_stub_address{};

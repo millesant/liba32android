@@ -247,6 +247,7 @@ int main(int argc, char** argv) {
         .get_int_field_stub_address = *stub_page + 0x3c0U,
         .exception_occurred_stub_address = *stub_page + 0x3e0U,
         .exception_clear_stub_address = *stub_page + 0x400U,
+        .new_object_v_stub_address = *stub_page + 0x420U,
         .get_long_field_stub_address = *stub_page + 0x2e0U,
         .set_long_field_stub_address = *stub_page + 0x300U,
         .throw_new_stub_address = *stub_page + 0x320U,

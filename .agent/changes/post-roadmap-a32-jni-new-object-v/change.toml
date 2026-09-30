@@ -1,0 +1,29 @@
+schema = 1
+id = "post-roadmap-a32-jni-new-object-v"
+kind = "feature"
+size = "S2"
+status = "active"
+workflow = "feature"
+control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
+base_revision = "629566d175f03d209d0f90ed702fda580c98f1e1"
+acceptance = [
+  "supplied ARMv7 libmla evidence records the C++ NewObject wrapper loading JNIEnv slot 29 / offset 0x74 and forwarding a constructed va_list to NewObjectV",
+  "the JNIEnv table publishes only evidence-backed NewObjectV at slot 29 with one private ARM service stub while raw NewObject slot 28 remains null",
+  "NewObjectV requires an attached exact JNIEnv, a live logical jclass, an existing InstanceMethod ID owned by that class and named <init>, a valid void-return descriptor, and the existing caller-owned method-call bridge",
+  "bounded descriptor/va_list decoding and logical reference-argument validation are reused from CallVoidMethodV",
+  "the embedding bridge returns a fresh nonzero logical jobject handle; the registry rejects duplicate/invalid identities and creates exactly one local reference for an accepted result",
+  "focused regressions cover exact slot/stub publication, constructor argument decoding, returned local identity, non-constructor IDs, dead class state, unreadable va_list memory, duplicate returned handles, and missing bridge",
+  "raw NewObject, NewObjectA, Java heap/object layout, inheritance/class assignability, constructor bytecode execution, and framework behavior remain outside this slice",
+  "accepted spec/architecture/state/evidence converge and exact-head required checks pass"
+]
+
+[convergence]
+requirements = "aligned"
+specs = "aligned"
+implementation = "aligned"
+tests = "aligned"
+documentation = "aligned"
+decisions = "not_applicable"
+tasks = "aligned"
+evidence = "pending"
+repository = "aligned"

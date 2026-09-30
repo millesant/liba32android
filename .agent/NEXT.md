@@ -2,20 +2,20 @@
 
 ## Active JNI track
 
-Start from validated ExceptionOccurred/ExceptionClear revision
-`8490e1b059792c5cbaa34def21c13356536d9db7`.
+Continue `post-roadmap-a32-jni-new-object-v` from validated exception-state
+revision `629566d175f03d209d0f90ed702fda580c98f1e1`.
 
-Scan the supplied ARMv7 VLC/FMOD artifacts for the next unsupported JNIEnv or
-JavaVM table load. Prefer a callsite with a narrow state contract that composes
-with the accepted logical-reference, member-ID, method-call, array, field, and
-pending-exception models.
+Supplied ARMv7 `libmla.so`
+(`sha256:4ad00d934ea348d535ef35581c41d778abd4919790e32a8c8fc741b22db08962`)
+contains a weak C++ `_JNIEnv::NewObject(...)` wrapper that constructs a
+`va_list` and loads JNIEnv offset `0x74`, slot 29 (`NewObjectV`).
 
-Do not select a JNI family from table adjacency alone. Record the exact binary,
-symbol/callsite, native-table byte offset, derived slot, and ARM32 argument /
-return convention before mutation.
+Keep this slice bounded to exact slot 29, existing constructor method metadata,
+the accepted descriptor/`va_list` decoder, and a caller-owned fresh logical
+jobject result with one local reference. Leave raw NewObject/NewObjectA, Java
+heap layout, inheritance/assignability, and constructor bytecode separate.
 
 ## Validation
 
-Open one bounded change for the selected evidenced seam, add focused host
-coverage first, then use exact-head checks. After terminal CI success, leave CI
-and converge the accepted state.
+Run focused host coverage first, then exact-head checks. After terminal success,
+leave CI and converge evidence/state.
