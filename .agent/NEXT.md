@@ -2,21 +2,28 @@
 
 ## Active JNI track
 
-Continue `post-roadmap-a32-jni-call-static-object-method` from validated raw
-CallStaticVoidMethod revision `d660301b87f4ba9d91b56b129261255b860312b8`.
+Open `post-roadmap-a32-jni-weak-global-refs` from validated raw
+CallStaticObjectMethod revision `e3423411f216203feaca107e7254033f90e4284f`.
 
-The same supplied VLC ARMv7 `libvlcjni.so` directly exposes raw
-`CallStaticObjectMethod` at JNIEnv slot 114 / byte offset `0x1c8`.
+Balanced evidence exists in the supplied VLC ARMv7 `libvlcjni.so`
+(`sha256:e76e20218203548bb88f5ef39a9aad6b2fe8efcbe27175e6fcc013b5c779b816`):
 
-This slice reuses the exact StaticMethod identity and raw r3-plus-stack AAPCS32
-decoder. The bridge may return null or one pre-existing logical JNI reference;
-a non-null result must receive a local reference before guest exposure.
+- `VLCJniObject_newFromLibVlc` loads JNIEnv byte offset `0x388`, slot 226
+  (`NewWeakGlobalRef`), and stores the returned weak handle;
+- `VLCJniObject_release` loads byte offset `0x38c`, slot 227
+  (`DeleteWeakGlobalRef`), and releases that stored handle.
 
-Keep V/A variants, other static return types, Java class initialization and
-dispatch, framework object creation, and broad Java heap modeling separate.
+Keep the pair together. Extend the native table only as far as required by
+slots 226/227. Define weak ownership separately from local/global strong
+liveness: creating a weak reference must not make an otherwise dead referent
+strongly live, and deleting the weak reference must be deterministic.
+
+Before mutation, settle the bounded alias/identity contract for a weak handle
+and add focused lifecycle tests. Do not infer GC, resurrection,
+NewLocalRef-from-jweak, IsSameObject, local frames, or full Java heap reachability
+from this evidence.
 
 ## Validation
 
-Use exact-head commit checks after the focused host regression is committed.
-Escalate only failing checks. After terminal success, leave CI and converge the
-change state.
+Implement focused host coverage first, then use exact-head commit checks once.
+After terminal success, leave CI and converge state.

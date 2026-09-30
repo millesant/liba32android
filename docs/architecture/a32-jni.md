@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: raw CallStaticVoidMethod validated; raw CallStaticObjectMethod in progress
+Status: raw CallStaticVoidMethod and raw CallStaticObjectMethod validated
 
 ## Goal
 

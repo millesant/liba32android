@@ -13,8 +13,8 @@ limitations = "This proves raw CallStaticObjectMethod only, not V/A variants or 
 [[evidence]]
 id = "focused-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host regressions prove exact slot/stub publication, object-return descriptor decoding, static identity validation, and local returned-reference retention."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending exact-head execution."
+source = "GitHub exact-head checks at e3423411f216203feaca107e7254033f90e4284f"
+result = "All 11 required exact-head checks concluded success, including Linux A32 smoke, ARM32 JNI registration integration, Android cross-build, and public repository/API validation."
+limitations = "The validated surface is raw CallStaticObjectMethod only; V/A variants, other static return families, Java class initialization/dispatch, and framework object creation remain outside this slice."

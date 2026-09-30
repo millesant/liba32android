@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-call-static-object-method` — ACTIVE; add raw
-  CallStaticObjectMethod slot 114 with exact StaticMethod identity, the accepted
-  raw AAPCS32 decoder, and bounded logical jobject return retention.
+- `post-roadmap-a32-jni-weak-global-refs` — NEXT; use balanced supplied VLC
+  ARMv7 NewWeakGlobalRef/DeleteWeakGlobalRef evidence to define bounded weak
+  reference lifetime without treating weak ownership as strong liveness.
 
 ## Phase
 
@@ -248,3 +248,15 @@ The bounded raw CallStaticVoidMethod slice is DONE at
 requires live exact jclass/StaticMethod/reference state, and crosses the
 caller-owned synchronous static-void bridge. All 11 required exact-head checks
 passed.
+
+The bounded raw CallStaticObjectMethod slice is DONE at
+`e3423411f216203feaca107e7254033f90e4284f`. Supplied VLC ARMv7 `libvlcjni.so` proved JNIEnv slot 114 /
+`0x1c8`; object/array return descriptors now share the bounded raw decoder,
+and non-null bridge results must be pre-existing logical identities that gain
+one local reference. All 11 required exact-head checks passed.
+
+The next balanced reference-lifetime evidence is also in supplied VLC ARMv7
+`libvlcjni.so`: `VLCJniObject_newFromLibVlc` loads JNIEnv offset
+`0x388` (slot 226, NewWeakGlobalRef), while `VLCJniObject_release` loads
+`0x38c` (slot 227, DeleteWeakGlobalRef). This pair is intentionally kept as
+one bounded follow-up so weak lifetime is not implemented one-sidedly.

@@ -1582,3 +1582,24 @@ synthesized.
 `CallStaticVoidMethodV/A`, `CallStaticObjectMethod`, return-valued static
 families, Java inheritance/dispatch, and framework behavior remain separate
 evidence-driven slices.
+
+## L32-C056 — ARM32 JNI bounded raw CallStaticObjectMethod bridge
+
+Supplied VLC ARMv7 `libvlcjni.so` directly identifies raw
+`CallStaticObjectMethod` at JNIEnv slot 114 / byte offset `0x1c8`.
+The table publishes that exact entry through one private ARM service stub.
+
+The service requires the exact configured JNIEnv, an attached context, a live
+logical jclass, and an existing StaticMethod ID belonging to that class. The
+accepted raw r3-plus-stack AAPCS32 decoder now distinguishes object/array return
+descriptors from the void-return contract retained by existing void-call and
+constructor paths. Non-null decoded reference arguments must be live.
+
+The caller-owned synchronous bridge may return null or a pre-existing logical
+JNI reference identity. A non-null result must already exist in the registry
+and receives exactly one local reference before guest exposure. Unknown return
+identities fail instead of creating implicit Java heap state.
+
+`CallStaticObjectMethodV/A`, other static return families, Java class
+initialization/dispatch, framework object creation, and broad Java heap
+semantics remain separate evidence-driven slices.
