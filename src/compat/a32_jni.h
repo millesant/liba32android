@@ -36,6 +36,7 @@
 #define LIBA32ANDROID_A32_JNI_NEW_OBJECT_V_SVC 0xF8
 #define LIBA32ANDROID_A32_JNI_GET_STATIC_METHOD_ID_SVC 0xF9
 #define LIBA32ANDROID_A32_JNI_CALL_STATIC_VOID_METHOD_SVC 0xFA
+#define LIBA32ANDROID_A32_JNI_CALL_STATIC_OBJECT_METHOD_SVC 0xFB
 
 #ifdef __cplusplus
 
@@ -128,6 +129,8 @@ inline constexpr std::uint32_t kA32JniGetStaticMethodIdSvcImmediate =
     LIBA32ANDROID_A32_JNI_GET_STATIC_METHOD_ID_SVC;
 inline constexpr std::uint32_t kA32JniCallStaticVoidMethodSvcImmediate =
     LIBA32ANDROID_A32_JNI_CALL_STATIC_VOID_METHOD_SVC;
+inline constexpr std::uint32_t kA32JniCallStaticObjectMethodSvcImmediate =
+    LIBA32ANDROID_A32_JNI_CALL_STATIC_OBJECT_METHOD_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -285,6 +288,18 @@ public:
         std::uint32_t,
         const A32JniMemberId&,
         std::span<const A32JniValue>) {
+        return false;
+    }
+
+    // A successful embedding callback may return null or one pre-existing
+    // logical JNI reference identity. The service retains one local reference
+    // for a non-null returned identity before exposing it to the guest.
+    [[nodiscard]] virtual bool call_static_object_method(
+        std::uint32_t,
+        const A32JniMemberId&,
+        std::span<const A32JniValue>,
+        std::uint32_t& object_handle) {
+        object_handle = 0U;
         return false;
     }
 };
@@ -566,6 +581,7 @@ struct A32JniVmLayout {
     std::uint32_t new_object_v_stub_address{};
     std::uint32_t get_static_method_id_stub_address{};
     std::uint32_t call_static_void_method_stub_address{};
+    std::uint32_t call_static_object_method_stub_address{};
     std::uint32_t get_long_field_stub_address{};
     std::uint32_t set_long_field_stub_address{};
     std::uint32_t throw_new_stub_address{};

@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: NewObjectV, GetStaticMethodID, and raw CallStaticVoidMethod validated
+Status: raw CallStaticVoidMethod validated; raw CallStaticObjectMethod in progress
 
 ## Goal
 
@@ -659,3 +659,18 @@ caller-owned synchronous method-call bridge.
 
 This slice does not publish CallStaticVoidMethodV/A, return-valued static call
 families, Java dispatch/class initialization, or framework behavior.
+
+## Static object method calls
+
+The supplied VLC ARMv7 `libvlcjni.so` directly selects raw
+`CallStaticObjectMethod` at JNIEnv slot 114 / byte offset `0x1c8`.
+The service reuses exact live jclass/StaticMethod validation and the bounded raw
+r3-plus-stack AAPCS32 argument decoder.
+
+The caller-owned synchronous bridge may return null or one pre-existing logical
+JNI reference identity. A non-null identity must already be known to the
+registry and receives one local JNI reference before it is returned in r0.
+Unknown identities fail rather than creating implicit Java heap state.
+
+CallStaticObjectMethodV/A, other return-valued static families, Java class
+initialization/dispatch, and framework object creation remain separate.

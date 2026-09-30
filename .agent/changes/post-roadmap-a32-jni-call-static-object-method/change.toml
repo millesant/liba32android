@@ -1,0 +1,30 @@
+schema = 1
+id = "post-roadmap-a32-jni-call-static-object-method"
+kind = "feature"
+size = "S2"
+status = "active"
+workflow = "feature"
+control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
+base_revision = "d660301b87f4ba9d91b56b129261255b860312b8"
+acceptance = [
+  "supplied VLC ARMv7 libvlcjni evidence records raw CallStaticObjectMethod at JNIEnv slot 114 / offset 0x1c8",
+  "the JNIEnv table publishes exactly slot 114 through one private ARM service stub",
+  "CallStaticObjectMethod requires an attached exact JNIEnv, a live exact logical jclass, an existing StaticMethod ID belonging to that class, and a caller-owned synchronous object-call bridge",
+  "raw descriptor decoding accepts object/array return descriptors while preserving existing void-return validation for prior call families",
+  "non-null decoded reference arguments must be live logical JNI identities",
+  "a null bridge result returns null, while a non-null result must be a pre-existing logical reference identity and gains exactly one local reference before guest exposure",
+  "focused regressions cover table/stub bytes, raw argument decode, object-return descriptor validation, class/method/reference validation, null return, retained return identity, unknown return identity, missing bridge, and bridge failure",
+  "CallStaticObjectMethodV/A, other return-valued static families, Java class initialization/dispatch, and framework object creation remain outside this slice",
+  "accepted spec/architecture/state/evidence converge and exact-head required checks pass"
+]
+
+[convergence]
+requirements = "aligned"
+specs = "aligned"
+implementation = "aligned"
+tests = "aligned"
+documentation = "aligned"
+decisions = "not_applicable"
+tasks = "aligned"
+evidence = "pending"
+repository = "aligned"

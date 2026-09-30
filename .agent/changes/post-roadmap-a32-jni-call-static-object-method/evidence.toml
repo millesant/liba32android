@@ -1,0 +1,20 @@
+schema = 1
+change = "post-roadmap-a32-jni-call-static-object-method"
+
+[[evidence]]
+id = "vlc-libvlcjni-call-static-object-method-slot"
+kind = "artifact"
+status = "observed"
+claim = "Supplied VLC ARMv7 libvlcjni directly calls raw JNIEnv CallStaticObjectMethod."
+source = "docs/research/evidence/arm32-jni-call-static-object-method-entrypoint-2026-09-30.md"
+result = "Repeated VLC ARMv7 callsites load native-table offset 0x1c8 / slot 114 before an indirect static object-return call."
+limitations = "This proves raw CallStaticObjectMethod only, not V/A variants or other return-valued static families."
+
+[[evidence]]
+id = "focused-validation"
+kind = "validation"
+status = "pending"
+claim = "Focused host regressions prove exact slot/stub publication, object-return descriptor decoding, static identity validation, and local returned-reference retention."
+source = "GitHub exact-head checks"
+result = ""
+limitations = "Pending exact-head execution."

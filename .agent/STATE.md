@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- next supplied VLC ARMv7 static-return seam — bound raw
-  CallStaticObjectMethod around exact StaticMethod identity, raw AAPCS32
-  arguments, and logical jobject return lifetime.
+- `post-roadmap-a32-jni-call-static-object-method` — ACTIVE; add raw
+  CallStaticObjectMethod slot 114 with exact StaticMethod identity, the accepted
+  raw AAPCS32 decoder, and bounded logical jobject return retention.
 
 ## Phase
 

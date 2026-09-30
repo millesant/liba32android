@@ -39,6 +39,7 @@ constexpr std::size_t kGetFieldIdSlot = 94U;
 constexpr std::size_t kGetIntFieldSlot = 100U;
 constexpr std::size_t kGetLongFieldSlot = 101U;
 constexpr std::size_t kGetStaticMethodIdSlot = 113U;
+constexpr std::size_t kCallStaticObjectMethodSlot = 114U;
 constexpr std::size_t kSetLongFieldSlot = 110U;
 constexpr std::size_t kCallStaticVoidMethodSlot = 141U;
 constexpr std::size_t kGetStaticFieldIdSlot = 144U;
@@ -317,6 +318,7 @@ template <typename ReadWord, typename ReadDoubleWord>
     std::size_t max_arguments,
     ReadWord& read_word,
     ReadDoubleWord& read_double_word,
+    bool reference_return,
     std::vector<A32JniValue>& output) {
     output.clear();
     if (signature.size() < 3U ||
@@ -444,8 +446,51 @@ template <typename ReadWord, typename ReadDoubleWord>
         return false;
     }
     ++descriptor;
-    return descriptor + 1U == signature.size() &&
-           signature[descriptor] == 'V';
+    if (!reference_return) {
+        return descriptor + 1U == signature.size() &&
+               signature[descriptor] == 'V';
+    }
+    if (descriptor >= signature.size()) {
+        return false;
+    }
+    if (signature[descriptor] == 'L') {
+        ++descriptor;
+        const std::size_t name_begin = descriptor;
+        while (descriptor < signature.size() &&
+               signature[descriptor] != ';') {
+            ++descriptor;
+        }
+        return descriptor > name_begin &&
+               descriptor + 1U == signature.size() &&
+               signature[descriptor] == ';';
+    }
+    if (signature[descriptor] != '[') {
+        return false;
+    }
+    while (descriptor < signature.size() &&
+           signature[descriptor] == '[') {
+        ++descriptor;
+    }
+    if (descriptor >= signature.size()) {
+        return false;
+    }
+    if (signature[descriptor] == 'L') {
+        ++descriptor;
+        const std::size_t name_begin = descriptor;
+        while (descriptor < signature.size() &&
+               signature[descriptor] != ';') {
+            ++descriptor;
+        }
+        return descriptor > name_begin &&
+               descriptor + 1U == signature.size() &&
+               signature[descriptor] == ';';
+    }
+    const char component = signature[descriptor++];
+    return (component == 'Z' || component == 'B' ||
+            component == 'C' || component == 'S' ||
+            component == 'I' || component == 'J' ||
+            component == 'F' || component == 'D') &&
+           descriptor == signature.size();
 }
 
 [[nodiscard]] bool decode_a32_jni_va_arguments(
@@ -453,6 +498,7 @@ template <typename ReadWord, typename ReadDoubleWord>
     std::string_view signature,
     std::uint32_t va_list_address,
     std::size_t max_arguments,
+    bool reference_return,
     std::vector<A32JniValue>& output) {
     std::uint64_t cursor = va_list_address;
     const auto read_word = [&](std::uint32_t& value) {
@@ -499,6 +545,7 @@ template <typename ReadWord, typename ReadDoubleWord>
         max_arguments,
         read_word,
         read_double_word,
+        reference_return,
         output);
 }
 
@@ -508,6 +555,7 @@ template <typename ReadWord, typename ReadDoubleWord>
     std::uint32_t first_variadic_word,
     std::uint32_t stack_address,
     std::size_t max_arguments,
+    bool reference_return,
     std::vector<A32JniValue>& output) {
     bool core_word_available = true;
     std::uint64_t cursor = stack_address;
@@ -563,6 +611,7 @@ template <typename ReadWord, typename ReadDoubleWord>
         max_arguments,
         read_word,
         read_double_word,
+        reference_return,
         output);
 }
 
@@ -1563,7 +1612,7 @@ bool A32JniVmService::layout_valid() const noexcept {
             kA32JniHardMaxByteArrayElements) {
         return false;
     }
-    const std::array<AddressRange, 43> ranges{{
+    const std::array<AddressRange, 44> ranges{{
         {layout_.java_vm_address, kJavaVmBytes},
         {layout_.invoke_table_address, kInvokeTableBytes},
         {layout_.jni_env_address, kJniEnvBytes},
@@ -1610,6 +1659,7 @@ bool A32JniVmService::layout_valid() const noexcept {
         {layout_.new_object_v_stub_address, kServiceStubBytes},
         {layout_.get_static_method_id_stub_address, kServiceStubBytes},
         {layout_.call_static_void_method_stub_address, kServiceStubBytes},
+        {layout_.call_static_object_method_stub_address, kServiceStubBytes},
     }};
 
     for (const AddressRange& range : ranges) {
@@ -1636,7 +1686,7 @@ A32JniVmInstallResult A32JniVmService::install(
         return {.error = A32JniVmInstallError::InvalidLayout};
     }
 
-    std::array<InstallRegion, 40> regions{{
+    std::array<InstallRegion, 41> regions{{
         {.address = layout_.java_vm_address, .size = kJavaVmBytes},
         {.address = layout_.invoke_table_address,
          .size = kInvokeTableBytes},
@@ -1714,6 +1764,8 @@ A32JniVmInstallResult A32JniVmService::install(
         {.address = layout_.get_static_method_id_stub_address,
          .size = kServiceStubBytes},
         {.address = layout_.call_static_void_method_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.call_static_object_method_stub_address,
          .size = kServiceStubBytes},
     }};
 
@@ -1797,6 +1849,10 @@ A32JniVmInstallResult A32JniVmService::install(
         regions[3].desired,
         kGetStaticMethodIdSlot * 4U,
         layout_.get_static_method_id_stub_address);
+    write_u32(
+        regions[3].desired,
+        kCallStaticObjectMethodSlot * 4U,
+        layout_.call_static_object_method_stub_address);
     write_u32(
         regions[3].desired,
         kCallStaticVoidMethodSlot * 4U,
@@ -1978,6 +2034,9 @@ A32JniVmInstallResult A32JniVmService::install(
     write_service_stub(
         regions[39].desired,
         kA32JniCallStaticVoidMethodSvcImmediate);
+    write_service_stub(
+        regions[40].desired,
+        kA32JniCallStaticObjectMethodSvcImmediate);
 
     for (InstallRegion& region : regions) {
         if (!memory.read(
@@ -2067,7 +2126,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         svc_immediate == kA32JniExceptionClearSvcImmediate ||
         svc_immediate == kA32JniNewObjectVSvcImmediate ||
         svc_immediate == kA32JniGetStaticMethodIdSvcImmediate ||
-        svc_immediate == kA32JniCallStaticVoidMethodSvcImmediate;
+        svc_immediate == kA32JniCallStaticVoidMethodSvcImmediate ||
+        svc_immediate == kA32JniCallStaticObjectMethodSvcImmediate;
     if (!known_service) {
         return runtime::A32HostServiceDisposition::Unhandled;
     }
@@ -2676,6 +2736,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
                 constructor.signature,
                 regs[3],
                 registry_->limits().max_method_arguments,
+                false,
                 arguments)) {
             return runtime::A32HostServiceDisposition::Failed;
         }
@@ -2704,6 +2765,71 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
         if (registry_->add_reference_identity(object_handle) !=
                 A32JniRegistryError::None ||
+            !registry_->retain_local_reference(object_handle)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        regs[0] = object_handle;
+        return runtime::A32HostServiceDisposition::Handled;
+    }
+
+    if (svc_immediate == kA32JniCallStaticObjectMethodSvcImmediate) {
+        if (registry_ == nullptr ||
+            method_call_bridge_ == nullptr ||
+            !registry_->valid() ||
+            !registry_->contains_class_handle(regs[1])) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        const auto class_counts =
+            registry_->reference_counts(regs[1]);
+        if (!class_counts.has_value() ||
+            (class_counts->local == 0U &&
+             class_counts->global == 0U)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+
+        const A32JniMemberId* found =
+            registry_->find_member_by_handle(regs[2]);
+        if (found == nullptr ||
+            found->class_handle != regs[1] ||
+            found->kind != A32JniMemberKind::StaticMethod) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        const A32JniMemberId method = *found;
+
+        std::vector<A32JniValue> arguments;
+        if (!decode_a32_jni_raw_arguments(
+                memory,
+                method.signature,
+                regs[3],
+                regs[13],
+                registry_->limits().max_method_arguments,
+                true,
+                arguments)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        for (const A32JniValue& argument : arguments) {
+            if (argument.kind != A32JniValueKind::Reference ||
+                argument.bits == 0U) {
+                continue;
+            }
+            const auto counts = registry_->reference_counts(
+                static_cast<std::uint32_t>(argument.bits));
+            if (!counts.has_value() ||
+                (counts->local == 0U &&
+                 counts->global == 0U)) {
+                return runtime::A32HostServiceDisposition::Failed;
+            }
+        }
+
+        std::uint32_t object_handle{};
+        if (!method_call_bridge_->call_static_object_method(
+                regs[1],
+                method,
+                std::span<const A32JniValue>{arguments},
+                object_handle)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        if (object_handle != 0U &&
             !registry_->retain_local_reference(object_handle)) {
             return runtime::A32HostServiceDisposition::Failed;
         }
@@ -2742,6 +2868,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
                 regs[3],
                 regs[13],
                 registry_->limits().max_method_arguments,
+                false,
                 arguments)) {
             return runtime::A32HostServiceDisposition::Failed;
         }

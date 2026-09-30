@@ -2,28 +2,21 @@
 
 ## Active JNI track
 
-Continue from validated raw CallStaticVoidMethod revision `9369f8d10d6f825c9ba6e58c2d8f2e892953d6d0`.
+Continue `post-roadmap-a32-jni-call-static-object-method` from validated raw
+CallStaticVoidMethod revision `d660301b87f4ba9d91b56b129261255b860312b8`.
 
-Direct Thumb-2 inspection of the same supplied VLC ARMv7 `libvlcjni.so`
-(`sha256:e76e20218203548bb88f5ef39a9aad6b2fe8efcbe27175e6fcc013b5c779b816`)
-shows repeated JNIEnv native-table loads from byte offset `0x1c8`, slot 114,
-in exports including `Java_org_videolan_libvlc_MediaPlayer_nativeGetTitles`.
-That slot is raw `CallStaticObjectMethod`.
+The same supplied VLC ARMv7 `libvlcjni.so` directly exposes raw
+`CallStaticObjectMethod` at JNIEnv slot 114 / byte offset `0x1c8`.
 
-Keep the next slice bounded to:
+This slice reuses the exact StaticMethod identity and raw r3-plus-stack AAPCS32
+decoder. The bridge may return null or one pre-existing logical JNI reference;
+a non-null result must receive a local reference before guest exposure.
 
-- exact raw CallStaticObjectMethod slot 114 only;
-- live exact jclass + StaticMethod validation;
-- reuse of the accepted raw r3-plus-stack descriptor/AAPCS32 decoder;
-- a caller-owned synchronous static object-call bridge returning one logical
-  jobject identity;
-- bounded validation/retention of a non-null returned logical reference.
-
-Leave CallStaticObjectMethodV/A, other return-valued static families, Java
-class initialization/dispatch, framework object creation, and broad reference
-policy separate.
+Keep V/A variants, other static return types, Java class initialization and
+dispatch, framework object creation, and broad Java heap modeling separate.
 
 ## Validation
 
-Record the focused machine-code evidence, add host regressions first, then use
-exact-head checks. After terminal success, leave CI and converge state.
+Use exact-head commit checks after the focused host regression is committed.
+Escalate only failing checks. After terminal success, leave CI and converge the
+change state.
