@@ -40,6 +40,7 @@ constexpr std::size_t kGetIntFieldSlot = 100U;
 constexpr std::size_t kGetLongFieldSlot = 101U;
 constexpr std::size_t kGetStaticMethodIdSlot = 113U;
 constexpr std::size_t kSetLongFieldSlot = 110U;
+constexpr std::size_t kCallStaticVoidMethodSlot = 141U;
 constexpr std::size_t kGetStaticFieldIdSlot = 144U;
 constexpr std::size_t kGetStaticIntFieldSlot = 150U;
 constexpr std::size_t kNewStringUtfSlot = 167U;
@@ -1562,7 +1563,7 @@ bool A32JniVmService::layout_valid() const noexcept {
             kA32JniHardMaxByteArrayElements) {
         return false;
     }
-    const std::array<AddressRange, 42> ranges{{
+    const std::array<AddressRange, 43> ranges{{
         {layout_.java_vm_address, kJavaVmBytes},
         {layout_.invoke_table_address, kInvokeTableBytes},
         {layout_.jni_env_address, kJniEnvBytes},
@@ -1608,6 +1609,7 @@ bool A32JniVmService::layout_valid() const noexcept {
         {layout_.exception_clear_stub_address, kServiceStubBytes},
         {layout_.new_object_v_stub_address, kServiceStubBytes},
         {layout_.get_static_method_id_stub_address, kServiceStubBytes},
+        {layout_.call_static_void_method_stub_address, kServiceStubBytes},
     }};
 
     for (const AddressRange& range : ranges) {
@@ -1634,7 +1636,7 @@ A32JniVmInstallResult A32JniVmService::install(
         return {.error = A32JniVmInstallError::InvalidLayout};
     }
 
-    std::array<InstallRegion, 39> regions{{
+    std::array<InstallRegion, 40> regions{{
         {.address = layout_.java_vm_address, .size = kJavaVmBytes},
         {.address = layout_.invoke_table_address,
          .size = kInvokeTableBytes},
@@ -1710,6 +1712,8 @@ A32JniVmInstallResult A32JniVmService::install(
         {.address = layout_.new_object_v_stub_address,
          .size = kServiceStubBytes},
         {.address = layout_.get_static_method_id_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.call_static_void_method_stub_address,
          .size = kServiceStubBytes},
     }};
 
@@ -1793,6 +1797,10 @@ A32JniVmInstallResult A32JniVmService::install(
         regions[3].desired,
         kGetStaticMethodIdSlot * 4U,
         layout_.get_static_method_id_stub_address);
+    write_u32(
+        regions[3].desired,
+        kCallStaticVoidMethodSlot * 4U,
+        layout_.call_static_void_method_stub_address);
     write_u32(
         regions[3].desired,
         kSetLongFieldSlot * 4U,
@@ -1967,6 +1975,9 @@ A32JniVmInstallResult A32JniVmService::install(
     write_service_stub(
         regions[38].desired,
         kA32JniGetStaticMethodIdSvcImmediate);
+    write_service_stub(
+        regions[39].desired,
+        kA32JniCallStaticVoidMethodSvcImmediate);
 
     for (InstallRegion& region : regions) {
         if (!memory.read(
@@ -2055,7 +2066,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         svc_immediate == kA32JniExceptionOccurredSvcImmediate ||
         svc_immediate == kA32JniExceptionClearSvcImmediate ||
         svc_immediate == kA32JniNewObjectVSvcImmediate ||
-        svc_immediate == kA32JniGetStaticMethodIdSvcImmediate;
+        svc_immediate == kA32JniGetStaticMethodIdSvcImmediate ||
+        svc_immediate == kA32JniCallStaticVoidMethodSvcImmediate;
     if (!known_service) {
         return runtime::A32HostServiceDisposition::Unhandled;
     }
@@ -2696,6 +2708,63 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             return runtime::A32HostServiceDisposition::Failed;
         }
         regs[0] = object_handle;
+        return runtime::A32HostServiceDisposition::Handled;
+    }
+
+    if (svc_immediate == kA32JniCallStaticVoidMethodSvcImmediate) {
+        if (registry_ == nullptr ||
+            method_call_bridge_ == nullptr ||
+            !registry_->valid() ||
+            !registry_->contains_class_handle(regs[1])) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        const auto class_counts =
+            registry_->reference_counts(regs[1]);
+        if (!class_counts.has_value() ||
+            (class_counts->local == 0U &&
+             class_counts->global == 0U)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+
+        const A32JniMemberId* found =
+            registry_->find_member_by_handle(regs[2]);
+        if (found == nullptr ||
+            found->class_handle != regs[1] ||
+            found->kind != A32JniMemberKind::StaticMethod) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        const A32JniMemberId method = *found;
+
+        std::vector<A32JniValue> arguments;
+        if (!decode_a32_jni_raw_arguments(
+                memory,
+                method.signature,
+                regs[3],
+                regs[13],
+                registry_->limits().max_method_arguments,
+                arguments)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        for (const A32JniValue& argument : arguments) {
+            if (argument.kind != A32JniValueKind::Reference ||
+                argument.bits == 0U) {
+                continue;
+            }
+            const auto counts = registry_->reference_counts(
+                static_cast<std::uint32_t>(argument.bits));
+            if (!counts.has_value() ||
+                (counts->local == 0U &&
+                 counts->global == 0U)) {
+                return runtime::A32HostServiceDisposition::Failed;
+            }
+        }
+        if (!method_call_bridge_->call_static_void_method(
+                regs[1],
+                method,
+                std::span<const A32JniValue>{arguments})) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
+        regs[0] = 0U;
         return runtime::A32HostServiceDisposition::Handled;
     }
 

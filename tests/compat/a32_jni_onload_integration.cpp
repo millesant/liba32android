@@ -249,6 +249,7 @@ int main(int argc, char** argv) {
         .exception_clear_stub_address = *stub_page + 0x400U,
         .new_object_v_stub_address = *stub_page + 0x420U,
         .get_static_method_id_stub_address = *stub_page + 0x440U,
+        .call_static_void_method_stub_address = *stub_page + 0x460U,
         .get_long_field_stub_address = *stub_page + 0x2e0U,
         .set_long_field_stub_address = *stub_page + 0x300U,
         .throw_new_stub_address = *stub_page + 0x320U,

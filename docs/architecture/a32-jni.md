@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: NewObjectV and evidence-backed GetStaticMethodID validated
+Status: NewObjectV and GetStaticMethodID validated; raw CallStaticVoidMethod in progress
 
 ## Goal
 
@@ -647,3 +647,15 @@ memory faults fail the service.
 
 Static method invocation remains separate even though supplied VLC callsites
 also directly expose CallStaticObjectMethod and CallStaticVoidMethod.
+
+## Static void method calls
+
+Supplied VLC ARMv7 `libvlcjni.so` directly selects raw
+`CallStaticVoidMethod` at JNIEnv slot 141 / byte offset `0x234`. The service
+requires a live exact logical jclass plus an existing StaticMethod ID for that
+class, decodes raw ARM32 variadic arguments with the accepted descriptor/AAPCS32
+decoder, validates non-null logical reference arguments, and invokes the
+caller-owned synchronous method-call bridge.
+
+This slice does not publish CallStaticVoidMethodV/A, return-valued static call
+families, Java dispatch/class initialization, or framework behavior.

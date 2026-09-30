@@ -1,0 +1,20 @@
+schema = 1
+change = "post-roadmap-a32-jni-call-static-void-method"
+
+[[evidence]]
+id = "vlc-libvlcjni-call-static-void-method-slot"
+kind = "artifact"
+status = "observed"
+claim = "Supplied VLC ARMv7 libvlcjni directly calls raw JNIEnv CallStaticVoidMethod."
+source = "docs/research/evidence/arm32-jni-call-static-void-method-entrypoint-2026-09-30.md"
+result = "Java_org_videolan_libvlc_Dialog_QuestionDialog_nativePostAction loads native-table offset 0x234 / slot 141 and calls it with JNIEnv, jclass, cached static jmethodID, and raw variadic arguments."
+limitations = "This proves raw CallStaticVoidMethod only, not V/A or return-valued static families."
+
+[[evidence]]
+id = "focused-validation"
+kind = "validation"
+status = "pending"
+claim = "Focused host regressions prove exact slot/stub publication, raw decoding, static identity validation, and bridge behavior."
+source = "GitHub exact-head checks"
+result = ""
+limitations = "Pending exact-head execution."
