@@ -1,22 +1,22 @@
 # NEXT
 
-## Active JNI track
+## JNI evidence discovery
 
-Continue `post-roadmap-a32-jni-weak-global-refs` from
-`e75ce2a2c2d987ad8a66069982f331ff63e2db6e`.
+Continue from validated weak-global-reference revision `398d217f5bd5e805170f29e1205d561517673d7d`.
 
-Balanced VLC ARMv7 evidence proves NewWeakGlobalRef at slot 226 / `0x388` and
-DeleteWeakGlobalRef at slot 227 / `0x38c`.
+Do not preselect NewLocalRef, IsSameObject, local-frame APIs, GC behavior, or
+another call family merely because they remain unimplemented. Inspect the
+supplied VLC ARMv7 `libvlcjni.so` and choose the next bounded JNI seam only
+when a direct callsite or balanced lifecycle pair is observed.
 
-The implementation keeps the same logical object handle and tracks a bounded
-weak count separately from local/global strong counts. Weak ownership never
-makes an otherwise strong-dead identity live; DeleteWeakGlobalRef remains
-possible so stored weak ownership can be released deterministically.
+For the next selected seam:
 
-Keep GC, automatic weak clearing, resurrection, NewLocalRef-from-jweak,
-IsSameObject, local frames, and Java heap reachability outside this slice.
+- record exact JNIEnv slot/byte offset and callsite evidence;
+- define the smallest logical identity/lifetime contract needed;
+- add focused host regressions before mutation broadening;
+- keep unrelated Java/framework semantics explicitly outside the slice.
 
 ## Validation
 
-Use exact-head checks after the focused weak-lifetime regression is committed.
-Escalate only failing checks. After terminal success, leave CI and converge.
+After implementation, use exact-head commit checks once. Escalate only a
+failing or ambiguous check, and leave CI immediately on terminal success.

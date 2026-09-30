@@ -1603,3 +1603,24 @@ identities fail instead of creating implicit Java heap state.
 `CallStaticObjectMethodV/A`, other static return families, Java class
 initialization/dispatch, framework object creation, and broad Java heap
 semantics remain separate evidence-driven slices.
+
+## L32-C057 — ARM32 JNI bounded weak global references
+
+Supplied VLC ARMv7 `libvlcjni.so` provides balanced lifecycle evidence for
+`NewWeakGlobalRef` at JNIEnv slot 226 / byte offset `0x388` and
+`DeleteWeakGlobalRef` at slot 227 / `0x38c`.
+
+The native table extends through slot 227 only. The bounded reference ledger
+tracks weak ownership separately from local/global strong counts on the same
+logical object handle. `NewWeakGlobalRef` accepts null as null and otherwise
+requires a currently strong-live known identity; it increments only the weak
+count. A weak-only identity does not satisfy strong-liveness checks and cannot
+seed `NewGlobalRef`.
+
+`DeleteWeakGlobalRef` accepts null as a no-op and otherwise requires and
+decrements existing weak ownership without changing local/global counts.
+Pending-exception cleanup preserves an identity that still has weak ownership.
+
+Garbage collection, automatic weak clearing, resurrection,
+`NewLocalRef` from jweak, `IsSameObject`, local frames, and general Java
+heap reachability remain separate evidence-driven work.

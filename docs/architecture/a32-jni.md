@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: raw static calls validated; weak global references in progress
+Status: raw static calls and bounded weak global references validated
 
 ## Goal
 

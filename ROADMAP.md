@@ -27,15 +27,15 @@ strong/local-reference, seeded GetArrayLength, GetStaticIntField,
 modified-UTF-8 string, jlong-array, object-array, instance-long-field,
 ThrowNew pending-exception, CallVoidMethodV, raw CallVoidMethod, seeded
 byte-array element lease, GetIntField, ExceptionOccurred/ExceptionClear, and
-NewObjectV, GetStaticMethodID, raw CallStaticVoidMethod, and raw
-CallStaticObjectMethod steps are complete. Direct supplied VLC ARMv7 machine
-code now selects the next balanced reference-lifetime seam:
+NewObjectV, GetStaticMethodID, raw CallStaticVoidMethod,
+CallStaticObjectMethod, and balanced NewWeakGlobalRef/DeleteWeakGlobalRef are
+complete.
 
-1. NewWeakGlobalRef/DeleteWeakGlobalRef at observed slots 226/227, offsets
-   `0x388`/`0x38c`, with weak ownership explicitly separated from strong
-   local/global liveness;
-2. remaining reference lifetime, including local-frame behavior when balanced
-   evidence exists;
+The next JNI step is evidence discovery rather than API guesswork: inspect the
+supplied VLC ARMv7 artifact for another directly observed bounded lifecycle or
+call seam, then implement only that proven surface. Local frames, NewLocalRef,
+IsSameObject, GC behavior, and other JNI families remain unselected until
+artifact evidence justifies them.
 3. object construction and broader method invocation / exception APIs;
 4. remaining string/primitive-array/field families beyond the currently
    evidence-backed seams;

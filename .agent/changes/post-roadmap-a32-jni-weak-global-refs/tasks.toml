@@ -9,24 +9,24 @@ acceptance = "Record balanced supplied VLC ARMv7 NewWeakGlobalRef/DeleteWeakGlob
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Extend the reference ledger with bounded weak ownership that does not contribute to strong liveness."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Extend the JNIEnv table through slots 226/227 and implement NewWeakGlobalRef/DeleteWeakGlobalRef services."
 
 [[tasks]]
 id = "T004"
-status = "implemented"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Add focused host regressions for exact slots/stubs, null handling, weak creation/deletion, and weak-vs-strong lifetime separation."
 
 [[tasks]]
 id = "T005"
-status = "active"
+status = "verified"
 depends_on = ["T004"]
 acceptance = "Converge accepted spec/architecture/state/evidence and pass exact-head validation."

@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-weak-global-refs` — ACTIVE; publish balanced supplied
-  VLC ARMv7 NewWeakGlobalRef/DeleteWeakGlobalRef slots with weak ownership kept
-  separate from local/global strong liveness.
+- next evidence-backed JNI seam — inspect the supplied VLC ARMv7 artifact and
+  select only a directly observed, bounded lifecycle or call boundary; no
+  unsupported JNI API is preselected.
 
 ## Phase
 
@@ -260,3 +260,9 @@ The next balanced reference-lifetime evidence is also in supplied VLC ARMv7
 `0x388` (slot 226, NewWeakGlobalRef), while `VLCJniObject_release` loads
 `0x38c` (slot 227, DeleteWeakGlobalRef). This pair is intentionally kept as
 one bounded follow-up so weak lifetime is not implemented one-sidedly.
+
+The bounded weak-global-reference slice is DONE at
+`398d217f5bd5e805170f29e1205d561517673d7d`. VLC ARMv7 evidence proved slots 226/227; weak ownership is tracked
+separately from strong local/global liveness, weak-only identities cannot seed
+NewGlobalRef, and pending-exception cleanup preserves weak-owned identities.
+All 11 required exact-head checks passed.

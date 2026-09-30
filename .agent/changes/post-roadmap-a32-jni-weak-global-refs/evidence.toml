@@ -13,8 +13,8 @@ limitations = "This evidence does not establish GC, automatic weak nullification
 [[evidence]]
 id = "focused-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host regressions prove exact weak-ref slots/stubs and bounded weak ownership separate from strong liveness."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending exact-head execution."
+source = "GitHub exact-head checks at 398d217f5bd5e805170f29e1205d561517673d7d"
+result = "All 11 required exact-head checks concluded success, including Linux A32 smoke, ARM32 JNI registration integration, Android cross-build, app-library search integration, and public repository/API validation."
+limitations = "The validated slice is bounded weak ownership only; GC, automatic weak clearing, resurrection, NewLocalRef-from-jweak, IsSameObject, local frames, and general Java heap reachability remain outside scope."
