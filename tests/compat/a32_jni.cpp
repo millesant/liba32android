@@ -2428,12 +2428,12 @@ int test_call_void_method_v_bridge() {
         !write_u32(memory, kRawStack + 0x0cU, 0xffff8001U) ||
         !write_u32(memory, kRawStack + 0x10U, 0x89abcdefU) ||
         !write_u32(memory, kRawStack + 0x14U, 0x01234567U) ||
+        !write_u32(memory, kRawStack + 0x18U, 0x00000000U) ||
+        !write_u32(memory, kRawStack + 0x1cU, 0x3ff80000U) ||
         !write_u32(memory, kRawStack + 0x20U, 0x00000000U) ||
-        !write_u32(memory, kRawStack + 0x24U, 0x3ff80000U) ||
-        !write_u32(memory, kRawStack + 0x28U, 0x00000000U) ||
-        !write_u32(memory, kRawStack + 0x2cU, 0xc0020000U) ||
-        !write_u32(memory, kRawStack + 0x30U, kString) ||
-        !write_u32(memory, kRawStack + 0x34U, kArray)) {
+        !write_u32(memory, kRawStack + 0x24U, 0xc0020000U) ||
+        !write_u32(memory, kRawStack + 0x28U, kString) ||
+        !write_u32(memory, kRawStack + 0x2cU, kArray)) {
         return fail("could not stage JNI method-call arguments");
     }
 
