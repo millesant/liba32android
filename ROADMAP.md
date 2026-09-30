@@ -24,12 +24,13 @@ Implemented and regression-tested foundations include:
 
 The first registration, observed member-ID, bounded JavaVM attach/detach,
 strong/local-reference, seeded GetArrayLength, GetStaticIntField,
-modified-UTF-8 string, jlong-array, object-array, instance-long-field, and
-ThrowNew pending-exception steps are complete. Direct supplied-binary evidence
-now drives the first bounded Java method-call seam:
+modified-UTF-8 string, jlong-array, object-array, instance-long-field,
+ThrowNew pending-exception, CallVoidMethodV, and seeded byte-array element
+lease steps are complete. Direct supplied-binary evidence now drives the raw
+variadic Java method-call seam:
 
-1. CallVoidMethodV at observed slot 62 / offset `0xf8`, with bounded AAPCS32
-   `va_list` decoding and an embedding-owned call bridge;
+1. CallVoidMethod at observed slot 61 / offset `0xf4`, reusing the accepted
+   method-call bridge with bounded AAPCS32 r3/guest-stack variadic decoding;
 2. remaining reference lifetime, including weak/local-frame behavior when
    balanced evidence exists;
 3. object construction and broader method invocation / exception APIs;

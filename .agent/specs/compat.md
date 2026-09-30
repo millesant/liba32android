@@ -1398,3 +1398,34 @@ Raw variadic CallVoidMethod, CallVoidMethodA, return-valued/static/nonvirtual
 Call families, NewObject, class inheritance/virtual dispatch, Java frames, and
 framework method implementations remain separate slices.
 
+
+## L32-C049 — ARM32 JNI bounded byte-array element leases
+
+Supplied ARMv7 `libfmod.so` machine code in
+`Java_org_fmod_MediaCodec_fmodReadAt` identifies
+GetByteArrayElements at JNIEnv slot 184 / byte offset `0x2e0` and
+ReleaseByteArrayElements at slot 192 / `0x300`. Each entry targets one
+distinct private ARM service stub.
+
+The caller may seed a bounded logical jbyteArray with owned byte storage. The
+same logical handle is registered in the generic array-length metadata and JNI
+reference ledger, so GetArrayLength and local/global liveness remain
+authoritative without exposing a host pointer.
+
+The VM layout contains one caller-owned guest byte scratch region.
+GetByteArrayElements requires the exact configured JNIEnv, an attached context,
+a live known byte array, sufficient scratch capacity, and no outstanding byte
+lease. It copies the full owned byte vector into guest scratch, writes JNI_TRUE
+through a non-null isCopy pointer, returns the logical scratch address, and
+records the leased array handle.
+
+ReleaseByteArrayElements requires the exact leased array and exact scratch
+pointer. Mode 0 copies scratch bytes back and releases the lease. JNI_COMMIT
+(1) copies back and retains the lease. JNI_ABORT (2) releases without copying
+guest changes. Unknown or dead arrays, overlapping leases, wrong pointers,
+invalid release modes, configured-limit violations, and guest-memory failures
+are rejected deterministically.
+
+NewByteArray, GetByteArrayRegion, SetByteArrayRegion, other primitive-array
+families, pinning, Java framework behavior, and host-pointer publication remain
+separate.

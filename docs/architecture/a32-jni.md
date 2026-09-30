@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: ThrowNew validated; evidence-backed CallVoidMethodV slice in progress
+Status: CallVoidMethodV and byte-array element leases validated; raw CallVoidMethod in progress
 
 ## Goal
 
@@ -45,7 +45,9 @@ entries include:
 - `GetObjectArrayElement` — slot 173 / byte offset `0x2b4`;
 - `SetObjectArrayElement` — slot 174 / byte offset `0x2b8`;
 - `NewLongArray` — slot 180 / byte offset `0x2d0`;
+- `GetByteArrayElements` — slot 184 / byte offset `0x2e0`;
 - `GetLongArrayElements` — slot 188 / byte offset `0x2f0`;
+- `ReleaseByteArrayElements` — slot 192 / byte offset `0x300`;
 - `ReleaseLongArrayElements` — slot 196 / byte offset `0x310`;
 - `SetLongArrayRegion` — slot 212 / byte offset `0x350`;
 - `RegisterNatives` — slot 215 / byte offset `0x35c`.
@@ -96,7 +98,9 @@ The current private guest/host service immediates are:
 - `0xEE` — JNIEnv::GetLongField;
 - `0xEF` — JNIEnv::SetLongField;
 - `0xF0` — JNIEnv::ThrowNew;
-- `0xF1` — JNIEnv::CallVoidMethodV.
+- `0xF1` — JNIEnv::CallVoidMethodV;
+- `0xF2` — JNIEnv::GetByteArrayElements;
+- `0xF3` — JNIEnv::ReleaseByteArrayElements.
 
 Each guest stub is a minimal ARM `svc; bx lr` sequence. Unknown SVC immediates
 remain unhandled.
@@ -399,6 +403,34 @@ framework behavior remain separate.
 See
 [ARM32 JNI CallVoidMethodV evidence](../research/evidence/arm32-jni-call-void-method-v-entrypoint-2026-09-29.md).
 
+Exact-head validation at
+`8a528b9402a874e8d1520687dc5920248234af7b` passed all 11 required checks.
+
+## Byte-array element leases
+
+Supplied ARMv7 `libfmod.so` directly identifies GetByteArrayElements at
+JNIEnv slot 184 / byte offset `0x2e0` and ReleaseByteArrayElements at slot
+192 / `0x300`.
+
+The bounded registry accepts caller-seeded logical jbyteArray handles with
+owned byte storage, generic GetArrayLength metadata, and ordinary JNI
+local/global liveness accounting. The VM layout provides one caller-owned guest
+scratch byte region. GetByteArrayElements requires a live known array and no
+outstanding byte lease, copies the bytes to scratch, reports JNI_TRUE through a
+non-null isCopy output, and returns the logical scratch address.
+
+ReleaseByteArrayElements requires the exact leased array and exact scratch
+pointer. Mode 0 copies back and releases, JNI_COMMIT copies back and retains the
+lease, and JNI_ABORT releases without copying guest changes. NewByteArray,
+byte-region APIs, other primitive-array families, pinning, and simultaneous
+byte leases remain separate.
+
+See
+[ARM32 JNI byte-array evidence](../research/evidence/arm32-jni-byte-array-elements-entrypoint-2026-09-30.md).
+
+Exact-head validation at
+`4e8326b03a8f9180700e9715126b05081ddee7b9` passed all 11 required checks.
+
 ## Reverse native dispatch
 
 `invoke_a32_registered_native_noargs` is the first deliberately narrow
@@ -458,8 +490,8 @@ The current compatibility surface still does not provide a general Java object
 runtime, inheritance/virtual dispatch, raw/A-form or return-valued method-call
 families, general native argument marshalling, JNI_OnUnload, framework classes,
 graphics, or audio. Existing references, members, strings/arrays, fields,
-thread attachment, pending ThrowNew state, and CallVoidMethodV are deliberately
-bounded seams rather than full Java semantics.
+thread attachment, pending ThrowNew state, CallVoidMethodV, and byte-array
+element leases are deliberately bounded seams rather than full Java semantics.
 
 ## Continuous JNI roadmap
 

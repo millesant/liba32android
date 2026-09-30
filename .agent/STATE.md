@@ -1,14 +1,14 @@
 # Current State
 
-Last updated: 2026-09-29
+Last updated: 2026-09-30
 Integration branch: `main`
 Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-call-void-method-v` — ACTIVE; add the supplied
-  ARMv7-evidenced CallVoidMethodV slot with bounded AAPCS32 va_list decoding
-  and a caller-owned Java method-call bridge.
+- `post-roadmap-a32-jni-call-void-method` — ACTIVE; add the supplied VLC
+  ARMv7-evidenced raw CallVoidMethod slot with bounded AAPCS32 r3/stack
+  variadic decoding and the existing caller-owned Java method-call bridge.
 
 ## Phase
 
@@ -135,12 +135,25 @@ The bounded ThrowNew slice is DONE at
 the runtime keeps one bounded logical pending exception as registered class
 identity plus owned message bytes, and all 11 exact-head checks passed.
 
-The active method-call slice is direct evidence from the supplied VLC ARMv7
-`libmla.so`: its C++ `_JNIEnv::CallVoidMethod(...)` wrapper loads native
-table offset `0xf8`, slot 62 (`CallVoidMethodV`), and forwards the guest
-`va_list` in r3. The implementation remains APK-agnostic by decoding bounded
-JNI descriptors into logical values and delegating Java-side behavior through
-a caller-owned bridge.
+The bounded CallVoidMethodV slice is DONE at
+`8a528b9402a874e8d1520687dc5920248234af7b`. Supplied VLC ARMv7
+`libmla.so` proved JNIEnv slot 62 / offset `0xf8`; bounded descriptor and
+AAPCS32 va_list decoding normalize primitive/reference values into the
+caller-owned method-call bridge, and all 11 exact-head checks passed.
+
+The bounded byte-array element-lease slice is DONE at
+`4e8326b03a8f9180700e9715126b05081ddee7b9`. Supplied ARMv7 `libfmod.so` proved
+GetByteArrayElements slot 184 / `0x2e0` and ReleaseByteArrayElements slot
+192 / `0x300`; caller-seeded logical jbyteArray bytes use generic length and
+reference metadata plus one bounded guest copy lease with JNI_COMMIT/JNI_ABORT
+semantics. All 11 exact-head checks passed.
+
+The active raw method-call slice is direct evidence from the supplied VLC
+ARMv7 `libvlcjni.so`: `VLCJniObject_attachEvents` loads JNIEnv table
+offset `0xf4`, slot 61 (`CallVoidMethod`), forwards the first variadic word
+in r3, stages later words on the guest stack, and promotes a float source to an
+aligned double stack argument. The implementation will reuse the existing
+APK-agnostic logical-value method-call bridge.
 
 ## Public repository readiness
 

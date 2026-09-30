@@ -13,8 +13,8 @@ limitations = "This evidence does not prove NewByteArray, byte-region calls, oth
 [[evidence]]
 id = "focused-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host regressions prove exact byte-array slots/stubs plus bounded seeded storage and copy-lease semantics."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending implementation and exact-head execution."
+source = "GitHub exact-head checks at 4e8326b03a8f9180700e9715126b05081ddee7b9"
+result = "All 11 required exact-head check-runs concluded success, including Linux A32 smoke and ARM32 JNI registration integration. Focused host coverage exercised seeded bytes and generic length metadata, JNI_TRUE copy reporting, COMMIT/ABORT/mode-0 behavior, lease identity, liveness, configured bounds, and guest-memory failures."
+limitations = "This validates only the bounded seeded jbyteArray element-lease surface; construction/region APIs and other primitive-array families remain outside the slice."
