@@ -796,7 +796,7 @@ int test_weak_global_reference_lifetime() {
         .max_registered_methods = 1U,
         .max_methods_per_registration = 1U,
         .max_member_ids = 1U,
-        .max_reference_handles = 2U,
+        .max_reference_handles = 4U,
         .max_reference_count_per_handle = 2U,
         .max_arrays = 1U,
         .max_long_array_elements = 1U,
@@ -811,9 +811,12 @@ int test_weak_global_reference_lifetime() {
     };
     A32JniClassRegistry registry{limits};
     constexpr std::uint32_t kObject = 0x44560000U;
+    constexpr std::uint32_t kClass = 0x44550000U;
     if (registry.add_reference_identity(kObject) !=
             A32JniRegistryError::None ||
-        !registry.retain_local_reference(kObject)) {
+        !registry.retain_local_reference(kObject) ||
+        registry.add_class(kClass, "java/lang/RuntimeException") !=
+            A32JniRegistryError::None) {
         return fail("could not seed JNI weak-reference identity");
     }
 
@@ -909,6 +912,72 @@ int test_weak_global_reference_lifetime() {
             regs,
             cpsr) != A32HostServiceDisposition::Failed) {
         return fail("JNI DeleteWeakGlobalRef accepted missing weak ownership");
+    }
+
+    if (registry.set_pending_exception(kClass, "weak") !=
+            A32JniRegistryError::None ||
+        registry.pending_exception() == nullptr) {
+        return fail("could not seed pending exception for weak lifetime");
+    }
+    const std::uint32_t kException =
+        registry.pending_exception()->handle;
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    if (service.handle(
+            memory,
+            kA32JniExceptionOccurredSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != kException) {
+        return fail("could not observe pending exception for weak lifetime");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kException;
+    if (service.handle(
+            memory,
+            kA32JniNewWeakGlobalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != kException) {
+        return fail("could not create weak pending-exception reference");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kException;
+    if (service.handle(
+            memory,
+            kA32JniDeleteLocalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("could not drop pending-exception local reference");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    if (service.handle(
+            memory,
+            kA32JniExceptionClearSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("could not clear weak-owned pending exception");
+    }
+    const auto exception_counts =
+        registry.reference_counts(kException);
+    if (!exception_counts.has_value() ||
+        exception_counts->local != 0U ||
+        exception_counts->global != 0U ||
+        exception_counts->weak != 1U) {
+        return fail("ExceptionClear destroyed weak-owned identity");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kException;
+    if (service.handle(
+            memory,
+            kA32JniDeleteWeakGlobalRefSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("could not delete retained weak exception ref");
     }
 
     regs = {};

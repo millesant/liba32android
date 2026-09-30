@@ -1538,7 +1538,8 @@ void A32JniClassRegistry::clear_pending_exception() noexcept {
         });
     if (found != references_.end() &&
         found->local_count == 0U &&
-        found->global_count == 0U) {
+        found->global_count == 0U &&
+        found->weak_count == 0U) {
         references_.erase(found);
     }
 }
