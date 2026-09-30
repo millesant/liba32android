@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-static-method-id` — ACTIVE; add the supplied VLC
-  ARMv7 JNI_OnLoad-evidenced GetStaticMethodID slot and a distinct bounded
-  StaticMethod logical member kind.
+- `post-roadmap-a32-jni-call-static-void-method` — ACTIVE; add the supplied
+  VLC ARMv7-evidenced raw CallStaticVoidMethod slot using the bounded static
+  method identity and raw ARM32 variadic argument decoder.
 
 ## Phase
 
@@ -229,3 +229,15 @@ descriptor/`va_list` decoder feeds an embedding-owned constructor boundary
 which may return one fresh logical jobject identity, accepted with exactly one
 local reference. Raw NewObject slot 28 and NewObjectA slot 30 remain null.
 All 11 required exact-head checks passed.
+
+The bounded GetStaticMethodID slice is DONE at
+`8e8280b9a5479cb2629e6bd8b83bf0371aa910cb`. Supplied VLC ARMv7
+`libvlcjni.so` JNI_OnLoad proved JNIEnv slot 113 / `0x1c4`; the registry
+now separates StaticMethod from InstanceMethod while reusing exact bounded
+class/name/signature lookup. All 11 required exact-head checks passed.
+
+The same supplied `libvlcjni.so` directly proves raw
+`CallStaticVoidMethod` at slot 141 / `0x234` in
+`Java_org_videolan_libvlc_Dialog_QuestionDialog_nativePostAction`: JNIEnv,
+jclass, and cached static jmethodID occupy r0-r2, the first promoted Java
+argument is in r3, and remaining variadic words continue on the guest stack.

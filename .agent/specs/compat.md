@@ -1539,3 +1539,24 @@ guest.
 Raw `NewObject`, `NewObjectA`, Java heap/object layout, class
 assignability/inheritance, constructor bytecode execution, and framework object
 behavior remain separate slices.
+
+## L32-C054 — ARM32 JNI bounded GetStaticMethodID
+
+Supplied VLC ARMv7 `libvlcjni.so` JNI_OnLoad directly loads JNIEnv byte
+offset `0x1c4`, slot 113, before repeated indirect calls with JNIEnv, jclass,
+method-name, and signature pointers in r0-r3. This establishes
+`GetStaticMethodID` from machine-code evidence rather than table adjacency.
+
+The bounded member registry models StaticMethod as a distinct kind appended to
+the existing member-kind domain, preserving the established InstanceMethod,
+InstanceField, and StaticField values. Static and instance methods with the
+same class/name/signature therefore remain distinct logical identities.
+
+`GetStaticMethodID` requires the exact configured JNIEnv, an attached
+context, a known logical jclass, and bounded readable NUL-terminated method-name
+and signature strings. Exact StaticMethod class/name/signature matches return
+the caller-seeded logical jmethodID. Unknown classes or members are semantic
+misses and return null; guest memory faults fail the service.
+
+Static method invocation, Java dispatch/inheritance, class initialization,
+reflection, and framework behavior remain separate slices.

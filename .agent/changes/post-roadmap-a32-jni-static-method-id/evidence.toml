@@ -13,8 +13,8 @@ limitations = "The same binary also exposes static method call sites, but this e
 [[evidence]]
 id = "focused-validation"
 kind = "validation"
-status = "pending"
+status = "passed"
 claim = "Focused host regressions prove exact GetStaticMethodID publication plus bounded StaticMethod logical identity lookup."
-source = "GitHub exact-head checks"
-result = ""
-limitations = "Pending exact-head execution."
+source = "GitHub exact-head checks at 8e8280b9a5479cb2629e6bd8b83bf0371aa910cb"
+result = "All 11 required exact-head checks concluded success, including Linux A32 smoke check 109846699804 and ARM32 JNI registration integration check 109846699811."
+limitations = "The validated surface is GetStaticMethodID identity lookup only; static invocation, Java dispatch/inheritance, class initialization, and framework behavior remain outside this slice."

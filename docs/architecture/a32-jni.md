@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: NewObjectV validated; evidence-backed GetStaticMethodID in progress
+Status: NewObjectV and evidence-backed GetStaticMethodID validated
 
 ## Goal
 

@@ -9,24 +9,24 @@ acceptance = "Record supplied VLC ARMv7 JNI_OnLoad GetStaticMethodID machine-cod
 
 [[tasks]]
 id = "T002"
-status = "implemented"
+status = "verified"
 depends_on = ["T001"]
 acceptance = "Add StaticMethod as a distinct bounded registry member kind without disturbing existing member kinds."
 
 [[tasks]]
 id = "T003"
-status = "implemented"
+status = "verified"
 depends_on = ["T002"]
 acceptance = "Publish GetStaticMethodID at exact JNIEnv slot 113 and route it through bounded exact member lookup."
 
 [[tasks]]
 id = "T004"
-status = "implemented"
+status = "verified"
 depends_on = ["T003"]
 acceptance = "Extend focused member-ID regressions for slot/stub bytes, kind separation, exact lookup, semantic misses, class/env validation, and guest-string failures."
 
 [[tasks]]
 id = "T005"
-status = "active"
+status = "verified"
 depends_on = ["T004"]
 acceptance = "Converge accepted spec/architecture/state/evidence and pass exact-head validation."
