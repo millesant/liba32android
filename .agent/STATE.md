@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- evidence-driven JNI continuation — scan the supplied ARMv7 VLC/FMOD
-  artifacts for the next unsupported JNI table entry with a coherent bounded
-  lifetime/state contract.
+- `post-roadmap-a32-jni-static-method-id` — ACTIVE; add the supplied VLC
+  ARMv7 JNI_OnLoad-evidenced GetStaticMethodID slot and a distinct bounded
+  StaticMethod logical member kind.
 
 ## Phase
 

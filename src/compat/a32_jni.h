@@ -34,6 +34,7 @@
 #define LIBA32ANDROID_A32_JNI_EXCEPTION_OCCURRED_SVC 0xF6
 #define LIBA32ANDROID_A32_JNI_EXCEPTION_CLEAR_SVC 0xF7
 #define LIBA32ANDROID_A32_JNI_NEW_OBJECT_V_SVC 0xF8
+#define LIBA32ANDROID_A32_JNI_GET_STATIC_METHOD_ID_SVC 0xF9
 
 #ifdef __cplusplus
 
@@ -122,6 +123,8 @@ inline constexpr std::uint32_t kA32JniExceptionClearSvcImmediate =
     LIBA32ANDROID_A32_JNI_EXCEPTION_CLEAR_SVC;
 inline constexpr std::uint32_t kA32JniNewObjectVSvcImmediate =
     LIBA32ANDROID_A32_JNI_NEW_OBJECT_V_SVC;
+inline constexpr std::uint32_t kA32JniGetStaticMethodIdSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_STATIC_METHOD_ID_SVC;
 
 inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
 inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
@@ -224,6 +227,7 @@ enum class A32JniMemberKind : std::uint8_t {
     InstanceMethod = 0,
     InstanceField,
     StaticField,
+    StaticMethod,
 };
 
 struct A32JniMemberId {
@@ -550,6 +554,7 @@ struct A32JniVmLayout {
     std::uint32_t exception_occurred_stub_address{};
     std::uint32_t exception_clear_stub_address{};
     std::uint32_t new_object_v_stub_address{};
+    std::uint32_t get_static_method_id_stub_address{};
     std::uint32_t get_long_field_stub_address{};
     std::uint32_t set_long_field_stub_address{};
     std::uint32_t throw_new_stub_address{};

@@ -38,6 +38,7 @@ constexpr std::size_t kCallVoidMethodVSlot = 62U;
 constexpr std::size_t kGetFieldIdSlot = 94U;
 constexpr std::size_t kGetIntFieldSlot = 100U;
 constexpr std::size_t kGetLongFieldSlot = 101U;
+constexpr std::size_t kGetStaticMethodIdSlot = 113U;
 constexpr std::size_t kSetLongFieldSlot = 110U;
 constexpr std::size_t kGetStaticFieldIdSlot = 144U;
 constexpr std::size_t kGetStaticIntFieldSlot = 150U;
@@ -1182,7 +1183,8 @@ A32JniRegistryError A32JniClassRegistry::add_member(
     }
     if (kind != A32JniMemberKind::InstanceMethod &&
         kind != A32JniMemberKind::InstanceField &&
-        kind != A32JniMemberKind::StaticField) {
+        kind != A32JniMemberKind::StaticField &&
+        kind != A32JniMemberKind::StaticMethod) {
         return A32JniRegistryError::InvalidMemberKind;
     }
     if (name.empty() ||
@@ -1560,7 +1562,7 @@ bool A32JniVmService::layout_valid() const noexcept {
             kA32JniHardMaxByteArrayElements) {
         return false;
     }
-    const std::array<AddressRange, 41> ranges{{
+    const std::array<AddressRange, 42> ranges{{
         {layout_.java_vm_address, kJavaVmBytes},
         {layout_.invoke_table_address, kInvokeTableBytes},
         {layout_.jni_env_address, kJniEnvBytes},
@@ -1605,6 +1607,7 @@ bool A32JniVmService::layout_valid() const noexcept {
         {layout_.exception_occurred_stub_address, kServiceStubBytes},
         {layout_.exception_clear_stub_address, kServiceStubBytes},
         {layout_.new_object_v_stub_address, kServiceStubBytes},
+        {layout_.get_static_method_id_stub_address, kServiceStubBytes},
     }};
 
     for (const AddressRange& range : ranges) {
@@ -1631,7 +1634,7 @@ A32JniVmInstallResult A32JniVmService::install(
         return {.error = A32JniVmInstallError::InvalidLayout};
     }
 
-    std::array<InstallRegion, 38> regions{{
+    std::array<InstallRegion, 39> regions{{
         {.address = layout_.java_vm_address, .size = kJavaVmBytes},
         {.address = layout_.invoke_table_address,
          .size = kInvokeTableBytes},
@@ -1705,6 +1708,8 @@ A32JniVmInstallResult A32JniVmService::install(
         {.address = layout_.exception_clear_stub_address,
          .size = kServiceStubBytes},
         {.address = layout_.new_object_v_stub_address,
+         .size = kServiceStubBytes},
+        {.address = layout_.get_static_method_id_stub_address,
          .size = kServiceStubBytes},
     }};
 
@@ -1784,6 +1789,10 @@ A32JniVmInstallResult A32JniVmService::install(
         regions[3].desired,
         kGetLongFieldSlot * 4U,
         layout_.get_long_field_stub_address);
+    write_u32(
+        regions[3].desired,
+        kGetStaticMethodIdSlot * 4U,
+        layout_.get_static_method_id_stub_address);
     write_u32(
         regions[3].desired,
         kSetLongFieldSlot * 4U,
@@ -1955,6 +1964,9 @@ A32JniVmInstallResult A32JniVmService::install(
     write_service_stub(
         regions[37].desired,
         kA32JniNewObjectVSvcImmediate);
+    write_service_stub(
+        regions[38].desired,
+        kA32JniGetStaticMethodIdSvcImmediate);
 
     for (InstallRegion& region : regions) {
         if (!memory.read(
@@ -2042,7 +2054,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         svc_immediate == kA32JniGetIntFieldSvcImmediate ||
         svc_immediate == kA32JniExceptionOccurredSvcImmediate ||
         svc_immediate == kA32JniExceptionClearSvcImmediate ||
-        svc_immediate == kA32JniNewObjectVSvcImmediate;
+        svc_immediate == kA32JniNewObjectVSvcImmediate ||
+        svc_immediate == kA32JniGetStaticMethodIdSvcImmediate;
     if (!known_service) {
         return runtime::A32HostServiceDisposition::Unhandled;
     }
@@ -2866,6 +2879,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
 
     const bool member_lookup =
         svc_immediate == kA32JniGetMethodIdSvcImmediate ||
+        svc_immediate == kA32JniGetStaticMethodIdSvcImmediate ||
         svc_immediate == kA32JniGetFieldIdSvcImmediate ||
         svc_immediate == kA32JniGetStaticFieldIdSvcImmediate;
     if (member_lookup) {
@@ -2902,7 +2916,9 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
 
         A32JniMemberKind kind = A32JniMemberKind::InstanceMethod;
-        if (svc_immediate == kA32JniGetFieldIdSvcImmediate) {
+        if (svc_immediate == kA32JniGetStaticMethodIdSvcImmediate) {
+            kind = A32JniMemberKind::StaticMethod;
+        } else if (svc_immediate == kA32JniGetFieldIdSvcImmediate) {
             kind = A32JniMemberKind::InstanceField;
         } else if (
             svc_immediate ==

@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: ExceptionOccurred/ExceptionClear and evidence-backed NewObjectV validated
+Status: NewObjectV validated; evidence-backed GetStaticMethodID in progress
 
 ## Goal
 
@@ -40,6 +40,7 @@ entries include:
 - `GetIntField` — slot 100 / byte offset `0x190`;
 - `GetLongField` — slot 101 / byte offset `0x194`;
 - `SetLongField` — slot 110 / byte offset `0x1b8`;
+- `GetStaticMethodID` — slot 113 / byte offset `0x1c4`;
 - `GetStaticFieldID` — slot 144 / byte offset `0x240`;
 - `GetStaticIntField` — slot 150 / byte offset `0x258`;
 - `NewStringUTF` — slot 167 / byte offset `0x29c`;
@@ -630,3 +631,19 @@ already an identity, then creates exactly one local reference.
 
 No host object pointer, Java heap layout, inheritance/assignability engine,
 constructor bytecode execution, raw NewObject, or NewObjectA is introduced.
+
+## Static method IDs
+
+The supplied VLC ARMv7 `libvlcjni.so` JNI_OnLoad directly loads JNIEnv byte
+offset `0x1c4`, slot 113, before multiple indirect calls with JNIEnv, jclass,
+method name, and signature in r0-r3. This establishes `GetStaticMethodID`
+without relying on table adjacency.
+
+The bounded member registry adds a distinct StaticMethod kind so static and
+instance methods with the same class/name/signature remain different logical
+identities. `GetStaticMethodID` reuses the existing bounded guest-string and
+exact class/name/signature lookup path; semantic misses return null and guest
+memory faults fail the service.
+
+Static method invocation remains separate even though supplied VLC callsites
+also directly expose CallStaticObjectMethod and CallStaticVoidMethod.

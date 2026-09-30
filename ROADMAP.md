@@ -27,12 +27,11 @@ strong/local-reference, seeded GetArrayLength, GetStaticIntField,
 modified-UTF-8 string, jlong-array, object-array, instance-long-field,
 ThrowNew pending-exception, CallVoidMethodV, raw CallVoidMethod, seeded
 byte-array element lease, GetIntField, ExceptionOccurred/ExceptionClear, and
-NewObjectV steps are complete. The next JNI slice will be selected only after
-another direct scan of the supplied ARMv7 artifacts:
+NewObjectV steps are complete. A direct scan of supplied VLC ARMv7 JNI_OnLoad
+now selects the next bounded member-identity seam:
 
-1. next unsupported JNI table entry with direct machine-code evidence and a
-   coherent bounded lifetime/state contract from the supplied VLC/FMOD
-   binaries;
+1. GetStaticMethodID at observed slot 113 / offset `0x1c4`, with a distinct
+   StaticMethod logical member kind and exact class/name/signature lookup;
 2. remaining reference lifetime, including weak/local-frame behavior when
    balanced evidence exists;
 3. object construction and broader method invocation / exception APIs;
