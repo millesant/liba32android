@@ -641,7 +641,7 @@ int test_vm_install_and_getenv() {
     regs = {};
     if (service.handle(
             memory,
-            kA32JniCallVoidMethodVSvcImmediate + 1U,
+            kA32JniReleaseByteArrayElementsSvcImmediate + 1U,
             regs,
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
