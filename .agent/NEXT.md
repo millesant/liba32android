@@ -2,24 +2,28 @@
 
 ## Active JNI track
 
-Continue `post-roadmap-a32-jni-call-static-void-method` from validated
-GetStaticMethodID revision `8e8280b9a5479cb2629e6bd8b83bf0371aa910cb`.
+Continue from validated raw CallStaticVoidMethod revision `9369f8d10d6f825c9ba6e58c2d8f2e892953d6d0`.
 
-The supplied VLC ARMv7 `libvlcjni.so`
+Direct Thumb-2 inspection of the same supplied VLC ARMv7 `libvlcjni.so`
 (`sha256:e76e20218203548bb88f5ef39a9aad6b2fe8efcbe27175e6fcc013b5c779b816`)
-directly calls JNIEnv byte offset `0x234`, slot 141
-(`CallStaticVoidMethod`), in
-`Java_org_videolan_libvlc_Dialog_QuestionDialog_nativePostAction`.
-The call places JNIEnv, jclass, and cached static jmethodID in r0-r2, the first
-variadic Java argument in r3, and remaining words on the guest stack.
+shows repeated JNIEnv native-table loads from byte offset `0x1c8`, slot 114,
+in exports including `Java_org_videolan_libvlc_MediaPlayer_nativeGetTitles`.
+That slot is raw `CallStaticObjectMethod`.
 
-Keep this slice bounded to raw CallStaticVoidMethod, live exact jclass +
-StaticMethod validation, the accepted raw descriptor/AAPCS32 argument decoder,
-and a caller-owned synchronous static void-call bridge. Leave
-CallStaticVoidMethodV/A, CallStaticObjectMethod, return-valued static calls,
-Java dispatch/class initialization, and framework behavior separate.
+Keep the next slice bounded to:
+
+- exact raw CallStaticObjectMethod slot 114 only;
+- live exact jclass + StaticMethod validation;
+- reuse of the accepted raw r3-plus-stack descriptor/AAPCS32 decoder;
+- a caller-owned synchronous static object-call bridge returning one logical
+  jobject identity;
+- bounded validation/retention of a non-null returned logical reference.
+
+Leave CallStaticObjectMethodV/A, other return-valued static families, Java
+class initialization/dispatch, framework object creation, and broad reference
+policy separate.
 
 ## Validation
 
-Add focused raw static-call host coverage first, then use exact-head checks.
-After terminal success, leave CI and converge evidence/state.
+Record the focused machine-code evidence, add host regressions first, then use
+exact-head checks. After terminal success, leave CI and converge state.

@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: NewObjectV and GetStaticMethodID validated; raw CallStaticVoidMethod in progress
+Status: NewObjectV, GetStaticMethodID, and raw CallStaticVoidMethod validated
 
 ## Goal
 

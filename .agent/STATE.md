@@ -6,9 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- `post-roadmap-a32-jni-call-static-void-method` — ACTIVE; add the supplied
-  VLC ARMv7-evidenced raw CallStaticVoidMethod slot using the bounded static
-  method identity and raw ARM32 variadic argument decoder.
+- next supplied VLC ARMv7 static-return seam — bound raw
+  CallStaticObjectMethod around exact StaticMethod identity, raw AAPCS32
+  arguments, and logical jobject return lifetime.
 
 ## Phase
 
@@ -241,3 +241,10 @@ The same supplied `libvlcjni.so` directly proves raw
 `Java_org_videolan_libvlc_Dialog_QuestionDialog_nativePostAction`: JNIEnv,
 jclass, and cached static jmethodID occupy r0-r2, the first promoted Java
 argument is in r3, and remaining variadic words continue on the guest stack.
+
+The bounded raw CallStaticVoidMethod slice is DONE at
+`9369f8d10d6f825c9ba6e58c2d8f2e892953d6d0`. Supplied VLC ARMv7 `libvlcjni.so` proved JNIEnv slot 141 /
+`0x234`; the service reuses the accepted raw r3-plus-stack AAPCS32 decoder,
+requires live exact jclass/StaticMethod/reference state, and crosses the
+caller-owned synchronous static-void bridge. All 11 required exact-head checks
+passed.

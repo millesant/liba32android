@@ -2,10 +2,11 @@ schema = 1
 id = "post-roadmap-a32-jni-call-static-void-method"
 kind = "feature"
 size = "S2"
-status = "active"
+status = "done"
 workflow = "feature"
 control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
 base_revision = "f600e590bd3768284b636e56ac60a1cc75e0efda"
+result_revision = "9369f8d10d6f825c9ba6e58c2d8f2e892953d6d0"
 acceptance = [
   "supplied VLC ARMv7 libvlcjni evidence records raw CallStaticVoidMethod at JNIEnv slot 141 / offset 0x234",
   "the JNIEnv table publishes exactly slot 141 through one private ARM service stub",
@@ -25,5 +26,5 @@ tests = "aligned"
 documentation = "aligned"
 decisions = "not_applicable"
 tasks = "aligned"
-evidence = "pending"
+evidence = "aligned"
 repository = "aligned"

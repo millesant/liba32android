@@ -27,12 +27,13 @@ strong/local-reference, seeded GetArrayLength, GetStaticIntField,
 modified-UTF-8 string, jlong-array, object-array, instance-long-field,
 ThrowNew pending-exception, CallVoidMethodV, raw CallVoidMethod, seeded
 byte-array element lease, GetIntField, ExceptionOccurred/ExceptionClear, and
-NewObjectV and GetStaticMethodID steps are complete. Direct supplied VLC ARMv7
-machine code now selects the first bounded static invocation seam:
+NewObjectV, GetStaticMethodID, and raw CallStaticVoidMethod steps are
+complete. Direct supplied VLC ARMv7 machine code now selects the next bounded
+static return seam:
 
-1. raw CallStaticVoidMethod at observed slot 141 / offset `0x234`, reusing
-   StaticMethod identity plus the accepted raw ARM32 variadic decoder and an
-   embedding-owned static void-call bridge;
+1. raw CallStaticObjectMethod at observed slot 114 / offset `0x1c8`, reusing
+   StaticMethod identity plus the accepted raw ARM32 variadic decoder and a
+   bounded logical jobject return contract;
 2. remaining reference lifetime, including weak/local-frame behavior when
    balanced evidence exists;
 3. object construction and broader method invocation / exception APIs;

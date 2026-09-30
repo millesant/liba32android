@@ -1560,3 +1560,25 @@ misses and return null; guest memory faults fail the service.
 
 Static method invocation, Java dispatch/inheritance, class initialization,
 reflection, and framework behavior remain separate slices.
+
+## L32-C055 — ARM32 JNI bounded raw CallStaticVoidMethod bridge
+
+Supplied VLC ARMv7 `libvlcjni.so` directly identifies
+`CallStaticVoidMethod` at JNIEnv slot 141 / byte offset `0x234`.
+The raw call forwards JNIEnv, jclass, and cached static jmethodID in r0-r2;
+r3 is the first variadic Java argument and remaining words continue on the
+guest stack.
+
+The service requires the exact configured JNIEnv, an attached context, a live
+logical jclass, and an existing StaticMethod ID belonging to that exact class.
+It reuses the accepted bounded raw descriptor/AAPCS32 decoder. Every non-null
+decoded reference argument must be a live logical JNI identity.
+
+Normalized values cross one synchronous caller-owned static-void bridge
+boundary. Bridge rejection fails the service; success returns void. No host
+pointer, Java implementation, class initialization, or dispatch behavior is
+synthesized.
+
+`CallStaticVoidMethodV/A`, `CallStaticObjectMethod`, return-valued static
+families, Java inheritance/dispatch, and framework behavior remain separate
+evidence-driven slices.
