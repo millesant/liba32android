@@ -14,14 +14,16 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
 shim_source="$repo_root/tests/compat/fixtures/a32_libc_memory_string_shim.S"
 consumer_source="$repo_root/tests/compat/fixtures/a32_libc_memory_string_consumer.c"
+pthread_consumer_source="$repo_root/tests/compat/fixtures/a32_pthread_lifecycle_consumer.c"
 shim="$output_dir/libc.so"
 consumer="$output_dir/liba32android_libc_memory_string_consumer.so"
+pthread_consumer="$output_dir/liba32android_pthread_lifecycle_consumer.so"
 
 if [[ ! -x "$clang" ]]; then
     echo "ARMv7 Android clang not found: $clang" >&2
     exit 1
 fi
-for source in "$shim_source" "$consumer_source"; do
+for source in "$shim_source" "$consumer_source" "$pthread_consumer_source"; do
     if [[ ! -f "$source" ]]; then
         echo "fixture source not found: $source" >&2
         exit 1
@@ -46,3 +48,6 @@ common=(
 "$clang"     "${common[@]}"     -I"$repo_root/src"     -Wl,-soname,libc.so     -o "$shim"     "$shim_source"
 
 "$clang"     "${common[@]}"     -Wl,-soname,liba32android_libc_memory_string_consumer.so     -o "$consumer"     "$consumer_source"     -Wl,--no-as-needed     "$shim"
+
+
+"$clang"     "${common[@]}"     -Wl,-soname,liba32android_pthread_lifecycle_consumer.so     -o "$pthread_consumer"     "$pthread_consumer_source"     -Wl,--no-as-needed     "$shim"

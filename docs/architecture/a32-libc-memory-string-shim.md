@@ -8,7 +8,10 @@ Connect feature 030's bounded libc memory/string host services to the real ELF
 dependency/symbol/relocation path using one reproducible partial ARM32
 `libc.so` compatibility DSO.
 
-The feature is deliberately partial. Feature 032 introduced seven symbols, feature 034 extended the same DSO to ten with copy/search services, feature 036 extended it to twelve with atoi/strtol, feature 038 added __errno for thirteen, feature 041 added four allocator functions for seventeen, and feature 043 added memmove plus twelve ARM EABI memory helpers for thirty exports, and feature 045 adds nine bounded pthread mutex/semaphore functions for thirty-nine total exports.
+The feature is deliberately partial. The accepted base grew from memory/string
+helpers through allocator, EABI, finalization, synchronization, and TLS-key
+extensions to 45 exports. The bounded pthread lifecycle slice adds ten more
+direct guest stubs, bringing the prepared partial-libc export surface to 55.
 
 ## Guest stubs
 
@@ -131,3 +134,27 @@ EBUSY trylock, unlock/destroy, and process-local semaphore init/wait/post/destro
 Thread creation/join, mutex attrs/types, pthread_once, condition variables,
 rwlocks, TLS, pthread_self ABI, process-shared semaphores, and scheduler policy
 remain outside this partial libc.
+
+
+## Pthread lifecycle extension
+
+The bounded logical pthread lifecycle slice adds ten direct private-SVC exports:
+`pthread_attr_init`, `pthread_attr_destroy`,
+`pthread_attr_getdetachstate`, `pthread_attr_setdetachstate`,
+`pthread_attr_getstacksize`, `pthread_attr_setstacksize`,
+`pthread_create`, `pthread_self`, `pthread_equal`, and
+`pthread_exit`.
+
+A dedicated freestanding ARM32 lifecycle consumer requires exactly those ten
+imports through eager `R_ARM_JUMP_SLOT` relocations. Integration validates
+basic attr state, logical identity/equality, two logical thread creations, one
+normal start-routine return into the configured pthread_exit trampoline, and
+one explicit pthread_exit path.
+
+The original 45-wrapper partial-libc consumer remains unchanged and continues
+to prove the previously accepted surface. The lifecycle consumer is separate so
+new thread behavior does not broaden unrelated libc fixture assumptions.
+
+This remains a logical/cooperative model: no host pthread is created, the
+service does not map guest stacks, and join/detach reclamation plus TLS
+destructor iteration remain separate work.
