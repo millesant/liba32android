@@ -39,4 +39,7 @@ Logical guest execution identities are documented in
 internal seam reuses the existing A32 execution/service-suspension contracts
 and deliberately does not introduce a generic scheduler.
 
+Evidence-backed pthread creation/identity/exit semantics are documented in
+[A32 pthread logical lifecycle service](a32-pthread-lifecycle.md).
+
 Each architecture document describes one boundary and should avoid folding later-layer policy into earlier layers.

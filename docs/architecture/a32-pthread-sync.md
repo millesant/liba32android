@@ -12,7 +12,8 @@ The supplied ARM32 FMOD library and VLC ARMv7 set import the default pthread
 mutex operations and sem_init/sem_destroy/sem_wait/sem_post. Supplied VLC ARMv7
 `libmla.so` additionally imports `pthread_key_create`,
 `pthread_key_delete`, `pthread_getspecific`, and `pthread_setspecific`.
-Broader pthread lifecycle remains separate.
+Creation/identity/exit behavior is handled by the separate
+[pthread lifecycle service](a32-pthread-lifecycle.md).
 
 ## Guest/host protocol
 
@@ -68,15 +69,14 @@ including null for an invalid/deleted key.
 `pthread_key_delete` invalidates the key and clears every stored value for it.
 Deletion does not execute the guest destructor.
 
-The reproducible partial ARM32 libc shim exports all four functions as direct
-private-SVC stubs. Its integration fixture resolves 45 prepared exports through
-eager `R_ARM_JUMP_SLOT` relocations and executes the four TLS wrappers through
-the same bounded pthread service.
+The reproducible partial ARM32 libc shim exports all four TLS-key functions as
+direct private-SVC stubs. The base libc integration still executes its original
+45-wrapper surface; a dedicated lifecycle consumer independently covers the
+additional pthread lifecycle exports.
 
 ## Scope limits
 
-Mutex attrs/types, recursive/errorcheck mutexes, pthread_create/join/detach,
-pthread_once, condition variables, rwlocks, pthread_self ABI, process-shared
-semaphores, signals/futex internals, cancellation, robust mutexes, scheduler
-policy, thread-exit TLS destructor iteration, and general pthread lifecycle
-remain outside this bounded service.
+Recursive/errorcheck mutexes, pthread_join/detach, pthread_once, condition
+variables, rwlocks, process-shared semaphores, signals/futex internals,
+cancellation, robust mutexes, scheduler policy, and thread-exit TLS destructor
+iteration remain outside this bounded synchronization/TLS service.
