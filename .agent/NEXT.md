@@ -1,26 +1,32 @@
 # NEXT
 
-## JNI evidence discovery
+## Active pthread/TLS track
 
-Continue from validated GetStaticObjectField revision `82021c5e8aac437e6f1c74cc8db4e797737d74bf`.
+Continue `post-roadmap-a32-pthread-tls-keys` from
+`2101b19bf9952172bc92f20245ae558f061657b6`.
 
-The direct VLC ARMv7 JNI_OnLoad seam at slot 145 / `0x244` is complete.
-Inspect the supplied ARMv7 artifacts for the next bounded JNI call or balanced
-lifecycle pair. Select a new API only from a concrete callsite with an exact
-JNIEnv/JavaVM slot or other equally direct ABI evidence.
+The supplied VLC ARMv7 `libmla.so` directly requires four libc symbols through
+eager R_ARM_JUMP_SLOT relocations:
 
-Do not preselect SetStaticObjectField, local-frame APIs, NewLocalRef,
-IsSameObject, GC behavior, or a return-valued method family merely because it
-remains unimplemented.
+- pthread_key_create;
+- pthread_key_delete;
+- pthread_getspecific;
+- pthread_setspecific.
 
-For the next selected seam:
+Implement one bounded logical TLS-key family in the existing pthread service.
+Use caller-owned finite key/value metadata and the existing caller-selected
+non-zero logical thread ID. Do not expose host pthread objects or host TLS.
 
-- record exact slot/byte offset and callsite evidence;
-- define the smallest logical state/identity/lifetime contract required;
-- add focused host coverage before broadening implementation;
-- keep unrelated Java/framework behavior outside the slice.
+Key creation may preserve a guest destructor callback address as metadata, but
+thread-exit destructor execution/iteration is outside this slice. Keep
+pthread_create/join/detach/self/equal, cancellation, and scheduler lifecycle
+separate.
+
+Extend the reproducible partial libc shim/consumer so all four symbols resolve
+and execute end-to-end.
 
 ## Validation
 
-After implementation, query exact-head checks once. Escalate only a failing or
-ambiguous check, and leave CI immediately on terminal success.
+Run exact-head checks after the focused host and real partial-libc regression
+is committed. Escalate only failing checks. Leave CI immediately on terminal
+success and converge.

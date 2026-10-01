@@ -6,8 +6,9 @@ Control-plane round: `millesant/.gpt@f4e926e81ad91d13d02a006f4a18a00f66ae0bab`
 
 Active acceptance gate:
 
-- JNI evidence discovery — inspect supplied ARMv7 artifacts and select the next
-  directly observed bounded JNI seam; do not preselect unsupported APIs.
+- `post-roadmap-a32-pthread-tls-keys` — ACTIVE; satisfy supplied VLC ARMv7
+  libmla.so imports for pthread_key_create/delete/getspecific/setspecific with
+  bounded logical keys and per-logical-thread values.
 
 ## Phase
 
@@ -301,3 +302,10 @@ The bounded GetStaticObjectField slice is DONE at
 reference to the same logical identity, and the stored field value survives
 deletion of an earlier returned local ref. All 11 required exact-head checks
 passed.
+
+Supplied VLC ARMv7 `libmla.so`
+(`sha256:4ad00d934ea348d535ef35581c41d778abd4919790e32a8c8fc741b22db08962`)
+has eager libc JUMP_SLOT imports for pthread_key_create, pthread_key_delete,
+pthread_getspecific, and pthread_setspecific. This coherent TLS-key family is
+the active parallel compatibility slice; thread-exit destructor iteration and
+broader pthread lifecycle remain separate.

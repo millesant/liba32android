@@ -9,6 +9,10 @@
 #define LIBA32ANDROID_A32_SEM_DESTROY_SVC 0xB9
 #define LIBA32ANDROID_A32_SEM_WAIT_SVC 0xBA
 #define LIBA32ANDROID_A32_SEM_POST_SVC 0xBB
+#define LIBA32ANDROID_A32_PTHREAD_KEY_CREATE_SVC 0xBC
+#define LIBA32ANDROID_A32_PTHREAD_KEY_DELETE_SVC 0xBD
+#define LIBA32ANDROID_A32_PTHREAD_GETSPECIFIC_SVC 0xBE
+#define LIBA32ANDROID_A32_PTHREAD_SETSPECIFIC_SVC 0xBF
 
 #ifdef __cplusplus
 
@@ -40,8 +44,19 @@ inline constexpr std::uint32_t kA32SemWaitSvcImmediate =
     LIBA32ANDROID_A32_SEM_WAIT_SVC;
 inline constexpr std::uint32_t kA32SemPostSvcImmediate =
     LIBA32ANDROID_A32_SEM_POST_SVC;
+inline constexpr std::uint32_t kA32PthreadKeyCreateSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_KEY_CREATE_SVC;
+inline constexpr std::uint32_t kA32PthreadKeyDeleteSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_KEY_DELETE_SVC;
+inline constexpr std::uint32_t kA32PthreadGetspecificSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_GETSPECIFIC_SVC;
+inline constexpr std::uint32_t kA32PthreadSetspecificSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_SETSPECIFIC_SVC;
 
+inline constexpr std::int32_t kA32AndroidEagain = 11;
+inline constexpr std::int32_t kA32AndroidEnomem = 12;
 inline constexpr std::int32_t kA32AndroidEbusy = 16;
+inline constexpr std::int32_t kA32AndroidEinval = 22;
 inline constexpr std::uint32_t kA32AndroidSemValueMax = 0x7fffffffU;
 
 enum class A32PthreadWaitKind : std::uint8_t {
@@ -74,6 +89,19 @@ struct A32PthreadWake {
     std::uint32_t thread_id{};
 };
 
+struct A32PthreadKeyState {
+    std::uint32_t key{};
+    std::uint32_t destructor{};
+    bool active{};
+};
+
+struct A32PthreadTlsValue {
+    std::uint32_t key{};
+    std::uint32_t thread_id{};
+    std::uint32_t value{};
+    bool active{};
+};
+
 // Bounded compatibility-side state for opaque guest mutex/semaphore addresses.
 // The embedding selects current_thread_id before executing each guest thread.
 // Contended lock/wait calls return Suspended and are granted by a later
@@ -84,7 +112,9 @@ public:
     A32PthreadSyncService(
         std::span<A32PthreadMutexState> mutexes,
         std::span<A32SemaphoreState> semaphores,
-        std::span<A32PthreadWaiter> waiters) noexcept;
+        std::span<A32PthreadWaiter> waiters,
+        std::span<A32PthreadKeyState> keys = {},
+        std::span<A32PthreadTlsValue> tls_values = {}) noexcept;
 
     A32PthreadSyncService(const A32PthreadSyncService&) = delete;
     A32PthreadSyncService& operator=(const A32PthreadSyncService&) = delete;
@@ -108,7 +138,17 @@ public:
         std::uint32_t& cpsr) override;
 
 private:
-    [[nodiscard]] bool configuration_valid() const noexcept;
+    [[nodiscard]] bool sync_configuration_valid() const noexcept;
+    [[nodiscard]] bool tls_configuration_valid() const noexcept;
+    [[nodiscard]] std::size_t find_key(std::uint32_t key) const noexcept;
+    [[nodiscard]] std::size_t allocate_key(std::uint32_t destructor) noexcept;
+    [[nodiscard]] std::size_t find_tls_value(
+        std::uint32_t key,
+        std::uint32_t thread_id) const noexcept;
+    [[nodiscard]] std::size_t allocate_tls_value(
+        std::uint32_t key,
+        std::uint32_t thread_id,
+        std::uint32_t value) noexcept;
     [[nodiscard]] std::size_t find_mutex(std::uint32_t address) const noexcept;
     [[nodiscard]] std::size_t ensure_mutex(std::uint32_t address) noexcept;
     [[nodiscard]] std::size_t find_semaphore(std::uint32_t address) const noexcept;
@@ -129,6 +169,8 @@ private:
     std::span<A32PthreadMutexState> mutexes_;
     std::span<A32SemaphoreState> semaphores_;
     std::span<A32PthreadWaiter> waiters_;
+    std::span<A32PthreadKeyState> keys_;
+    std::span<A32PthreadTlsValue> tls_values_;
     std::uint32_t current_thread_id_{};
     std::uint64_t next_sequence_{1};
 };

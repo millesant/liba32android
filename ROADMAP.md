@@ -36,9 +36,11 @@ Direct supplied VLC ARMv7 `libvlc.so` evidence-backed GetStaticObjectField
 at slot 145 / offset `0x244` is complete, including bounded caller-seeded
 logical static object state and local-reference return semantics.
 
-The next JNI step returns to evidence discovery: inspect supplied ARMv7
-artifacts for another directly observed bounded seam and implement only that
-proven surface. In particular,
+The supplied ARMv7 JNI surfaces currently exercised by the VLC artifacts are
+covered through GetStaticObjectField. Parallel compatibility work now advances
+on a concrete libc requirement: supplied VLC ARMv7 libmla.so imports the
+pthread TLS-key family (key_create/key_delete/getspecific/setspecific), which
+is the active bounded slice. In particular,
 generic ELF dlclose is not treated as equivalent to VM/class-loader
 JNI_OnUnload ownership. Local frames, NewLocalRef, IsSameObject, GC behavior,
 and other JNI families remain unselected until evidence justifies them.

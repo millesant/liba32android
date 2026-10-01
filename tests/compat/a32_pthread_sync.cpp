@@ -10,12 +10,20 @@
 
 namespace {
 
+using liba32android::compat::A32PthreadKeyState;
 using liba32android::compat::A32PthreadMutexState;
 using liba32android::compat::A32PthreadSyncService;
+using liba32android::compat::A32PthreadTlsValue;
 using liba32android::compat::A32PthreadWaitKind;
 using liba32android::compat::A32PthreadWaiter;
 using liba32android::compat::A32SemaphoreState;
+using liba32android::compat::kA32AndroidEagain;
+using liba32android::compat::kA32AndroidEinval;
 using liba32android::compat::kA32AndroidEbusy;
+using liba32android::compat::kA32PthreadKeyCreateSvcImmediate;
+using liba32android::compat::kA32PthreadKeyDeleteSvcImmediate;
+using liba32android::compat::kA32PthreadGetspecificSvcImmediate;
+using liba32android::compat::kA32PthreadSetspecificSvcImmediate;
 using liba32android::compat::kA32PthreadMutexDestroySvcImmediate;
 using liba32android::compat::kA32PthreadMutexInitSvcImmediate;
 using liba32android::compat::kA32PthreadMutexLockSvcImmediate;
@@ -43,10 +51,14 @@ struct Fixture {
     std::array<A32PthreadMutexState, 4> mutexes{};
     std::array<A32SemaphoreState, 4> semaphores{};
     std::array<A32PthreadWaiter, 8> waiters{};
+    std::array<A32PthreadKeyState, 4> keys{};
+    std::array<A32PthreadTlsValue, 8> tls_values{};
     A32PthreadSyncService service{
         std::span{mutexes},
         std::span{semaphores},
         std::span{waiters},
+        std::span{keys},
+        std::span{tls_values},
     };
 
     Fixture() {
@@ -276,6 +288,125 @@ int test_semaphore_suspend_post_resume() {
     return 0;
 }
 
+int test_tls_keys() {
+    Fixture fixture;
+    constexpr std::uint32_t kKeyAddress = 0x300U;
+    constexpr std::uint32_t kDestructor = 0x12345678U;
+    constexpr std::uint32_t kThreadOneValue = 0x44550000U;
+    constexpr std::uint32_t kThreadTwoValue = 0x55660000U;
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t cpsr{};
+
+    regs[0] = kKeyAddress;
+    regs[1] = kDestructor;
+    if (fixture.service.handle(
+            fixture.memory, kA32PthreadKeyCreateSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled || regs[0] != 0U) {
+        return fail("pthread_key_create failed");
+    }
+    std::array<std::uint8_t, 4> key_bytes{};
+    if (!fixture.memory.read(kKeyAddress, key_bytes)) {
+        return fail("could not read pthread TLS key");
+    }
+    const std::uint32_t key =
+        static_cast<std::uint32_t>(key_bytes[0]) |
+        (static_cast<std::uint32_t>(key_bytes[1]) << 8U) |
+        (static_cast<std::uint32_t>(key_bytes[2]) << 16U) |
+        (static_cast<std::uint32_t>(key_bytes[3]) << 24U);
+    if (key == 0U || !fixture.keys[0].active ||
+        fixture.keys[0].destructor != kDestructor) {
+        return fail("pthread_key_create stored wrong metadata");
+    }
+
+    regs = {};
+    regs[0] = key;
+    regs[1] = kThreadOneValue;
+    if (fixture.service.handle(
+            fixture.memory, kA32PthreadSetspecificSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled || regs[0] != 0U) {
+        return fail("pthread_setspecific failed for thread 1");
+    }
+    regs = {};
+    regs[0] = key;
+    if (fixture.service.handle(
+            fixture.memory, kA32PthreadGetspecificSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != kThreadOneValue) {
+        return fail("pthread_getspecific returned wrong thread 1 value");
+    }
+
+    fixture.service.set_current_thread_id(2U);
+    regs = {};
+    regs[0] = key;
+    if (fixture.service.handle(
+            fixture.memory, kA32PthreadGetspecificSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled || regs[0] != 0U) {
+        return fail("pthread TLS leaked between logical threads");
+    }
+    regs = {};
+    regs[0] = key;
+    regs[1] = kThreadTwoValue;
+    if (fixture.service.handle(
+            fixture.memory, kA32PthreadSetspecificSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled || regs[0] != 0U) {
+        return fail("pthread_setspecific failed for thread 2");
+    }
+
+    fixture.service.set_current_thread_id(1U);
+    regs = {};
+    regs[0] = key;
+    if (fixture.service.handle(
+            fixture.memory, kA32PthreadGetspecificSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != kThreadOneValue) {
+        return fail("pthread TLS thread 1 value was overwritten");
+    }
+    regs = {};
+    regs[0] = key;
+    regs[1] = 0U;
+    if (fixture.service.handle(
+            fixture.memory, kA32PthreadSetspecificSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled || regs[0] != 0U) {
+        return fail("pthread_setspecific null clear failed");
+    }
+
+    regs = {};
+    regs[0] = key;
+    if (fixture.service.handle(
+            fixture.memory, kA32PthreadKeyDeleteSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled || regs[0] != 0U) {
+        return fail("pthread_key_delete failed");
+    }
+    regs = {};
+    regs[0] = key;
+    regs[1] = kThreadOneValue;
+    if (fixture.service.handle(
+            fixture.memory, kA32PthreadSetspecificSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        static_cast<std::int32_t>(regs[0]) != kA32AndroidEinval) {
+        return fail("pthread_setspecific accepted deleted key");
+    }
+
+    for (std::size_t index = 0; index < fixture.keys.size(); ++index) {
+        regs = {};
+        regs[0] = kKeyAddress;
+        if (fixture.service.handle(
+                fixture.memory, kA32PthreadKeyCreateSvcImmediate, regs, cpsr) !=
+                A32HostServiceDisposition::Handled || regs[0] != 0U) {
+            return fail("pthread key capacity fill failed");
+        }
+    }
+    regs = {};
+    regs[0] = kKeyAddress;
+    if (fixture.service.handle(
+            fixture.memory, kA32PthreadKeyCreateSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        static_cast<std::int32_t>(regs[0]) != kA32AndroidEagain) {
+        return fail("pthread key capacity did not return EAGAIN");
+    }
+    return 0;
+}
+
 int test_bounds_and_unknown_service() {
     LinearGuestMemory memory{4096};
     std::array<A32PthreadMutexState, 1> mutexes{};
@@ -329,6 +460,9 @@ int main() {
         return status;
     }
     if (const int status = test_semaphore_suspend_post_resume(); status != 0) {
+        return status;
+    }
+    if (const int status = test_tls_keys(); status != 0) {
         return status;
     }
     if (const int status = test_bounds_and_unknown_service(); status != 0) {

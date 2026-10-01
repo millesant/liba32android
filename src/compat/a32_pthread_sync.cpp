@@ -1,5 +1,6 @@
 #include "compat/a32_pthread_sync.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -21,10 +22,27 @@ using runtime::A32HostServiceDisposition;
     case kA32SemDestroySvcImmediate:
     case kA32SemWaitSvcImmediate:
     case kA32SemPostSvcImmediate:
+    case kA32PthreadKeyCreateSvcImmediate:
+    case kA32PthreadKeyDeleteSvcImmediate:
+    case kA32PthreadGetspecificSvcImmediate:
+    case kA32PthreadSetspecificSvcImmediate:
         return true;
     default:
         return false;
     }
+}
+
+[[nodiscard]] bool write_u32_le(
+    memory::GuestMemory& memory,
+    std::uint32_t address,
+    std::uint32_t value) {
+    const std::array<std::uint8_t, 4> bytes{{
+        static_cast<std::uint8_t>(value),
+        static_cast<std::uint8_t>(value >> 8U),
+        static_cast<std::uint8_t>(value >> 16U),
+        static_cast<std::uint8_t>(value >> 24U),
+    }};
+    return memory.write(address, bytes);
 }
 
 }  // namespace
@@ -32,20 +50,91 @@ using runtime::A32HostServiceDisposition;
 A32PthreadSyncService::A32PthreadSyncService(
     std::span<A32PthreadMutexState> mutexes,
     std::span<A32SemaphoreState> semaphores,
-    std::span<A32PthreadWaiter> waiters) noexcept
+    std::span<A32PthreadWaiter> waiters,
+    std::span<A32PthreadKeyState> keys,
+    std::span<A32PthreadTlsValue> tls_values) noexcept
     : mutexes_(mutexes),
       semaphores_(semaphores),
-      waiters_(waiters) {
+      waiters_(waiters),
+      keys_(keys),
+      tls_values_(tls_values) {
     for (auto& mutex : mutexes_) mutex = {};
     for (auto& semaphore : semaphores_) semaphore = {};
     for (auto& waiter : waiters_) waiter = {};
+    for (auto& key : keys_) key = {};
+    for (auto& value : tls_values_) value = {};
 }
 
-bool A32PthreadSyncService::configuration_valid() const noexcept {
+bool A32PthreadSyncService::sync_configuration_valid() const noexcept {
     return current_thread_id_ != 0U &&
            !mutexes_.empty() &&
            !semaphores_.empty() &&
            !waiters_.empty();
+}
+
+bool A32PthreadSyncService::tls_configuration_valid() const noexcept {
+    return current_thread_id_ != 0U &&
+           !keys_.empty() &&
+           !tls_values_.empty();
+}
+
+std::size_t A32PthreadSyncService::find_key(
+    std::uint32_t key) const noexcept {
+    for (std::size_t index = 0; index < keys_.size(); ++index) {
+        if (keys_[index].active && keys_[index].key == key) {
+            return index;
+        }
+    }
+    return keys_.size();
+}
+
+std::size_t A32PthreadSyncService::allocate_key(
+    std::uint32_t destructor) noexcept {
+    for (std::size_t index = 0; index < keys_.size(); ++index) {
+        if (keys_[index].active) continue;
+        const std::uint64_t key64 =
+            static_cast<std::uint64_t>(index) + 1U;
+        if (key64 > std::numeric_limits<std::uint32_t>::max()) {
+            return keys_.size();
+        }
+        keys_[index] = A32PthreadKeyState{
+            .key = static_cast<std::uint32_t>(key64),
+            .destructor = destructor,
+            .active = true,
+        };
+        return index;
+    }
+    return keys_.size();
+}
+
+std::size_t A32PthreadSyncService::find_tls_value(
+    std::uint32_t key,
+    std::uint32_t thread_id) const noexcept {
+    for (std::size_t index = 0; index < tls_values_.size(); ++index) {
+        if (tls_values_[index].active &&
+            tls_values_[index].key == key &&
+            tls_values_[index].thread_id == thread_id) {
+            return index;
+        }
+    }
+    return tls_values_.size();
+}
+
+std::size_t A32PthreadSyncService::allocate_tls_value(
+    std::uint32_t key,
+    std::uint32_t thread_id,
+    std::uint32_t value) noexcept {
+    for (std::size_t index = 0; index < tls_values_.size(); ++index) {
+        if (tls_values_[index].active) continue;
+        tls_values_[index] = A32PthreadTlsValue{
+            .key = key,
+            .thread_id = thread_id,
+            .value = value,
+            .active = true,
+        };
+        return index;
+    }
+    return tls_values_.size();
 }
 
 std::size_t A32PthreadSyncService::find_mutex(
@@ -178,14 +267,97 @@ std::optional<A32PthreadWake> A32PthreadSyncService::pop_ready() noexcept {
 }
 
 runtime::A32HostServiceDisposition A32PthreadSyncService::handle(
-    memory::GuestMemory&,
+    memory::GuestMemory& memory,
     std::uint32_t svc_immediate,
     std::array<std::uint32_t, 16>& regs,
     std::uint32_t&) {
     if (!is_sync_svc(svc_immediate)) {
         return A32HostServiceDisposition::Unhandled;
     }
-    if (!configuration_valid() || regs[0] == 0U) {
+
+    const bool tls_service =
+        svc_immediate == kA32PthreadKeyCreateSvcImmediate ||
+        svc_immediate == kA32PthreadKeyDeleteSvcImmediate ||
+        svc_immediate == kA32PthreadGetspecificSvcImmediate ||
+        svc_immediate == kA32PthreadSetspecificSvcImmediate;
+    if (tls_service) {
+        if (!tls_configuration_valid()) {
+            return A32HostServiceDisposition::Failed;
+        }
+
+        if (svc_immediate == kA32PthreadKeyCreateSvcImmediate) {
+            const std::uint32_t key_address = regs[0];
+            if (key_address == 0U) {
+                return A32HostServiceDisposition::Failed;
+            }
+            const std::size_t index = allocate_key(regs[1]);
+            if (index >= keys_.size()) {
+                regs[0] = static_cast<std::uint32_t>(kA32AndroidEagain);
+                return A32HostServiceDisposition::Handled;
+            }
+            if (!write_u32_le(memory, key_address, keys_[index].key)) {
+                keys_[index] = {};
+                return A32HostServiceDisposition::Failed;
+            }
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+
+        const std::uint32_t key = regs[0];
+        const std::size_t key_index = find_key(key);
+        if (svc_immediate == kA32PthreadGetspecificSvcImmediate) {
+            if (key_index >= keys_.size()) {
+                regs[0] = 0U;
+                return A32HostServiceDisposition::Handled;
+            }
+            const std::size_t value_index =
+                find_tls_value(key, current_thread_id_);
+            regs[0] = value_index < tls_values_.size()
+                ? tls_values_[value_index].value
+                : 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+        if (key_index >= keys_.size()) {
+            regs[0] = static_cast<std::uint32_t>(kA32AndroidEinval);
+            return A32HostServiceDisposition::Handled;
+        }
+
+        if (svc_immediate == kA32PthreadKeyDeleteSvcImmediate) {
+            for (auto& value : tls_values_) {
+                if (value.active && value.key == key) {
+                    value = {};
+                }
+            }
+            keys_[key_index] = {};
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+
+        const std::uint32_t value = regs[1];
+        const std::size_t existing =
+            find_tls_value(key, current_thread_id_);
+        if (value == 0U) {
+            if (existing < tls_values_.size()) {
+                tls_values_[existing] = {};
+            }
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+        if (existing < tls_values_.size()) {
+            tls_values_[existing].value = value;
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+        if (allocate_tls_value(
+                key, current_thread_id_, value) >= tls_values_.size()) {
+            regs[0] = static_cast<std::uint32_t>(kA32AndroidEnomem);
+            return A32HostServiceDisposition::Handled;
+        }
+        regs[0] = 0U;
+        return A32HostServiceDisposition::Handled;
+    }
+
+    if (!sync_configuration_valid() || regs[0] == 0U) {
         return A32HostServiceDisposition::Failed;
     }
 

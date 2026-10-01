@@ -45,8 +45,10 @@ using liba32android::compat::A32LibcGuestErrnoState;
 using liba32android::compat::A32LibcGuestHeap;
 using liba32android::compat::A32LibcHeapBlock;
 using liba32android::compat::A32LibcHeapOptions;
+using liba32android::compat::A32PthreadKeyState;
 using liba32android::compat::A32PthreadMutexState;
 using liba32android::compat::A32PthreadSyncService;
+using liba32android::compat::A32PthreadTlsValue;
 using liba32android::compat::A32PthreadWaiter;
 using liba32android::compat::A32SemaphoreState;
 using liba32android::compat::A32LibcIntegerOptions;
@@ -82,6 +84,10 @@ using liba32android::compat::kA32PthreadMutexDestroySvcImmediate;
 using liba32android::compat::kA32PthreadMutexLockSvcImmediate;
 using liba32android::compat::kA32PthreadMutexTrylockSvcImmediate;
 using liba32android::compat::kA32PthreadMutexUnlockSvcImmediate;
+using liba32android::compat::kA32PthreadKeyCreateSvcImmediate;
+using liba32android::compat::kA32PthreadKeyDeleteSvcImmediate;
+using liba32android::compat::kA32PthreadGetspecificSvcImmediate;
+using liba32android::compat::kA32PthreadSetspecificSvcImmediate;
 using liba32android::compat::kA32SemInitSvcImmediate;
 using liba32android::compat::kA32SemDestroySvcImmediate;
 using liba32android::compat::kA32SemWaitSvcImmediate;
@@ -331,7 +337,7 @@ int main(int argc, char** argv) {
         return fail("libc shim dependency/provider metadata was incorrect");
     }
 
-    constexpr std::array<std::string_view, 41> shim_names{{
+    constexpr std::array<std::string_view, 45> shim_names{{
         "memcpy", "memmove", "memset", "memcmp", "memchr",
         "strlen", "strcmp", "strncmp",
         "memmem", "strcpy", "strncpy",
@@ -346,6 +352,8 @@ int main(int argc, char** argv) {
         "pthread_mutex_lock", "pthread_mutex_trylock",
         "pthread_mutex_unlock", "sem_init", "sem_destroy",
         "sem_wait", "sem_post",
+        "pthread_key_create", "pthread_key_delete",
+        "pthread_getspecific", "pthread_setspecific",
     }};
     std::array<std::uint32_t, shim_names.size()> shim_targets{};
     for (std::size_t i = 0; i < shim_names.size(); ++i) {
@@ -457,10 +465,14 @@ int main(int argc, char** argv) {
     std::array<A32PthreadMutexState, 8> mutex_metadata{};
     std::array<A32SemaphoreState, 8> semaphore_metadata{};
     std::array<A32PthreadWaiter, 16> sync_waiters{};
+    std::array<A32PthreadKeyState, 8> pthread_keys{};
+    std::array<A32PthreadTlsValue, 16> pthread_tls_values{};
     A32PthreadSyncService sync_service{
         std::span{mutex_metadata},
         std::span{semaphore_metadata},
         std::span{sync_waiters},
+        std::span{pthread_keys},
+        std::span{pthread_tls_values},
     };
     sync_service.set_current_thread_id(1U);
     std::array<A32AeabiAtexitRecord, 8> atexit_records{};
@@ -475,7 +487,7 @@ int main(int argc, char** argv) {
         },
     };
 
-    const std::array<A32HostServiceRegistryEntry, 29> services{{
+    const std::array<A32HostServiceRegistryEntry, 33> services{{
         {kA32LibcMemcpySvcImmediate, &service},
         {kA32LibcMemmoveSvcImmediate, &service},
         {kA32LibcMemsetSvcImmediate, &service},
@@ -503,6 +515,10 @@ int main(int argc, char** argv) {
         {kA32SemDestroySvcImmediate, &sync_service},
         {kA32SemWaitSvcImmediate, &sync_service},
         {kA32SemPostSvcImmediate, &sync_service},
+        {kA32PthreadKeyCreateSvcImmediate, &sync_service},
+        {kA32PthreadKeyDeleteSvcImmediate, &sync_service},
+        {kA32PthreadGetspecificSvcImmediate, &sync_service},
+        {kA32PthreadSetspecificSvcImmediate, &sync_service},
         {kA32AeabiAtexitSvcImmediate, &atexit_service},
         {kA32CxaFinalizeSvcImmediate, &cxa_finalize_service},
     }};
@@ -988,6 +1004,53 @@ int main(int argc, char** argv) {
         stack_top, *stop, semaphore_address, 0U, 0U);
     if (!result || !*result || result->regs[0] != 0U) {
         return fail("real sem_destroy wrapper failed");
+    }
+    ++completed_calls;
+
+    const std::uint32_t pthread_key_address = *data + 0xe00U;
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_pthread_key_create", registry,
+        stack_top, *stop, pthread_key_address, 0U, 0U);
+    std::array<std::uint8_t, 4> pthread_key_bytes{};
+    if (!result || !*result || result->services_handled != 1 ||
+        result->regs[0] != 0U ||
+        !memory.read(pthread_key_address, pthread_key_bytes)) {
+        return fail("real pthread_key_create wrapper failed");
+    }
+    ++completed_calls;
+    const std::uint32_t pthread_key =
+        static_cast<std::uint32_t>(pthread_key_bytes[0]) |
+        (static_cast<std::uint32_t>(pthread_key_bytes[1]) << 8U) |
+        (static_cast<std::uint32_t>(pthread_key_bytes[2]) << 16U) |
+        (static_cast<std::uint32_t>(pthread_key_bytes[3]) << 24U);
+    if (pthread_key == 0U) {
+        return fail("real pthread_key_create returned zero logical key");
+    }
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_pthread_setspecific", registry,
+        stack_top, *stop, pthread_key, alpha_address, 0U);
+    if (!result || !*result || result->services_handled != 1 ||
+        result->regs[0] != 0U) {
+        return fail("real pthread_setspecific wrapper failed");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_pthread_getspecific", registry,
+        stack_top, *stop, pthread_key, 0U, 0U);
+    if (!result || !*result || result->services_handled != 1 ||
+        result->regs[0] != alpha_address) {
+        return fail("real pthread_getspecific wrapper failed");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_pthread_key_delete", registry,
+        stack_top, *stop, pthread_key, 0U, 0U);
+    if (!result || !*result || result->services_handled != 1 ||
+        result->regs[0] != 0U) {
+        return fail("real pthread_key_delete wrapper failed");
     }
     ++completed_calls;
 

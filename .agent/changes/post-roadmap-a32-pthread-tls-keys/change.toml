@@ -1,0 +1,31 @@
+schema = 1
+id = "post-roadmap-a32-pthread-tls-keys"
+kind = "feature"
+size = "S2"
+status = "active"
+workflow = "feature"
+control_revision = "f4e926e81ad91d13d02a006f4a18a00f66ae0bab"
+base_revision = "2101b19bf9952172bc92f20245ae558f061657b6"
+acceptance = [
+  "supplied VLC ARMv7 libmla.so has eager libc JUMP_SLOT imports for pthread_key_create, pthread_key_delete, pthread_getspecific, and pthread_setspecific",
+  "the bounded pthread service exposes private SVC IDs 0xBC-0xBF for exactly those four TLS-key APIs",
+  "pthread_key_create writes a deterministic non-zero logical key to guest memory, preserves the guest destructor callback address as metadata, and returns Android EAGAIN when bounded key capacity is exhausted",
+  "TLS values are keyed by logical pthread key plus caller-selected non-zero logical thread ID and never expose host TLS or pthread objects",
+  "pthread_setspecific updates or clears only the current logical thread value, returns Android EINVAL for a deleted/unknown key, and returns Android ENOMEM when bounded value metadata is exhausted",
+  "pthread_getspecific returns the current logical thread value or null, including null for deleted/unknown keys",
+  "pthread_key_delete clears all bounded values for that key without invoking destructors and returns Android EINVAL for unknown/deleted keys",
+  "the reproducible partial libc shim and consumer export, relocate, and execute all four new TLS wrappers, increasing eager JUMP_SLOT and completed service-call evidence from 41 to 45",
+  "thread-exit destructor execution/iterations, pthread_create/join/detach/self/equal, cancellation, and host TLS remain outside this slice",
+  "accepted spec/architecture/state/evidence converge and exact-head required checks pass"
+]
+
+[convergence]
+requirements = "aligned"
+specs = "aligned"
+implementation = "aligned"
+tests = "aligned"
+documentation = "pending"
+decisions = "not_applicable"
+tasks = "aligned"
+evidence = "pending"
+repository = "aligned"

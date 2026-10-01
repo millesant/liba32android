@@ -66,6 +66,18 @@ int sem_wait(void* semaphore);
 __attribute__((visibility("default")))
 int sem_post(void* semaphore);
 
+typedef unsigned int fixture_pthread_key_t;
+__attribute__((visibility("default")))
+int pthread_key_create(
+    fixture_pthread_key_t* key,
+    void (*destructor)(void*));
+__attribute__((visibility("default")))
+int pthread_key_delete(fixture_pthread_key_t key);
+__attribute__((visibility("default")))
+void* pthread_getspecific(fixture_pthread_key_t key);
+__attribute__((visibility("default")))
+int pthread_setspecific(fixture_pthread_key_t key, const void* value);
+
 __attribute__((visibility("default")))
 void __aeabi_memcpy(void* destination, const void* source, fixture_size_t count);
 __attribute__((visibility("default")))
@@ -303,4 +315,25 @@ int fixture_sem_wait(void* semaphore) {
 __attribute__((visibility("default"), noinline))
 int fixture_sem_post(void* semaphore) {
     return sem_post(semaphore);
+}
+
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_key_create(
+    fixture_pthread_key_t* key,
+    void (*destructor)(void*)) {
+    return pthread_key_create(key, destructor);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_key_delete(fixture_pthread_key_t key) {
+    return pthread_key_delete(key);
+}
+__attribute__((visibility("default"), noinline))
+void* fixture_pthread_getspecific(fixture_pthread_key_t key) {
+    return pthread_getspecific(key);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_setspecific(
+    fixture_pthread_key_t key,
+    const void* value) {
+    return pthread_setspecific(key, value);
 }
