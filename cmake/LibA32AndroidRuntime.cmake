@@ -2,6 +2,7 @@ add_library(liba32android SHARED
     src/public/liba32android_c.cpp
     src/cpu/dynarmic_cpu.cpp
     src/runtime/a32_service_dispatch.cpp
+    src/runtime/a32_logical_thread.cpp
     src/runtime/a32_service_registry.cpp
     src/compat/a32_android_log_write.cpp
     src/compat/a32_android_platform_provider.cpp
