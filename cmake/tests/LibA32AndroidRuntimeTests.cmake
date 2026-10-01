@@ -9,6 +9,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    runtime_logical_thread_test
+    tests/runtime/a32_logical_thread.cpp
+)
+
+add_test(
+    NAME a32_logical_thread_context
+    COMMAND runtime_logical_thread_test
+)
+
+liba32android_add_test_executable(
     runtime_service_registry_test
     tests/runtime/a32_service_registry.cpp
 )
