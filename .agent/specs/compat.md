@@ -1,7 +1,7 @@
 # Compatibility contract
 
 Status: Accepted current project contract
-Last reconciled: 2026-09-27
+Last reconciled: 2026-10-01
 
 ## L32-C001 — Platform compatibility is a separate layer
 
@@ -1702,3 +1702,44 @@ deterministically. SetStaticObjectField, Java class initialization, field
 descriptor type enforcement, inheritance/assignability, garbage collection,
 reachability, and framework object semantics remain separate evidence-driven
 slices.
+
+
+## L32-C061 — ARM32 bounded pthread TLS keys
+
+Supplied VLC ARMv7 `libmla.so` has eager libc `R_ARM_JUMP_SLOT` imports for
+`pthread_key_create`, `pthread_key_delete`, `pthread_getspecific`, and
+`pthread_setspecific`.
+
+The compatibility layer may expose private SVC IDs `0x100` through `0x103`
+for exactly those four APIs. These immediates intentionally avoid the existing
+libdl, libm, lifecycle, and JNI private-service ranges.
+
+`A32PthreadSyncService` borrows finite caller-owned logical-key metadata and
+finite per-logical-thread value metadata. Keys are deterministic non-zero
+32-bit identities and do not mirror bionic private key representation or expose
+host pthread/TLS objects. The embedding selects one non-zero logical thread ID
+before executing a guest thread.
+
+`pthread_key_create` writes the new logical key to guest memory, preserves a
+guest destructor callback address only as metadata, and returns Android
+`EAGAIN=11` when key capacity is exhausted.
+
+`pthread_setspecific` updates or clears only the current logical-thread value
+for an active key. Invalid or deleted keys return Android `EINVAL=22`; finite
+value-metadata exhaustion returns Android `ENOMEM=12`.
+`pthread_getspecific` returns the selected logical-thread value or null,
+including null for invalid/deleted keys.
+
+`pthread_key_delete` invalidates the key and clears every stored value for
+that key without executing the recorded destructor. Re-deleting or otherwise
+mutating an invalid key returns Android `EINVAL=22`.
+
+The prepared partial ARM32 `libc.so` may export the four functions as direct
+private-SVC stubs. The current real integration resolves 45 prepared exports,
+requires eager `R_ARM_JUMP_SLOT` targets for them, and executes all four TLS
+wrappers end-to-end through the bounded service.
+
+Thread-exit destructor execution/iteration, `pthread_create`,
+`pthread_join`, `pthread_detach`, `pthread_self`, `pthread_equal`,
+cancellation, scheduler lifecycle, host TLS, and broader bionic pthread
+semantics remain separate work.
