@@ -22,6 +22,7 @@
 #include <optional>
 #include <span>
 
+#include "compat/a32_android_errno.h"
 #include "runtime/a32_service_dispatch.h"
 
 namespace liba32android::compat {
@@ -53,10 +54,6 @@ inline constexpr std::uint32_t kA32PthreadGetspecificSvcImmediate =
 inline constexpr std::uint32_t kA32PthreadSetspecificSvcImmediate =
     LIBA32ANDROID_A32_PTHREAD_SETSPECIFIC_SVC;
 
-inline constexpr std::int32_t kA32AndroidEagain = 11;
-inline constexpr std::int32_t kA32AndroidEnomem = 12;
-inline constexpr std::int32_t kA32AndroidEbusy = 16;
-inline constexpr std::int32_t kA32AndroidEinval = 22;
 inline constexpr std::uint32_t kA32AndroidSemValueMax = 0x7fffffffU;
 
 enum class A32PthreadWaitKind : std::uint8_t {

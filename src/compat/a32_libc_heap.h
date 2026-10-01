@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <span>
 
+#include "compat/a32_android_errno.h"
 #include "compat/a32_libc_integer.h"
 #include "runtime/a32_service_dispatch.h"
 
@@ -25,7 +26,6 @@ inline constexpr std::uint32_t kA32LibcReallocSvcImmediate =
     LIBA32ANDROID_A32_LIBC_REALLOC_SVC;
 inline constexpr std::uint32_t kA32LibcFreeSvcImmediate =
     LIBA32ANDROID_A32_LIBC_FREE_SVC;
-inline constexpr std::int32_t kA32AndroidEnomem = 12;
 inline constexpr std::uint32_t kA32AndroidMallocAlignment = 16;
 
 struct A32LibcHeapBlock {

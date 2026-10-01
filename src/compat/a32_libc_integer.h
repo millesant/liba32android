@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 
+#include "compat/a32_android_errno.h"
 #include "runtime/a32_service_dispatch.h"
 
 namespace liba32android::compat {
@@ -19,10 +20,6 @@ inline constexpr std::uint32_t kA32LibcStrtolSvcImmediate =
     LIBA32ANDROID_A32_LIBC_STRTOL_SVC;
 inline constexpr std::uint32_t kA32LibcErrnoSvcImmediate =
     LIBA32ANDROID_A32_LIBC_ERRNO_SVC;
-
-// Android/Linux guest errno numbers used by the integer-conversion contract.
-inline constexpr std::int32_t kA32AndroidEinval = 22;
-inline constexpr std::int32_t kA32AndroidErange = 34;
 
 class A32LibcErrnoSink {
 public:

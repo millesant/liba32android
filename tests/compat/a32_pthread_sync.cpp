@@ -18,6 +18,7 @@ using liba32android::compat::A32PthreadWaitKind;
 using liba32android::compat::A32PthreadWaiter;
 using liba32android::compat::A32SemaphoreState;
 using liba32android::compat::kA32AndroidEagain;
+using liba32android::compat::kA32AndroidEnomem;
 using liba32android::compat::kA32AndroidEinval;
 using liba32android::compat::kA32AndroidEbusy;
 using liba32android::compat::kA32PthreadKeyCreateSvcImmediate;
