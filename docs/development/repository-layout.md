@@ -46,6 +46,5 @@ Tool scripts must resolve repository inputs relative to their own location and r
 - `docs/architecture/`: current subsystem design.
 - `docs/development/`: contributor/build/repository guidance.
 - `docs/research/`: research notes and captured environment evidence.
-- `.agent/specs/`: accepted current project contracts.
-- `.agent/changes/`: substantial change identity/tasks/evidence.
-- `docs/history/`: compact migration/history notes; retired pre-v7 specs remain in Git history rather than the working tree.
+- `docs/contracts/`: accepted current project contracts.
+- `docs/history/`: compact migration/history notes; retired workflow/spec snapshots remain in Git history rather than the working tree.

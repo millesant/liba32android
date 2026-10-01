@@ -35,3 +35,6 @@ contracts are easy to discover and include paths stay stable within the
 repository.
 
 Each architecture document describes one boundary and should avoid folding later-layer policy into earlier layers.
+
+Cross-cutting accepted engineering decisions are recorded in [decisions.md](decisions.md).
+Accepted current project contracts live under [`docs/contracts/`](../contracts/).

@@ -151,8 +151,8 @@ src/compat/              Android compatibility services/adapters
 tests/                   unit and integration regressions
 tools/fixtures/          reproducible ARM32 fixture builders
 tools/android/           Android diagnostic/validation harnesses
-docs/                    architecture, development, and research notes
-.agent/specs/            accepted current internal project contracts
+docs/                    architecture, contracts, development, and research notes
+docs/contracts/          accepted current internal project contracts
 ```
 
 For ownership/dependency rules, see
@@ -173,19 +173,19 @@ Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), which
 covers build/test requirements, scope boundaries, and what makes a useful bug
 report or compatibility contribution.
 
-Repository-specific engineering invariants for automated maintainers are in
-[AGENTS.md](AGENTS.md). Human contributors do **not** need access to the
-maintainer's external automation/control-plane repository.
+Repository-specific engineering invariants are in [AGENTS.md](AGENTS.md).
+They apply regardless of whether a change is made by a human or an automated
+tool.
 
 For security-sensitive reports, see [SECURITY.md](SECURITY.md). Community
 expectations are documented in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Project state
 
-Current accepted technical contracts live under `.agent/specs/`; observed
-implementation/validation state is summarized in `.agent/STATE.md`, and
-dependency-ordered next work is recorded in `.agent/NEXT.md`. The retired
-pre-v7 root specification tree remains available in Git history; see the
+Current accepted technical contracts live under [`docs/contracts/`](docs/contracts/).
+Active substantial work and validation handoffs live in GitHub Issues; repository
+documentation is reserved for durable engineering truth. The retired pre-v7 root
+specification tree remains available in Git history; see the
 [historical specs note](docs/history/pre-v7-specs.md).
 
 ## License

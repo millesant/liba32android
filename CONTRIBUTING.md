@@ -13,9 +13,8 @@ Please read:
 - [docs/README.md](docs/README.md) for architecture/development documentation;
 - [AGENTS.md](AGENTS.md) for repository engineering invariants.
 
-Human contributors do not need access to the maintainer's private automation
-control plane. Everything needed to build, test, and understand public project
-scope should be available in this repository.
+Everything needed to build, test, and understand the repository's engineering
+scope should be available in the repository and its GitHub Issues.
 
 ## Build and test
 
