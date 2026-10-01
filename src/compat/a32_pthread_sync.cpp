@@ -1,6 +1,8 @@
 #include "compat/a32_pthread_sync.h"
 
 #include <array>
+
+#include "memory/guest_memory.h"
 #include <cstddef>
 #include <cstdint>
 #include <limits>
