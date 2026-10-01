@@ -34,4 +34,9 @@ grouped under `src/elf/loading/`, `metadata/`, `linking/`, and
 contracts are easy to discover and include paths stay stable within the
 repository.
 
+Logical guest execution identities are documented in
+[A32 logical thread execution context](a32-logical-thread-context.md). That
+internal seam reuses the existing A32 execution/service-suspension contracts
+and deliberately does not introduce a generic scheduler.
+
 Each architecture document describes one boundary and should avoid folding later-layer policy into earlier layers.

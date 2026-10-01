@@ -1,7 +1,7 @@
 # Runtime contract
 
 Status: Accepted current project contract
-Last reconciled: 2026-10-01
+Last reconciled: 2026-09-27
 
 ## L32-R001 — Game-agnostic runtime
 
@@ -129,27 +129,3 @@ This first stable embedding surface deliberately does not expose ELF loading,
 dependency providers, compatibility-service registration, pthread scheduling,
 Android filesystem/APK I/O, dynamic dlopen transactions, or device/UI policy.
 Those remain composable internal contracts until separately promoted.
-
-
-## L32-R014 — Logical guest-thread execution context
-
-The runtime may associate one non-zero 32-bit logical thread identity with an
-existing `cpu::ExecutionRequest` through an internal
-`A32LogicalExecutionContext`. Zero is reserved for invalid/unselected
-identity. The identity is not a host thread ID, pthread object, pointer, TLS
-address, or CPU-engine object.
-
-The context reuses the accepted engine-independent execution request directly;
-it does not duplicate registers, CPSR, PC, or instruction-budget state into a
-second CPU snapshot representation.
-
-A suspended `A32ServiceDispatchResult` may be converted into a logical-thread
-continuation only through the existing `make_a32_service_resume_request`
-contract. The resulting context preserves the same logical thread identity and
-the exact post-SVC continuation so the trapped service is not replayed.
-
-This seam owns no scheduler policy, ready queue, runnable/blocked/exited
-lifecycle, wait reason, wake ordering, pthread join/detach behavior,
-synchronization semantics, TLS destructor policy, or JNI thread state. Those
-remain higher-layer concerns. The seam is internal C++ infrastructure and does
-not change the public C embedding ABI.
