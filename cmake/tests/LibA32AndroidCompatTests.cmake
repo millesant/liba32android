@@ -89,6 +89,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_pthread_lifecycle_test
+    tests/compat/a32_pthread_lifecycle.cpp
+)
+
+add_test(
+    NAME a32_pthread_lifecycle_service
+    COMMAND compat_pthread_lifecycle_test
+)
+
+liba32android_add_test_executable(
     compat_aeabi_atexit_test
     tests/compat/a32_aeabi_atexit.cpp
 )
@@ -157,6 +167,28 @@ if(LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH AND
         NAME a32_libc_memory_string_shim_integration
         COMMAND compat_libc_memory_string_shim_integration_test
                 "${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH}"
+                "${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH}"
+    )
+endif()
+
+liba32android_add_test_executable(
+    compat_pthread_lifecycle_shim_integration_test
+    tests/compat/a32_pthread_lifecycle_shim.cpp
+)
+
+if(LIBA32ANDROID_ARM32_PTHREAD_LIFECYCLE_CONSUMER_PATH)
+    if(NOT LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH)
+        message(FATAL_ERROR
+            "LIBA32ANDROID_ARM32_PTHREAD_LIFECYCLE_CONSUMER_PATH requires LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH")
+    endif()
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_PTHREAD_LIFECYCLE_CONSUMER_PATH}")
+        message(FATAL_ERROR
+            "pthread lifecycle consumer fixture does not exist: ${LIBA32ANDROID_ARM32_PTHREAD_LIFECYCLE_CONSUMER_PATH}")
+    endif()
+    add_test(
+        NAME a32_pthread_lifecycle_shim_integration
+        COMMAND compat_pthread_lifecycle_shim_integration_test
+                "${LIBA32ANDROID_ARM32_PTHREAD_LIFECYCLE_CONSUMER_PATH}"
                 "${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH}"
     )
 endif()

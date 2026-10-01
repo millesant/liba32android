@@ -38,6 +38,7 @@ jobs:
           bash tools/fixtures/build_arm32_libc_memory_string_fixture.sh             "$ANDROID_HOME/ndk/$NDK_VERSION"             build-fixtures/libc-ms-second
           cmp             build-fixtures/libc-ms/libc.so             build-fixtures/libc-ms-second/libc.so
           cmp             build-fixtures/libc-ms/liba32android_libc_memory_string_consumer.so             build-fixtures/libc-ms-second/liba32android_libc_memory_string_consumer.so
+          cmp             build-fixtures/libc-ms/liba32android_pthread_lifecycle_consumer.so             build-fixtures/libc-ms-second/liba32android_pthread_lifecycle_consumer.so
 
           readelf -dW build-fixtures/libc-ms/libc.so |
             tee build-fixtures/libc-ms-shim-dynamic.txt
@@ -47,6 +48,10 @@ jobs:
             tee build-fixtures/libc-ms-consumer-dynamic.txt
           readelf -rW build-fixtures/libc-ms/liba32android_libc_memory_string_consumer.so |
             tee build-fixtures/libc-ms-consumer-relocations.txt
+          readelf -dW build-fixtures/libc-ms/liba32android_pthread_lifecycle_consumer.so |
+            tee build-fixtures/libc-ms-pthread-consumer-dynamic.txt
+          readelf -rW build-fixtures/libc-ms/liba32android_pthread_lifecycle_consumer.so |
+            tee build-fixtures/libc-ms-pthread-consumer-relocations.txt
 
           grep -F 'Library soname: [libc.so]' build-fixtures/libc-ms-shim-dynamic.txt
           grep -F 'Shared library: [libc.so]' build-fixtures/libc-ms-consumer-dynamic.txt
@@ -56,16 +61,22 @@ jobs:
             grep -F 'R_ARM_JUMP_SLOT' build-fixtures/libc-ms-consumer-relocations.txt |
               grep -F "$symbol"
           done
+          grep -F 'Shared library: [libc.so]' build-fixtures/libc-ms-pthread-consumer-dynamic.txt
+          for symbol in pthread_attr_init pthread_attr_destroy pthread_attr_getdetachstate pthread_attr_setdetachstate pthread_attr_getstacksize pthread_attr_setstacksize pthread_create pthread_self pthread_equal pthread_exit; do
+            grep -F "$symbol" build-fixtures/libc-ms-shim-symbols.txt
+            grep -F 'R_ARM_JUMP_SLOT' build-fixtures/libc-ms-pthread-consumer-relocations.txt |
+              grep -F "$symbol"
+          done
 
-          sha256sum             build-fixtures/libc-ms/libc.so             build-fixtures/libc-ms/liba32android_libc_memory_string_consumer.so
+          sha256sum             build-fixtures/libc-ms/libc.so             build-fixtures/libc-ms/liba32android_libc_memory_string_consumer.so             build-fixtures/libc-ms/liba32android_pthread_lifecycle_consumer.so
 
       - name: Configure integration
         run: |
           set -euxo pipefail
-          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DLIBA32ANDROID_BUILD_TESTS=ON             -DLIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/libc-ms/liba32android_libc_memory_string_consumer.so"             -DLIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH="$GITHUB_WORKSPACE/build-fixtures/libc-ms/libc.so"
+          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DLIBA32ANDROID_BUILD_TESTS=ON             -DLIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/libc-ms/liba32android_libc_memory_string_consumer.so"             -DLIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH="$GITHUB_WORKSPACE/build-fixtures/libc-ms/libc.so"             -DLIBA32ANDROID_ARM32_PTHREAD_LIFECYCLE_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/libc-ms/liba32android_pthread_lifecycle_consumer.so"
 
       - name: Build integration
-        run: cmake --build build --target compat_libc_memory_string_shim_integration_test --parallel 2
+        run: cmake --build build --target compat_libc_memory_string_shim_integration_test compat_pthread_lifecycle_shim_integration_test --parallel 2
 
       - name: Test integration
         run: |
@@ -80,6 +91,34 @@ jobs:
           grep -F 'fixture.libc.completed_service_calls=45' build-fixtures/libc-ms-integration-evidence.txt
           grep -F 'fixture.libc.fini_array_calls=1' build-fixtures/libc-ms-integration-evidence.txt
           grep -F 'fixture.libc.status=PASS' build-fixtures/libc-ms-integration-evidence.txt
+
+          ctest --test-dir build --output-on-failure -R '^a32_pthread_lifecycle_shim_integration
+      - name: Upload partial libc integration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm32-libc-memory-string-shim
+          path: |
+            build-fixtures/libc-ms/libc.so
+            build-fixtures/libc-ms/liba32android_libc_memory_string_consumer.so
+            build-fixtures/libc-ms/liba32android_pthread_lifecycle_consumer.so
+            build-fixtures/libc-ms-shim-dynamic.txt
+            build-fixtures/libc-ms-shim-symbols.txt
+            build-fixtures/libc-ms-consumer-dynamic.txt
+            build-fixtures/libc-ms-consumer-relocations.txt
+            build-fixtures/libc-ms-pthread-consumer-dynamic.txt
+            build-fixtures/libc-ms-pthread-consumer-relocations.txt
+            build-fixtures/libc-ms-integration-evidence.txt
+            build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+          if-no-files-found: error
+          retention-days: 14
+
+          build/compat_pthread_lifecycle_shim_integration_test             build-fixtures/libc-ms/liba32android_pthread_lifecycle_consumer.so             build-fixtures/libc-ms/libc.so |
+            tee build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+          grep -F 'fixture.pthread_lifecycle.object_count=2' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+          grep -F 'fixture.pthread_lifecycle.required_jump_slots=10' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+          grep -F 'fixture.pthread_lifecycle.wrapper_calls=11' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+          grep -F 'fixture.pthread_lifecycle.thread_exits=2' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+          grep -F 'fixture.pthread_lifecycle.status=PASS' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
 
       - name: Upload partial libc integration evidence
         uses: actions/upload-artifact@v4
