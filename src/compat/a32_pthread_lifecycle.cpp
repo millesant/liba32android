@@ -143,15 +143,11 @@ std::size_t A32PthreadLifecycleService::free_thread_slot() const noexcept {
 }
 
 std::optional<std::uint32_t>
-A32PthreadLifecycleService::allocate_thread_id() noexcept {
+A32PthreadLifecycleService::choose_thread_id() const noexcept {
     std::uint32_t candidate = next_thread_id_;
     for (std::size_t attempt = 0; attempt <= threads_.size(); ++attempt) {
         if (candidate == 0U) return std::nullopt;
         if (find_thread(candidate) >= threads_.size()) {
-            next_thread_id_ =
-                candidate == std::numeric_limits<std::uint32_t>::max()
-                    ? 0U
-                    : candidate + 1U;
             return candidate;
         }
         if (candidate == std::numeric_limits<std::uint32_t>::max()) {
@@ -454,7 +450,7 @@ runtime::A32HostServiceDisposition A32PthreadLifecycleService::handle(
         return A32HostServiceDisposition::Handled;
     }
 
-    const auto pthread_id = allocate_thread_id();
+    const auto pthread_id = choose_thread_id();
     std::uint32_t allocated_stack_size = 0U;
     const auto stack_base =
         choose_stack_base(requested_stack_size, allocated_stack_size);
@@ -478,6 +474,10 @@ runtime::A32HostServiceDisposition A32PthreadLifecycleService::handle(
         return A32HostServiceDisposition::Failed;
     }
 
+    next_thread_id_ =
+        *pthread_id == std::numeric_limits<std::uint32_t>::max()
+            ? 0U
+            : *pthread_id + 1U;
     const std::uint64_t sequence = next_sequence_;
     if (next_sequence_ != std::numeric_limits<std::uint64_t>::max()) {
         ++next_sequence_;

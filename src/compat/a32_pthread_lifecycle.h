@@ -153,7 +153,7 @@ private:
     [[nodiscard]] std::size_t ensure_attr(std::uint32_t address) noexcept;
     [[nodiscard]] std::size_t find_thread(std::uint32_t pthread_id) const noexcept;
     [[nodiscard]] std::size_t free_thread_slot() const noexcept;
-    [[nodiscard]] std::optional<std::uint32_t> allocate_thread_id() noexcept;
+    [[nodiscard]] std::optional<std::uint32_t> choose_thread_id() const noexcept;
     [[nodiscard]] std::optional<std::uint32_t> choose_stack_base(
         std::uint32_t requested_size,
         std::uint32_t& allocated_size) const noexcept;
