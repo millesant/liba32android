@@ -1,8 +1,9 @@
 # Compatibility spec delta — ARM32 pthread TLS keys
 
-- Add private SVC IDs `0xBC` through `0xBF` for
+- Add private SVC IDs `0x100` through `0x103` for
   `pthread_key_create`, `pthread_key_delete`, `pthread_getspecific`, and
-  `pthread_setspecific`.
+  `pthread_setspecific`. These immediates intentionally avoid the existing
+  libdl/libm/lifecycle/JNI private service ranges.
 - Borrow finite caller-owned key and per-thread value metadata.
 - Allocate deterministic non-zero logical keys without mirroring Bionic's
   private key representation.

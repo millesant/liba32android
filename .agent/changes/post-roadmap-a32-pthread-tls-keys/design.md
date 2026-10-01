@@ -14,6 +14,12 @@ contains eager libc `R_ARM_JUMP_SLOT` imports for:
 These imports extend the already accepted pthread/semaphore evidence into one
 coherent TLS-key family.
 
+The service IDs deliberately sit above the existing low-byte private service
+map: libdl already owns 0xBC-0xC0, libm owns 0xC1-0xD1, lifecycle/JNI services
+continue above that range, and TLS keys therefore use A32 SVC immediates
+0x100-0x103. A32 SVC carries a 24-bit immediate, so this avoids protocol
+aliasing without changing the guest ABI shape.
+
 ## Logical key model
 
 The compatibility service borrows a bounded caller-owned key table. A free

@@ -370,6 +370,34 @@ int test_tls_keys() {
         return fail("pthread_setspecific null clear failed");
     }
 
+    for (std::uint32_t thread_id = 3U; thread_id <= 9U; ++thread_id) {
+        fixture.service.set_current_thread_id(thread_id);
+        regs = {};
+        regs[0] = key;
+        regs[1] = 0x66000000U + thread_id;
+        if (fixture.service.handle(
+                fixture.memory,
+                kA32PthreadSetspecificSvcImmediate,
+                regs,
+                cpsr) != A32HostServiceDisposition::Handled ||
+            regs[0] != 0U) {
+            return fail("pthread TLS metadata fill failed");
+        }
+    }
+    fixture.service.set_current_thread_id(10U);
+    regs = {};
+    regs[0] = key;
+    regs[1] = 0x77000000U;
+    if (fixture.service.handle(
+            fixture.memory,
+            kA32PthreadSetspecificSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        static_cast<std::int32_t>(regs[0]) != kA32AndroidEnomem) {
+        return fail("pthread TLS metadata ceiling did not return ENOMEM");
+    }
+
+    fixture.service.set_current_thread_id(1U);
     regs = {};
     regs[0] = key;
     if (fixture.service.handle(
