@@ -2,15 +2,24 @@
 
 #include "elf/internal/elf32_bytes.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <limits>
+#include <span>
 #include <unordered_set>
 
 namespace liba32android::elf {
 namespace {
 
 constexpr std::uint32_t kElf32RelEntrySize = 8;
+constexpr std::size_t kRelocationReadChunkBytes = 256;
+constexpr std::uint32_t kRelocationsPerReadChunk =
+    static_cast<std::uint32_t>(
+        kRelocationReadChunkBytes / kElf32RelEntrySize);
+
+static_assert((kRelocationReadChunkBytes % kElf32RelEntrySize) == 0);
+
 constexpr std::uint8_t kStbGlobal = 1;
 constexpr std::uint8_t kStbWeak = 2;
 constexpr std::uint8_t kSttNotype = 0;
@@ -186,62 +195,109 @@ namespace {
     std::unordered_set<std::uint32_t> write_targets;
     write_targets.reserve(count);
 
-    for (std::uint32_t i = 0; i < count; ++i) {
-        std::uint32_t entry_address = 0;
-        if (!detail::checked_add_guest_address(table.guest_address,
-                         static_cast<std::uint64_t>(i) *
-                             kElf32RelEntrySize,
-                         entry_address)) {
+    std::array<std::uint8_t, kRelocationReadChunkBytes> chunk{};
+    for (std::uint32_t chunk_start = 0; chunk_start < count;) {
+        const std::uint32_t entries_in_chunk =
+            std::min<std::uint32_t>(
+                count - chunk_start, kRelocationsPerReadChunk);
+        const std::size_t chunk_size =
+            static_cast<std::size_t>(entries_in_chunk) *
+            kElf32RelEntrySize;
+
+        std::uint32_t chunk_address = 0;
+        if (!detail::checked_add_guest_address(
+                table.guest_address,
+                static_cast<std::uint64_t>(chunk_start) *
+                    kElf32RelEntrySize,
+                chunk_address)) {
             return failure(Elf32RelocationPlanError::RelocationReadFailed,
                            object_index);
         }
 
-        std::array<std::uint8_t, kElf32RelEntrySize> bytes{};
-        if (!memory.read(entry_address, bytes)) {
-            return failure(Elf32RelocationPlanError::RelocationReadFailed,
-                           object_index);
-        }
+        const std::uint64_t chunk_end =
+            static_cast<std::uint64_t>(chunk_address) + chunk_size;
+        const bool batch_read =
+            chunk_end <= (std::uint64_t{1} << 32) &&
+            memory.read(
+                chunk_address,
+                std::span<std::uint8_t>{chunk}.first(chunk_size));
 
-        Elf32RelocationEntry entry;
-        entry.index = i;
-        entry.offset = detail::decode_u32_le(bytes.data());
-        entry.info = detail::decode_u32_le(bytes.data() + 4);
-        entry.symbol_index = entry.info >> 8U;
-        entry.type = static_cast<std::uint8_t>(entry.info & 0xffU);
+        for (std::uint32_t local = 0; local < entries_in_chunk; ++local) {
+            const std::uint32_t i = chunk_start + local;
+            std::array<std::uint8_t, kElf32RelEntrySize> single{};
+            const std::uint8_t* bytes = nullptr;
 
-        if (!supported_type_for_table(entry.type, kind)) {
-            return failure(
-                Elf32RelocationPlanError::UnsupportedRelocationType,
-                object_index);
-        }
+            if (batch_read) {
+                bytes =
+                    chunk.data() +
+                    static_cast<std::size_t>(local) *
+                        kElf32RelEntrySize;
+            } else {
+                std::uint32_t entry_address = 0;
+                if (!detail::checked_add_guest_address(
+                        table.guest_address,
+                        static_cast<std::uint64_t>(i) *
+                            kElf32RelEntrySize,
+                        entry_address) ||
+                    !memory.read(entry_address, single)) {
+                    return failure(
+                        Elf32RelocationPlanError::RelocationReadFailed,
+                        object_index);
+                }
+                bytes = single.data();
+            }
 
-        if (!detail::checked_add_guest_address(object.load.load_bias,
-                         entry.offset,
-                         entry.place_guest_address)) {
-            return failure(Elf32RelocationPlanError::PlaceOverflow,
-                           object_index);
-        }
+            Elf32RelocationEntry entry;
+            entry.index = i;
+            entry.offset = detail::decode_u32_le(bytes);
+            entry.info = detail::decode_u32_le(bytes + 4);
+            entry.symbol_index = entry.info >> 8U;
+            entry.type =
+                static_cast<std::uint8_t>(entry.info & 0xffU);
 
-        if (entry.type != kRArmNone) {
-            if ((entry.place_guest_address & 0x3U) != 0) {
-                return failure(Elf32RelocationPlanError::UnalignedPlace,
+            if (!supported_type_for_table(entry.type, kind)) {
+                return failure(
+                    Elf32RelocationPlanError::UnsupportedRelocationType,
+                    object_index);
+            }
+
+            if (!detail::checked_add_guest_address(
+                    object.load.load_bias,
+                    entry.offset,
+                    entry.place_guest_address)) {
+                return failure(Elf32RelocationPlanError::PlaceOverflow,
                                object_index);
             }
 
-            std::uint32_t original = 0;
-            if (!read_word(memory, entry.place_guest_address, original)) {
-                return failure(Elf32RelocationPlanError::TargetReadFailed,
-                               object_index);
-            }
-            entry.original_word = original;
+            if (entry.type != kRArmNone) {
+                if ((entry.place_guest_address & 0x3U) != 0) {
+                    return failure(
+                        Elf32RelocationPlanError::UnalignedPlace,
+                        object_index);
+                }
 
-            if (!write_targets.insert(entry.place_guest_address).second) {
-                return failure(Elf32RelocationPlanError::DuplicateTarget,
-                               object_index);
+                std::uint32_t original = 0;
+                if (!read_word(
+                        memory, entry.place_guest_address, original)) {
+                    return failure(
+                        Elf32RelocationPlanError::TargetReadFailed,
+                        object_index);
+                }
+                entry.original_word = original;
+
+                if (!write_targets
+                         .insert(entry.place_guest_address)
+                         .second) {
+                    return failure(
+                        Elf32RelocationPlanError::DuplicateTarget,
+                        object_index);
+                }
             }
+
+            result.plan.entries.push_back(entry);
         }
 
-        result.plan.entries.push_back(entry);
+        chunk_start += entries_in_chunk;
     }
 
     return result;
