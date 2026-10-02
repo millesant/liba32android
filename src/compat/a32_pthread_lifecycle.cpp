@@ -32,6 +32,8 @@ using runtime::A32HostServiceDisposition;
     case kA32PthreadGetschedparamSvcImmediate:
     case kA32PthreadSetschedparamSvcImmediate:
     case kA32PthreadSetnameNpSvcImmediate:
+    case kA32PthreadCleanupPushSvcImmediate:
+    case kA32PthreadCleanupPopSvcImmediate:
         return true;
     default:
         return false;
@@ -107,6 +109,75 @@ using runtime::A32HostServiceDisposition;
            (thumb || (entry_pc & 3U) == 0U);
 }
 
+
+struct A32GuestCleanupRecord {
+    std::uint32_t previous{};
+    std::uint32_t routine{};
+    std::uint32_t argument{};
+};
+
+[[nodiscard]] bool write_cleanup_record(
+    memory::GuestMemory& memory,
+    std::uint32_t address,
+    const A32GuestCleanupRecord& record) {
+    if (address == 0U ||
+        address > std::numeric_limits<std::uint32_t>::max() -
+            (kA32PthreadCleanupRecordBytes - 1U)) {
+        return false;
+    }
+    const std::array<std::uint8_t, kA32PthreadCleanupRecordBytes> bytes{{
+        static_cast<std::uint8_t>(record.previous),
+        static_cast<std::uint8_t>(record.previous >> 8U),
+        static_cast<std::uint8_t>(record.previous >> 16U),
+        static_cast<std::uint8_t>(record.previous >> 24U),
+        static_cast<std::uint8_t>(record.routine),
+        static_cast<std::uint8_t>(record.routine >> 8U),
+        static_cast<std::uint8_t>(record.routine >> 16U),
+        static_cast<std::uint8_t>(record.routine >> 24U),
+        static_cast<std::uint8_t>(record.argument),
+        static_cast<std::uint8_t>(record.argument >> 8U),
+        static_cast<std::uint8_t>(record.argument >> 16U),
+        static_cast<std::uint8_t>(record.argument >> 24U),
+    }};
+    return memory.write(address, bytes);
+}
+
+[[nodiscard]] bool read_cleanup_record(
+    const memory::GuestMemory& memory,
+    std::uint32_t address,
+    A32GuestCleanupRecord& record) {
+    if (address == 0U ||
+        address > std::numeric_limits<std::uint32_t>::max() -
+            (kA32PthreadCleanupRecordBytes - 1U)) {
+        return false;
+    }
+    std::array<std::uint8_t, kA32PthreadCleanupRecordBytes> bytes{};
+    if (!memory.read(address, bytes)) return false;
+    const auto word = [&](std::size_t offset) {
+        return static_cast<std::uint32_t>(bytes[offset]) |
+               (static_cast<std::uint32_t>(bytes[offset + 1U]) << 8U) |
+               (static_cast<std::uint32_t>(bytes[offset + 2U]) << 16U) |
+               (static_cast<std::uint32_t>(bytes[offset + 3U]) << 24U);
+    };
+    record = A32GuestCleanupRecord{
+        .previous = word(0U),
+        .routine = word(4U),
+        .argument = word(8U),
+    };
+    return true;
+}
+
+class RejectingCleanupServices final : public runtime::A32HostServiceHandler {
+public:
+    [[nodiscard]] runtime::A32HostServiceDisposition handle(
+        memory::GuestMemory&,
+        std::uint32_t,
+        std::array<std::uint32_t, 16>&,
+        std::uint32_t&) override {
+        return runtime::A32HostServiceDisposition::Unhandled;
+    }
+};
+
 class SyncThreadScope final {
 public:
     SyncThreadScope(
@@ -150,6 +221,71 @@ private:
     return A32PthreadExitCleanupError::ServiceFailed;
 }
 
+
+[[nodiscard]] A32PthreadExitCleanupError execute_cleanup_callback(
+    memory::GuestMemory& memory,
+    std::uint32_t routine,
+    std::uint32_t argument,
+    std::uint32_t stack_pointer,
+    std::uint32_t return_pc,
+    std::size_t instruction_budget,
+    std::uint32_t service_limit,
+    A32PthreadSyncService* sync_service,
+    runtime::A32LogicalThreadId thread_id,
+    std::optional<std::uint32_t>& failing_svc) {
+    if (stack_pointer == 0U || (stack_pointer & 7U) != 0U) {
+        return A32PthreadExitCleanupError::InvalidStack;
+    }
+    if (!valid_guest_function(routine, return_pc)) {
+        return A32PthreadExitCleanupError::InvalidCleanupRoutine;
+    }
+
+    const bool thumb = (routine & 1U) != 0U;
+    cpu::ExecutionRequest request{};
+    request.instruction_set =
+        thumb ? cpu::InstructionSet::Thumb : cpu::InstructionSet::Arm;
+    request.entry_pc = routine & ~1U;
+    request.regs[0] = argument;
+    request.regs[13] = stack_pointer;
+    request.regs[14] = return_pc | (thumb ? 1U : 0U);
+    request.instruction_count = instruction_budget;
+    request.stop_pc = return_pc;
+
+    if (sync_service != nullptr) {
+        SyncThreadScope thread_scope{*sync_service, thread_id};
+        auto callback = runtime::execute_a32_with_services(
+            memory, request, *sync_service, service_limit);
+        if (callback.service_suspended) {
+            failing_svc = callback.suspended_svc_immediate;
+            return A32PthreadExitCleanupError::ServiceSuspended;
+        }
+        if (!callback) {
+            failing_svc = callback.failing_svc_immediate;
+            return cleanup_error_from_dispatch(callback.error);
+        }
+        if (!callback.stop_pc_reached) {
+            return A32PthreadExitCleanupError::InstructionLimitExceeded;
+        }
+        return A32PthreadExitCleanupError::None;
+    }
+
+    RejectingCleanupServices rejecting_services{};
+    auto callback = runtime::execute_a32_with_services(
+        memory, request, rejecting_services, service_limit);
+    if (callback.service_suspended) {
+        failing_svc = callback.suspended_svc_immediate;
+        return A32PthreadExitCleanupError::ServiceSuspended;
+    }
+    if (!callback) {
+        failing_svc = callback.failing_svc_immediate;
+        return cleanup_error_from_dispatch(callback.error);
+    }
+    if (!callback.stop_pc_reached) {
+        return A32PthreadExitCleanupError::InstructionLimitExceeded;
+    }
+    return A32PthreadExitCleanupError::None;
+}
+
 }  // namespace
 
 A32PthreadLifecycleService::A32PthreadLifecycleService(
@@ -179,7 +315,8 @@ bool A32PthreadLifecycleService::configuration_valid() const noexcept {
             static_cast<std::uint64_t>(options_.page_size) * 2U ||
         options_.exit_trampoline == 0U ||
         options_.thread_instruction_budget == 0U ||
-        options_.first_thread_id == 0U) {
+        options_.first_thread_id == 0U ||
+        options_.max_cleanup_handlers == 0U) {
         return false;
     }
 
@@ -436,10 +573,69 @@ A32PthreadExitCleanupResult
 A32PthreadLifecycleService::run_exit_cleanup(
     memory::GuestMemory& memory,
     A32PthreadThreadState& thread,
-    std::uint32_t stack_pointer) {
+    std::uint32_t stack_pointer,
+    std::uint32_t callback_return_pc) {
     A32PthreadExitCleanupResult result{
         .thread_id = thread.pthread_id,
     };
+
+    if (thread.cleanup_depth > options_.max_cleanup_handlers ||
+        (thread.cleanup_depth == 0U) != (thread.cleanup_top == 0U)) {
+        result.error = A32PthreadExitCleanupError::InvalidCleanupRecord;
+        result.failing_cleanup_record = thread.cleanup_top;
+        return result;
+    }
+
+    while (thread.cleanup_depth != 0U) {
+        const std::uint32_t record_address = thread.cleanup_top;
+        A32GuestCleanupRecord record{};
+        if (!read_cleanup_record(memory, record_address, record) ||
+            record.previous == record_address) {
+            result.error = A32PthreadExitCleanupError::InvalidCleanupRecord;
+            result.failing_cleanup_record = record_address;
+            return result;
+        }
+        thread.cleanup_top = record.previous;
+        --thread.cleanup_depth;
+
+        const auto logical_id =
+            runtime::A32LogicalThreadId::from_raw(thread.pthread_id);
+        if (!logical_id.has_value()) {
+            result.error = A32PthreadExitCleanupError::ServiceFailed;
+            result.failing_cleanup_record = record_address;
+            return result;
+        }
+        const std::size_t instruction_budget =
+            options_.tls_destructor_instruction_budget != 0U
+                ? options_.tls_destructor_instruction_budget
+                : options_.thread_instruction_budget;
+        const std::uint32_t service_limit =
+            options_.tls_destructor_service_limit != 0U
+                ? options_.tls_destructor_service_limit
+                : 1U;
+        result.error = execute_cleanup_callback(
+            memory,
+            record.routine,
+            record.argument,
+            stack_pointer,
+            callback_return_pc,
+            instruction_budget,
+            service_limit,
+            sync_service_,
+            *logical_id,
+            result.failing_svc_immediate);
+        if (result.error != A32PthreadExitCleanupError::None) {
+            result.failing_cleanup_record = record_address;
+            return result;
+        }
+        ++result.cleanup_callbacks_completed;
+    }
+
+    if (thread.cleanup_top != 0U) {
+        result.error = A32PthreadExitCleanupError::InvalidCleanupRecord;
+        result.failing_cleanup_record = thread.cleanup_top;
+        return result;
+    }
 
     if (sync_service_ != nullptr) {
         if (stack_pointer == 0U || (stack_pointer & 7U) != 0U) {
@@ -735,6 +931,74 @@ runtime::A32HostServiceDisposition A32PthreadLifecycleService::handle(
         return A32HostServiceDisposition::Handled;
     }
 
+
+    if (svc_immediate == kA32PthreadCleanupPushSvcImmediate) {
+        auto& thread = threads_[current];
+        if (regs[0] == 0U ||
+            thread.cleanup_depth >= options_.max_cleanup_handlers) {
+            return A32HostServiceDisposition::Failed;
+        }
+        const A32GuestCleanupRecord record{
+            .previous = thread.cleanup_top,
+            .routine = regs[1],
+            .argument = regs[2],
+        };
+        if (!write_cleanup_record(memory, regs[0], record)) {
+            return A32HostServiceDisposition::Failed;
+        }
+        thread.cleanup_top = regs[0];
+        ++thread.cleanup_depth;
+        regs[0] = 0U;
+        return A32HostServiceDisposition::Handled;
+    }
+
+    if (svc_immediate == kA32PthreadCleanupPopSvcImmediate) {
+        auto& thread = threads_[current];
+        if (regs[0] == 0U || thread.cleanup_depth == 0U ||
+            thread.cleanup_top != regs[0]) {
+            return A32HostServiceDisposition::Failed;
+        }
+        A32GuestCleanupRecord record{};
+        if (!read_cleanup_record(memory, regs[0], record) ||
+            record.previous == regs[0]) {
+            return A32HostServiceDisposition::Failed;
+        }
+        thread.cleanup_top = record.previous;
+        --thread.cleanup_depth;
+
+        if (regs[1] != 0U) {
+            const auto logical_id =
+                runtime::A32LogicalThreadId::from_raw(thread.pthread_id);
+            if (!logical_id.has_value()) {
+                return A32HostServiceDisposition::Failed;
+            }
+            std::optional<std::uint32_t> failing_svc;
+            const std::size_t instruction_budget =
+                options_.tls_destructor_instruction_budget != 0U
+                    ? options_.tls_destructor_instruction_budget
+                    : options_.thread_instruction_budget;
+            const std::uint32_t service_limit =
+                options_.tls_destructor_service_limit != 0U
+                    ? options_.tls_destructor_service_limit
+                    : 1U;
+            if (execute_cleanup_callback(
+                    memory,
+                    record.routine,
+                    record.argument,
+                    regs[13],
+                    regs[15],
+                    instruction_budget,
+                    service_limit,
+                    sync_service_,
+                    *logical_id,
+                    failing_svc) != A32PthreadExitCleanupError::None) {
+                return A32HostServiceDisposition::Failed;
+            }
+        }
+        regs[0] = 0U;
+        return A32HostServiceDisposition::Handled;
+    }
+
     if (svc_immediate == kA32PthreadSelfSvcImmediate) {
         regs[0] = current_thread_id_.value();
         return A32HostServiceDisposition::Handled;
@@ -817,7 +1081,7 @@ runtime::A32HostServiceDisposition A32PthreadLifecycleService::handle(
         thread.phase = A32PthreadThreadPhase::Cleaning;
 
         last_exit_cleanup_result_ =
-            run_exit_cleanup(memory, thread, regs[13]);
+            run_exit_cleanup(memory, thread, regs[13], regs[15]);
         if (!*last_exit_cleanup_result_) {
             thread.phase = A32PthreadThreadPhase::CleanupFailed;
             return A32HostServiceDisposition::Failed;
@@ -935,6 +1199,10 @@ const char* to_string(A32PthreadExitCleanupError error) noexcept {
     switch (error) {
     case A32PthreadExitCleanupError::None: return "none";
     case A32PthreadExitCleanupError::InvalidStack: return "invalid_stack";
+    case A32PthreadExitCleanupError::InvalidCleanupRecord:
+        return "invalid_cleanup_record";
+    case A32PthreadExitCleanupError::InvalidCleanupRoutine:
+        return "invalid_cleanup_routine";
     case A32PthreadExitCleanupError::InvalidDestructorAddress:
         return "invalid_destructor_address";
     case A32PthreadExitCleanupError::MemoryFault: return "memory_fault";

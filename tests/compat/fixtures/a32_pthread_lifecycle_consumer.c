@@ -5,6 +5,11 @@ typedef unsigned int fixture_pthread_t;
 typedef struct fixture_sched_param {
     int sched_priority;
 } fixture_sched_param;
+typedef struct fixture_pthread_cleanup {
+    struct fixture_pthread_cleanup* previous;
+    void (*routine)(void*);
+    void* argument;
+} fixture_pthread_cleanup;
 
 __attribute__((visibility("default")))
 int pthread_attr_init(void* attr);
@@ -46,6 +51,13 @@ int pthread_setschedparam(
     const fixture_sched_param* param);
 __attribute__((visibility("default")))
 int pthread_setname_np(fixture_pthread_t thread, const char* name);
+__attribute__((visibility("default")))
+void __pthread_cleanup_push(
+    fixture_pthread_cleanup* cleanup,
+    void (*routine)(void*),
+    void* argument);
+__attribute__((visibility("default")))
+void __pthread_cleanup_pop(fixture_pthread_cleanup* cleanup, int execute);
 __attribute__((visibility("default")))
 int pthread_cond_init(void* cond, const void* attr);
 __attribute__((visibility("default")))
@@ -156,6 +168,21 @@ int fixture_pthread_setschedparam(
 __attribute__((visibility("default"), noinline))
 int fixture_pthread_setname_np(fixture_pthread_t thread, const char* name) {
     return pthread_setname_np(thread, name);
+}
+
+__attribute__((noinline))
+static void fixture_cleanup_marker(void* argument) {
+    *(volatile unsigned int*)argument = 0x59c1ea59U;
+}
+
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_cleanup_push_pop(
+    fixture_pthread_cleanup* cleanup,
+    volatile unsigned int* marker) {
+    *marker = 0U;
+    __pthread_cleanup_push(cleanup, fixture_cleanup_marker, (void*)marker);
+    __pthread_cleanup_pop(cleanup, 1);
+    return *marker == 0x59c1ea59U ? 0 : 1;
 }
 __attribute__((visibility("default"), noinline))
 int fixture_pthread_cond_init(void* cond, const void* attr) {

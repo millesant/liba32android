@@ -223,3 +223,19 @@ The supplied `libemu32.so` is AArch64, so its semaphore and pthread-attribute
 utility imports are not used to broaden this AArch32 shim. The original
 45-wrapper base libc consumer remains backward compatible.
 
+## Pthread cleanup-handler extension
+
+The partial libc shim adds direct private-SVC wrappers for
+`__pthread_cleanup_push` and `__pthread_cleanup_pop`, matching the two
+symbols imported by supplied ARM32 VLC `libvlc.so`.
+
+The cleanup record stays caller-owned guest memory; the runtime retains only
+the logical thread's 32-bit top record address and bounded depth. A real ARM32
+fixture pushes one cleanup record, pops it with execute enabled, and verifies
+the guest callback result. Separate focused lifecycle coverage verifies LIFO
+exit unwinding and cleanup-before-TLS-destructor ordering.
+
+The dedicated ARM32 pthread consumer therefore requires 37 eager JUMP_SLOT
+imports and performs 43 wrapper calls. The original 45-wrapper base libc
+consumer remains unchanged. No pthread cancellation symbol is added.
+

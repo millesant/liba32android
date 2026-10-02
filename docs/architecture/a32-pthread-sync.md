@@ -276,6 +276,33 @@ compatibility surface. No supplied ARM32 artifact currently imports
 `sem_trywait`, `sem_getvalue`, `sem_timedwait`, `pthread_mutex_timedlock`,
 `pthread_attr_setschedparam`, or `pthread_getattr_np`.
 
+## Pthread cleanup handlers
+
+Supplied ARM32 VLC imports Bionic's `__pthread_cleanup_push` and
+`__pthread_cleanup_pop`. The lifecycle service models them without adding a
+host cleanup stack: each logical thread retains a guest cleanup-record top
+address and finite depth, while the caller owns the 12-byte ARM32 record
+(`previous`, `routine`, `argument`) in guest memory.
+
+Push links the caller record to the current logical-thread top. Pop requires
+strict top-of-stack nesting, unlinks first, and optionally invokes the guest
+routine. Cleanup callbacks execute on the selected logical thread's guest stack
+under the same bounded A32 callback machinery used for thread-exit cleanup;
+when a pthread sync/TLS service is available, that narrow service surface is
+available to the callback. The cleanup layer does not map guest records to
+host pthread objects or host TLS.
+
+Thread exit drains cleanup records in LIFO order before the existing pthread
+TLS destructor loop. Cleanup-record corruption, invalid guest callbacks, guest
+faults, service suspension, or callback ceilings latch the existing
+non-replayable cleanup-failure boundary. This ordering applies equally when a
+start routine returns through the configured pthread_exit trampoline.
+
+This is not a cancellation implementation. No supplied ARM32 target imports
+`pthread_cancel`, cancellation state/type, or `pthread_testcancel`, and the
+cleanup helpers are accepted only for explicit pop and voluntary thread-exit
+semantics.
+
 ## Scope limits
 
 Process-shared synchronization, cond/rwlock attributes, mutex protocol/

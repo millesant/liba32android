@@ -22,9 +22,12 @@ constexpr std::uint32_t kStartRoutine = 0x1000U;
 constexpr std::uint32_t kDestructor = 0x1200U;
 constexpr std::uint32_t kExitStub = 0x2000U;
 constexpr std::uint32_t kDestructorReturn = 0x3000U;
+constexpr std::uint32_t kCleanupRoutine = 0x3020U;
 constexpr std::uint32_t kThreadOut = 0x400U;
 constexpr std::uint32_t kJoinResult = 0x500U;
 constexpr std::uint32_t kKeyOut = 0x600U;
+constexpr std::uint32_t kCleanupRecord = 0x740U;
+constexpr std::uint32_t kCleanupOrderMarker = 0x760U;
 
 int fail(const char* message) {
     std::cerr << message << '\n';
@@ -90,10 +93,18 @@ struct Fixture {
             0x0d, 0x01, 0x00, 0xef,  // svc #0x10d
             0x1e, 0xff, 0x2f, 0xe1,  // bx lr
         }};
-        // Destructor: pthread_setspecific(1, original_value), then return.
-        // This intentionally repopulates the same TLS key every pass so the
-        // bounded four-round destructor ceiling is directly observable.
-        constexpr std::array<std::uint8_t, 16> destructor_code{{
+        // Cleanup writes 1. The TLS destructor then increments the same marker
+        // and repopulates its key on each pass. Four destructor rounds therefore
+        // leave 5 only when cleanup handlers ran before TLS destructors.
+        constexpr std::array<std::uint8_t, 12> cleanup_code{{
+            0x01, 0x10, 0xa0, 0xe3,  // mov r1, #1
+            0x00, 0x10, 0x80, 0xe5,  // str r1, [r0]
+            0x1e, 0xff, 0x2f, 0xe1,  // bx lr
+        }};
+        constexpr std::array<std::uint8_t, 28> destructor_code{{
+            0x00, 0x20, 0x90, 0xe5,  // ldr r2, [r0]
+            0x01, 0x20, 0x82, 0xe2,  // add r2, r2, #1
+            0x00, 0x20, 0x80, 0xe5,  // str r2, [r0]
             0x00, 0x10, 0xa0, 0xe1,  // mov r1, r0
             0x01, 0x00, 0xa0, 0xe3,  // mov r0, #1
             0x03, 0x01, 0x00, 0xef,  // svc #0x103
@@ -102,6 +113,7 @@ struct Fixture {
         memory.write(kStartRoutine, return_code);
         memory.write(kExitStub, exit_code);
         memory.write(kDestructor, destructor_code);
+        memory.write(kCleanupRoutine, cleanup_code);
 
         const auto root = A32LogicalThreadId::from_raw(1U);
         if (root.has_value()) {
@@ -325,7 +337,7 @@ int test_detach_and_exited_join() {
 int test_tls_destructor_iteration_and_join_after_exit() {
     Fixture fixture;
     constexpr std::uint32_t kReturnValue = 0x0badf00dU;
-    constexpr std::uint32_t kTlsValue = 0x700U;
+    constexpr std::uint32_t kTlsValue = kCleanupOrderMarker;
 
     auto target = fixture.create(kReturnValue);
     if (!target.has_value() ||
@@ -336,6 +348,16 @@ int test_tls_destructor_iteration_and_join_after_exit() {
 
     std::array<std::uint32_t, 16> regs{};
     std::uint32_t cpsr{};
+
+    regs[0] = kCleanupRecord;
+    regs[1] = kCleanupRoutine;
+    regs[2] = kCleanupOrderMarker;
+    if (fixture.call_lifecycle(kA32PthreadCleanupPushSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled) {
+        return fail("could not push cleanup handler before TLS destructors");
+    }
+
+    regs = {};
     regs[0] = kKeyOut;
     regs[1] = kDestructor;
     if (fixture.sync.handle(
@@ -374,9 +396,15 @@ int test_tls_destructor_iteration_and_join_after_exit() {
 
     const auto& cleanup = fixture.lifecycle.last_exit_cleanup_result();
     if (!cleanup.has_value() || !*cleanup ||
+        cleanup->cleanup_callbacks_completed != 1U ||
         cleanup->callbacks_completed != kA32PthreadDestructorIterations ||
         cleanup->iterations_completed != kA32PthreadDestructorIterations) {
-        return fail("TLS destructor repopulation did not hit four-pass ceiling");
+        return fail("cleanup/TLS callback counts were incorrect");
+    }
+    std::uint32_t cleanup_marker{};
+    if (!read_u32(fixture.memory, kCleanupOrderMarker, cleanup_marker) ||
+        cleanup_marker != 5U) {
+        return fail("cleanup handlers did not run before TLS destructors");
     }
     for (const auto& value : fixture.tls_values) {
         if (value.active && value.thread_id == target->pthread_id) {
