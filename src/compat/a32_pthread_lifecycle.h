@@ -103,6 +103,8 @@ struct A32PthreadThreadState {
     std::uint32_t join_result_address{};
     std::uint32_t cleanup_top{};
     std::uint32_t cleanup_depth{};
+    std::uint32_t signal_mask{};
+    std::uint32_t signal_pending{};
     std::int32_t sched_policy{kA32SchedOther};
     std::int32_t sched_priority{};
     std::array<std::uint8_t, kA32PthreadNameBytes> name{};

@@ -209,3 +209,37 @@ The same complete ARM32 supplied-artifact scan found no direct imports for
 cleanup-stack / voluntary-exit behavior only; this evidence does not justify
 pthread cancellation semantics.
 
+## Signal evidence update — 2026-10-02
+
+The supplied VLC APK's ARM32 `lib/armeabi-v7a/libvlc.so` imports:
+
+- `pthread_sigmask@LIBC` at JUMP_SLOT `0x025fba64`
+- `sigpending@LIBC` at JUMP_SLOT `0x025fba68`
+- `sigwait@LIBC` at JUMP_SLOT `0x025fba6c`
+- `raise@LIBC` at JUMP_SLOT `0x025fbaf0`
+- `sigaction@LIBC` at JUMP_SLOT `0x025fbe98`
+
+The `vlc_writev` disassembly shows a concrete SIGPIPE sequence using mask
+`0x00001000` (signal 13): block SIGPIPE with `pthread_sigmask`, perform the
+write, call `sigpending` after EPIPE, consume a pending SIGPIPE with
+`sigwait`, and restore the previous mask when it was not already blocked.
+
+Observed `raise` call sites pass signal 8 (`SIGFPE`) in fatal/error paths.
+This evidence requires an explicit default-fatal delivery boundary; returning
+success without delivering or terminating would be incorrect.
+
+The supplied ARM32 artifact scan found no direct `pthread_kill` import.
+
+Bionic primary-source ABI/behavior used for the accepted contract:
+
+- LP32 Android ARM uses a 32-bit `sigset_t`; Bionic documents the historical
+  32-bit ABI as too small for realtime signal sets.
+- ARM32 `struct sigaction` is four 32-bit words in handler, mask, flags,
+  restorer order.
+- Bionic `pthread_sigmask` returns an error number directly while preserving
+  errno.
+- Bionic `sigwait` returns zero plus the selected signal on success and an
+  error number on failure.
+- Bionic `raise` is thread-directed; the compatibility layer preserves that
+  observable scope with logical thread identity rather than host `tgkill`.
+

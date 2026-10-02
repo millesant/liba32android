@@ -11,6 +11,7 @@ inline constexpr std::int32_t kA32AndroidEperm = 1;
 inline constexpr std::int32_t kA32AndroidEsrch = 3;
 inline constexpr std::int32_t kA32AndroidEagain = 11;
 inline constexpr std::int32_t kA32AndroidEnomem = 12;
+inline constexpr std::int32_t kA32AndroidEfault = 14;
 inline constexpr std::int32_t kA32AndroidEbusy = 16;
 inline constexpr std::int32_t kA32AndroidEinval = 22;
 inline constexpr std::int32_t kA32AndroidErange = 34;

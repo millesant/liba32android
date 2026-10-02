@@ -129,6 +129,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_signal_test
+    tests/compat/a32_signal.cpp
+)
+
+add_test(
+    NAME a32_signal_compatibility_subset
+    COMMAND compat_signal_test
+)
+
+liba32android_add_test_executable(
     compat_aeabi_atexit_test
     tests/compat/a32_aeabi_atexit.cpp
 )

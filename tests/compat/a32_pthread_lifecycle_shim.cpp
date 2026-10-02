@@ -15,7 +15,9 @@
 #include "compat/a32_android_namespace_policy.h"
 #include "compat/a32_android_platform_provider.h"
 #include "compat/a32_libc_memory_string_shim.h"
+#include "compat/a32_libc_integer.h"
 #include "compat/a32_pthread_lifecycle.h"
+#include "compat/a32_signal.h"
 #include "cpu/a32_cpu.h"
 #include "elf/elf32_dependency_graph.h"
 #include "elf/elf32_dependency_loader.h"
@@ -31,6 +33,7 @@ using liba32android::compat::A32AndroidNamespaceAccessPolicy;
 using liba32android::compat::A32AndroidNamespaceBinding;
 using liba32android::compat::A32AndroidNamespaceLink;
 using liba32android::compat::A32AndroidPlatformCatalogProvider;
+using liba32android::compat::A32LibcGuestErrnoState;
 using liba32android::compat::A32PthreadAttrState;
 using liba32android::compat::A32PthreadClock;
 using liba32android::compat::A32PthreadClockId;
@@ -46,6 +49,9 @@ using liba32android::compat::A32PthreadTlsValue;
 using liba32android::compat::A32PthreadWaitKind;
 using liba32android::compat::A32PthreadWaiter;
 using liba32android::compat::A32SemaphoreState;
+using liba32android::compat::A32SignalActionState;
+using liba32android::compat::A32SignalService;
+using liba32android::compat::A32SignalWaiter;
 using liba32android::compat::A32PthreadLifecycleOptions;
 using liba32android::compat::A32PthreadLifecycleService;
 using liba32android::compat::A32PthreadThreadPhase;
@@ -94,6 +100,16 @@ using liba32android::compat::kA32PthreadSetschedparamSvcImmediate;
 using liba32android::compat::kA32PthreadSetnameNpSvcImmediate;
 using liba32android::compat::kA32PthreadJoinSvcImmediate;
 using liba32android::compat::kA32PthreadSelfSvcImmediate;
+using liba32android::compat::kA32RaiseSvcImmediate;
+using liba32android::compat::kA32SigactionSvcImmediate;
+using liba32android::compat::kA32SigpendingSvcImmediate;
+using liba32android::compat::kA32PthreadSigmaskSvcImmediate;
+using liba32android::compat::kA32SigwaitSvcImmediate;
+using liba32android::compat::kA32SigBlock;
+using liba32android::compat::kA32SigSetmask;
+using liba32android::compat::kA32SigPipe;
+using liba32android::compat::kA32SignalSetBits;
+using liba32android::compat::a32_signal_bit;
 using liba32android::compat::make_a32_libc_memory_string_shim_catalog_entry;
 using liba32android::cpu::ExecutionRequest;
 using liba32android::cpu::InstructionSet;
@@ -355,7 +371,7 @@ int main(int argc, char** argv) {
         return fail("pthread lifecycle consumer did not bind partial libc shim");
     }
 
-    constexpr std::array<std::string_view, 37> shim_names{{
+    constexpr std::array<std::string_view, 42> shim_names{{
         "pthread_attr_init",
         "pthread_attr_destroy",
         "pthread_attr_getdetachstate",
@@ -373,6 +389,11 @@ int main(int argc, char** argv) {
         "pthread_setname_np",
         "__pthread_cleanup_push",
         "__pthread_cleanup_pop",
+        "raise",
+        "sigaction",
+        "sigpending",
+        "pthread_sigmask",
+        "sigwait",
         "pthread_cond_init",
         "pthread_cond_destroy",
         "pthread_cond_wait",
@@ -494,6 +515,15 @@ int main(int argc, char** argv) {
 
     std::array<A32PthreadAttrState, 4> attrs{};
     std::array<A32PthreadThreadState, 4> threads{};
+    A32LibcGuestErrnoState signal_errno{*data + 0x300U};
+    std::array<A32SignalActionState, kA32SignalSetBits> signal_actions{};
+    std::array<A32SignalWaiter, 4> signal_waiters{};
+    A32SignalService signals{
+        std::span{threads},
+        std::span{signal_actions},
+        std::span{signal_waiters},
+        signal_errno,
+    };
     A32PthreadLifecycleService lifecycle{
         A32PthreadLifecycleOptions{
             .stack_arena_base = *thread_stacks,
@@ -513,11 +543,12 @@ int main(int argc, char** argv) {
     if (!root.has_value() ||
         !lifecycle.register_initial_thread(*root) ||
         !lifecycle.set_current_thread_id(*root) ||
-        !sync.set_current_thread_id(*root)) {
+        !sync.set_current_thread_id(*root) ||
+        !signals.set_current_thread_id(*root)) {
         return fail("could not register initial logical pthread");
     }
 
-    const std::array<A32HostServiceRegistryEntry, 38> services{{
+    const std::array<A32HostServiceRegistryEntry, 43> services{{
         {kA32PthreadAttrInitSvcImmediate, &lifecycle},
         {kA32PthreadAttrDestroySvcImmediate, &lifecycle},
         {kA32PthreadAttrGetdetachstateSvcImmediate, &lifecycle},
@@ -535,6 +566,11 @@ int main(int argc, char** argv) {
         {kA32PthreadSetnameNpSvcImmediate, &lifecycle},
         {kA32PthreadCleanupPushSvcImmediate, &lifecycle},
         {kA32PthreadCleanupPopSvcImmediate, &lifecycle},
+        {kA32RaiseSvcImmediate, &signals},
+        {kA32SigactionSvcImmediate, &signals},
+        {kA32SigpendingSvcImmediate, &signals},
+        {kA32PthreadSigmaskSvcImmediate, &signals},
+        {kA32SigwaitSvcImmediate, &signals},
         {kA32PthreadCondInitSvcImmediate, &sync},
         {kA32PthreadCondDestroySvcImmediate, &sync},
         {kA32PthreadCondWaitSvcImmediate, &sync},
@@ -618,6 +654,12 @@ int main(int argc, char** argv) {
     const std::uint32_t rwlock_address = *data + 0x280U;
     const std::uint32_t cleanup_record_address = *data + 0x2a0U;
     const std::uint32_t cleanup_marker_address = *data + 0x2c0U;
+    const std::uint32_t signal_errno_address = *data + 0x300U;
+    const std::uint32_t signal_action_address = *data + 0x320U;
+    const std::uint32_t signal_mask_address = *data + 0x340U;
+    const std::uint32_t signal_old_mask_address = *data + 0x344U;
+    const std::uint32_t signal_pending_address = *data + 0x348U;
+    const std::uint32_t signal_out_address = *data + 0x34cU;
 
     result = run_wrapper(
         memory,
@@ -734,6 +776,108 @@ int main(int argc, char** argv) {
     if (!result || !*result || result->regs[0] != 0U ||
         read_u32(memory, cleanup_marker_address) != 0x59c1ea59U) {
         return fail("real pthread cleanup push/pop wrapper failed");
+    }
+    ++wrapper_calls;
+
+    constexpr std::array<std::uint8_t, 4> sigpipe_mask_bytes{{0x00,0x10,0x00,0x00}};
+    constexpr std::array<std::uint8_t, 4> zero_signal_word{{0,0,0,0}};
+    if (!memory.write(signal_errno_address, zero_signal_word) ||
+        !memory.write(signal_mask_address, sigpipe_mask_bytes) ||
+        !memory.write(signal_old_mask_address, zero_signal_word) ||
+        !memory.write(signal_pending_address, zero_signal_word) ||
+        !memory.write(signal_out_address, zero_signal_word)) {
+        return fail("could not stage signal integration inputs");
+    }
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_sigaction",
+        registry,
+        stack_top,
+        *stop,
+        kA32SigPipe,
+        0U,
+        signal_action_address);
+    if (!result || !*result || result->regs[0] != 0U ||
+        read_u32(memory, signal_action_address) != 0U) {
+        return fail("real sigaction query wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_sigmask",
+        registry,
+        stack_top,
+        *stop,
+        kA32SigBlock,
+        signal_mask_address,
+        signal_old_mask_address);
+    if (!result || !*result || result->regs[0] != 0U ||
+        threads[0].signal_mask != a32_signal_bit(kA32SigPipe)) {
+        return fail("real pthread_sigmask block wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_raise",
+        registry,
+        stack_top,
+        *stop,
+        kA32SigPipe);
+    if (!result || !*result || result->regs[0] != 0U ||
+        threads[0].signal_pending != a32_signal_bit(kA32SigPipe)) {
+        return fail("real blocked raise(SIGPIPE) wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_sigpending",
+        registry,
+        stack_top,
+        *stop,
+        signal_pending_address);
+    if (!result || !*result || result->regs[0] != 0U ||
+        read_u32(memory, signal_pending_address) != a32_signal_bit(kA32SigPipe)) {
+        return fail("real sigpending wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_sigwait",
+        registry,
+        stack_top,
+        *stop,
+        signal_mask_address,
+        signal_out_address);
+    if (!result || !*result || result->regs[0] != 0U ||
+        read_u32(memory, signal_out_address) != kA32SigPipe ||
+        threads[0].signal_pending != 0U) {
+        return fail("real sigwait pending-consume wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_sigmask",
+        registry,
+        stack_top,
+        *stop,
+        kA32SigSetmask,
+        signal_old_mask_address,
+        0U);
+    if (!result || !*result || result->regs[0] != 0U ||
+        threads[0].signal_mask != 0U) {
+        return fail("real pthread_sigmask restore wrapper failed");
     }
     ++wrapper_calls;
 
