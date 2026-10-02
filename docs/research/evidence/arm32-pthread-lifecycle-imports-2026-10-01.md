@@ -185,7 +185,7 @@ Its imports include `sem_trywait`, `sem_getvalue`,
 `pthread_setname_np`; those are architecture-specific supporting observations
 only and do not justify new AArch32 exports. The supplied ARM32 FMOD library
 (`sha256:982e994c46a7f797fbd6e10df31a98d544c2bf117fe33c2292f4d6cc454a6544`)
-adds no new utility imports beyond the already accepted lifecycle/mutex set.
+adds no new pthread utility imports beyond the already accepted lifecycle/mutex set; scheduler evidence is recorded separately below.
 
 Static imports prove required symbol resolution and ABI reachability. The
 repository's generated ARM32 lifecycle fixture separately exercises blocked
@@ -242,4 +242,39 @@ Bionic primary-source ABI/behavior used for the accepted contract:
   error number on failure.
 - Bionic `raise` is thread-directed; the compatibility layer preserves that
   observable scope with logical thread identity rather than host `tgkill`.
+
+## Scheduler/priority evidence update — 2026-10-02
+
+Direct ARM32 relocation evidence:
+
+- FMOD `libfmod.so`: `0x00117f40 setpriority`.
+- VLC `libvlc.so`: `0x025fbed8 sched_get_priority_max@LIBC`.
+- VLC `libvlc.so`: `0x025fbf40 sched_get_priority_min@LIBC`.
+- VLC `libvlc.so`: `0x025fbf44 sched_setscheduler@LIBC`.
+- VLC `libvlc.so`: `0x025fbfa0 sched_yield@LIBC`.
+- VLC `libvlc.so`: `0x025fbfcc sched_getaffinity@LIBC`.
+
+FMOD's observed ARM call at `0x000ccd1c` reaches the `setpriority` PLT only
+after a zero-result branch condition; at that call both r0 and r1 are zero
+(`PRIO_PROCESS`, current process/thread selector) and r2 supplies the requested
+nice value from FMOD state. This directly bounds the accepted identity form to
+`setpriority(PRIO_PROCESS, 0, prio)`.
+
+VLC upstream `src/posix/thread.c` uses `sched_getaffinity(0, sizeof(cpu_set_t),
+...)` as a CPU-count query. The compatibility layer therefore reports one
+explicit synthetic logical CPU instead of host topology.
+
+Bionic/Linux semantics used for the accepted contract:
+
+- LP32 Bionic defines `CPU_SETSIZE == 32`; ARM32 `cpu_set_t` is 4 bytes.
+- `SCHED_OTHER`, `SCHED_BATCH`, and `SCHED_IDLE` use static priority 0.
+- Linux `SCHED_FIFO` / `SCHED_RR` priority limits are 1..99.
+- unprivileged priority increases can fail with `EACCES`; setpriority values
+  outside -20..19 are silently clamped.
+- Android's Bionic pthread documentation notes that app scheduling policy
+  mutation is generally not useful without permission and points callers that
+  only need nice priority to `setpriority`.
+
+No supplied ARM32 evidence requires host CPU pinning, realtime execution, or
+nonzero Linux task-ID emulation.
 

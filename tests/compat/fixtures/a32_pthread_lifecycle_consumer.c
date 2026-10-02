@@ -78,6 +78,18 @@ int pthread_sigmask(int how, const fixture_sigset_t* set, fixture_sigset_t* old_
 __attribute__((visibility("default")))
 int sigwait(const fixture_sigset_t* set, int* signal);
 __attribute__((visibility("default")))
+int setpriority(int which, unsigned int who, int prio);
+__attribute__((visibility("default")))
+int sched_get_priority_max(int policy);
+__attribute__((visibility("default")))
+int sched_get_priority_min(int policy);
+__attribute__((visibility("default")))
+int sched_getaffinity(int pid, fixture_size_t cpusetsize, void* mask);
+__attribute__((visibility("default")))
+int sched_setscheduler(int pid, int policy, const fixture_sched_param* param);
+__attribute__((visibility("default")))
+int sched_yield(void);
+__attribute__((visibility("default")))
 int pthread_cond_init(void* cond, const void* attr);
 __attribute__((visibility("default")))
 int pthread_cond_destroy(void* cond);
@@ -229,6 +241,33 @@ int fixture_sigpending(fixture_sigset_t* set) {
 __attribute__((visibility("default"), noinline))
 int fixture_sigwait(const fixture_sigset_t* set, int* signal) {
     return sigwait(set, signal);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_setpriority(int which, unsigned int who, int prio) {
+    return setpriority(which, who, prio);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_sched_get_priority_max(int policy) {
+    return sched_get_priority_max(policy);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_sched_get_priority_min(int policy) {
+    return sched_get_priority_min(policy);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_sched_getaffinity(int pid, fixture_size_t cpusetsize, void* mask) {
+    return sched_getaffinity(pid, cpusetsize, mask);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_sched_setscheduler(
+    int pid,
+    int policy,
+    const fixture_sched_param* param) {
+    return sched_setscheduler(pid, policy, param);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_sched_yield(void) {
+    return sched_yield();
 }
 __attribute__((visibility("default"), noinline))
 int fixture_pthread_cond_init(void* cond, const void* attr) {

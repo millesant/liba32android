@@ -4,6 +4,7 @@
 #include "compat/a32_pthread_sync.h"
 #include "compat/a32_pthread_lifecycle.h"
 #include "compat/a32_signal.h"
+#include "compat/a32_scheduler.h"
 #include "compat/a32_aeabi_atexit.h"
 
 .syntax unified
@@ -75,6 +76,12 @@ LIBA32_STUB sigaction,                 LIBA32ANDROID_A32_SIGACTION_SVC
 LIBA32_STUB sigpending,                LIBA32ANDROID_A32_SIGPENDING_SVC
 LIBA32_STUB pthread_sigmask,           LIBA32ANDROID_A32_PTHREAD_SIGMASK_SVC
 LIBA32_STUB sigwait,                   LIBA32ANDROID_A32_SIGWAIT_SVC
+LIBA32_STUB setpriority,               LIBA32ANDROID_A32_SETPRIORITY_SVC
+LIBA32_STUB sched_get_priority_max,     LIBA32ANDROID_A32_SCHED_GET_PRIORITY_MAX_SVC
+LIBA32_STUB sched_get_priority_min,     LIBA32ANDROID_A32_SCHED_GET_PRIORITY_MIN_SVC
+LIBA32_STUB sched_getaffinity,          LIBA32ANDROID_A32_SCHED_GETAFFINITY_SVC
+LIBA32_STUB sched_setscheduler,         LIBA32ANDROID_A32_SCHED_SETSCHEDULER_SVC
+LIBA32_STUB sched_yield,                LIBA32ANDROID_A32_SCHED_YIELD_SVC
 LIBA32_STUB pthread_cond_init,        LIBA32ANDROID_A32_PTHREAD_COND_INIT_SVC
 LIBA32_STUB pthread_cond_destroy,     LIBA32ANDROID_A32_PTHREAD_COND_DESTROY_SVC
 LIBA32_STUB pthread_cond_wait,        LIBA32ANDROID_A32_PTHREAD_COND_WAIT_SVC

@@ -107,6 +107,7 @@ struct A32PthreadThreadState {
     std::uint32_t signal_pending{};
     std::int32_t sched_policy{kA32SchedOther};
     std::int32_t sched_priority{};
+    std::int32_t nice_value{};
     std::array<std::uint8_t, kA32PthreadNameBytes> name{};
     bool detached{};
     bool owns_stack{};
