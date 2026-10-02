@@ -87,5 +87,5 @@ still have:
 - representative real-device Android validation;
 - clearly documented compatibility limits.
 
-See `.agent/NEXT.md` for the maintainers' exact dependency-ordered engineering
-queue and `docs/architecture/` for subsystem detail.
+See the open GitHub Issues for active bounded engineering work and
+`docs/architecture/` for subsystem detail.

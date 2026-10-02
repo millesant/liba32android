@@ -23,9 +23,10 @@ git ls-tree -r 56a438e426408465ec23bac6c09960a792be090b specs/
 git show 56a438e426408465ec23bac6c09960a792be090b:specs/010-elf32-gnu-relro/spec.md
 ```
 
-Current project truth lives in `.agent/specs/`. Substantial work and its
-evidence live in `.agent/changes/`; observed state and next work live in
-`.agent/STATE.md` and `.agent/NEXT.md`.
+Current accepted project contracts live in `docs/contracts/`. Active substantial
+work, status, acceptance criteria, validation requirements, and handoffs live in
+GitHub Issues. Historical workflow snapshots remain recoverable from Git history
+and are not a current authority surface.
 
-Historical completed change records and research evidence are intentionally not
-rewritten merely because the old root tree was retired.
+Architecture and research evidence that remain relevant to the implemented
+system live under `docs/architecture/` and `docs/research/`.

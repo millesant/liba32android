@@ -21,6 +21,10 @@ REQUIRED = (
     "AGENTS.md",
     "docs/README.md",
     "docs/README.pt-BR.md",
+    "docs/contracts/runtime.md",
+    "docs/contracts/elf32.md",
+    "docs/contracts/compat.md",
+    "docs/architecture/decisions.md",
     "docs/development/build-and-test.md",
     "docs/development/public-api-quickstart.md",
     "docs/history/pre-v7-specs.md",
@@ -70,6 +74,11 @@ def main() -> int:
     if (ROOT / "specs").exists():
         errors.append(
             "legacy root specs/ should remain retired; see docs/history/pre-v7-specs.md"
+        )
+
+    if (ROOT / ".agent").exists():
+        errors.append(
+            "retired repository-local .agent control/state tree must not be present"
         )
 
     root_resolved = ROOT.resolve()

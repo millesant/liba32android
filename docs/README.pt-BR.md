@@ -54,10 +54,10 @@ libc/liblog/pthread/finalização/namespace.
 
 ## Pesquisa e evidências
 
+`contracts/` contém os contratos de engenharia atuais aceitos.
 `research/` contém notas de pesquisa e evidências específicas de ambientes.
-Esses registros são contexto útil, mas não substituem os contratos atuais
-aceitos em `.agent/specs/` nem validação de revisão exata em
-`.agent/STATE.md`.
+Esses registros são contexto útil, mas não substituem os contratos aceitos nem
+evidência de teste/CI da revisão exata.
 
 Binários reais de terceiros usados em pesquisa de compatibilidade são entradas
 de evidência; eles não são adicionados ao repositório a menos que os direitos de

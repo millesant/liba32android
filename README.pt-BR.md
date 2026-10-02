@@ -161,8 +161,8 @@ src/compat/              serviços/adaptadores de compatibilidade Android
 tests/                   regressões unitárias e de integração
 tools/fixtures/          builders de fixtures ARM32 reproduzíveis
 tools/android/           harnesses de diagnóstico/validação Android
-docs/                    arquitetura, desenvolvimento e notas de pesquisa
-.agent/specs/            contratos internos atuais aceitos do projeto
+docs/                    arquitetura, contratos, desenvolvimento e pesquisa
+docs/contracts/          contratos internos atuais aceitos do projeto
 ```
 
 Para regras de ownership/dependências, veja
@@ -185,21 +185,20 @@ Contribuições são bem-vindas. Comece por
 limites de escopo e o que torna útil um bug report ou uma contribuição de
 compatibilidade.
 
-As invariantes de engenharia específicas do repositório para mantenedores
-automatizados ficam em [AGENTS.md](AGENTS.md). Contribuidores humanos **não**
-precisam de acesso ao repositório externo de automação/control plane do
-mantenedor.
+As invariantes de engenharia específicas do repositório ficam em
+[AGENTS.md](AGENTS.md) e se aplicam independentemente de a alteração ser feita
+por uma pessoa ou por uma ferramenta automatizada.
 
 Para relatórios sensíveis de segurança, veja [SECURITY.md](SECURITY.md). As
 expectativas da comunidade estão em [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Estado do projeto
 
-Os contratos técnicos atuais aceitos ficam em `.agent/specs/`; o estado
-observado de implementação/validação é resumido em `.agent/STATE.md`, e o
-próximo trabalho em ordem de dependência fica em `.agent/NEXT.md`. A antiga
-árvore de especificações pre-v7 continua disponível no histórico Git; veja a
-[nota histórica](docs/history/pre-v7-specs.md).
+Os contratos técnicos atuais aceitos ficam em [`docs/contracts/`](docs/contracts/).
+Trabalho substancial ativo e handoffs de validação ficam nas GitHub Issues; a
+documentação do repositório é reservada para verdade de engenharia durável. A
+antiga árvore de especificações pre-v7 continua disponível no histórico Git;
+veja a [nota histórica](docs/history/pre-v7-specs.md).
 
 ## Licença
 

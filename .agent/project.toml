@@ -1,9 +1,0 @@
-schema = 1
-id = "liba32android"
-repositories = ["millesant/liba32android"]
-primary_repository = "millesant/liba32android"
-default_branch = "main"
-state_directory = ".agent"
-spec_directory = ".agent/specs"
-change_directory = ".agent/changes"
-action_directory = ".agent/actions"

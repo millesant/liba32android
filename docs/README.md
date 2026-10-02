@@ -50,9 +50,10 @@ Additional compatibility architecture notes live alongside those documents under
 
 ## Research and evidence
 
+`contracts/` contains accepted current engineering contracts.
 `research/` contains research notes and environment-specific evidence. These
-records are useful context, but they do not replace accepted current contracts
-in `.agent/specs/` or exact-revision validation in `.agent/STATE.md`.
+records are useful context, but they do not replace accepted contracts or
+exact-revision test/CI evidence.
 
 Real third-party binaries used for compatibility research are evidence inputs;
 they are not checked into the repository unless redistribution rights explicitly
