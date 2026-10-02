@@ -265,7 +265,7 @@ int test_setpriority_and_inheritance() {
             .stack_arena_base = 0x8000U,
             .stack_arena_size = 0x2000U,
             .page_size = 0x1000U,
-            .default_stack_size = 0x1000U,
+            .default_stack_size = 0x2000U,
             .exit_trampoline = 0x2000U,
             .thread_instruction_budget = 16U,
             .first_thread_id = 2U,
