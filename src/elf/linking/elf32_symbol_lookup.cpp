@@ -220,16 +220,15 @@ Elf32SymbolIndexResult build_elf32_symbol_index(
         const std::uint32_t hash_address =
             metadata.sysv_hash_table->guest_address;
 
-        std::uint32_t bucket_count = 0;
-        std::uint32_t chain_count = 0;
-        if (!read_u32(memory, hash_address, bucket_count)) {
+        std::array<std::uint8_t, 8> header_bytes{};
+        if (!range_fits(hash_address, header_bytes.size()) ||
+            !memory.read(hash_address, header_bytes)) {
             return failure(Elf32SymbolIndexError::HashHeaderReadFailed);
         }
-        std::uint32_t second_word = 0;
-        if (!detail::checked_add_guest_address(hash_address, 4U, second_word) ||
-            !read_u32(memory, second_word, chain_count)) {
-            return failure(Elf32SymbolIndexError::HashHeaderReadFailed);
-        }
+        const std::uint32_t bucket_count =
+            detail::decode_u32_le(header_bytes.data());
+        const std::uint32_t chain_count =
+            detail::decode_u32_le(header_bytes.data() + 4);
 
         if (bucket_count == 0 || chain_count == 0) {
             return failure(Elf32SymbolIndexError::InvalidSysvHash);
@@ -293,21 +292,20 @@ Elf32SymbolIndexResult build_elf32_symbol_index(
         const std::uint32_t hash_address =
             metadata.gnu_hash_table->guest_address;
 
-        std::array<std::uint32_t, 4> header{};
-        for (std::uint32_t i = 0; i < header.size(); ++i) {
-            std::uint32_t address = 0;
-            if (!detail::checked_add_guest_address(hash_address,
-                             static_cast<std::uint64_t>(i) * 4U,
-                             address) ||
-                !read_u32(memory, address, header[i])) {
-                return failure(Elf32SymbolIndexError::HashHeaderReadFailed);
-            }
+        std::array<std::uint8_t, 16> header_bytes{};
+        if (!range_fits(hash_address, header_bytes.size()) ||
+            !memory.read(hash_address, header_bytes)) {
+            return failure(Elf32SymbolIndexError::HashHeaderReadFailed);
         }
 
-        const std::uint32_t bucket_count = header[0];
-        const std::uint32_t symbol_offset = header[1];
-        const std::uint32_t bloom_word_count = header[2];
-        const std::uint32_t bloom_shift = header[3];
+        const std::uint32_t bucket_count =
+            detail::decode_u32_le(header_bytes.data());
+        const std::uint32_t symbol_offset =
+            detail::decode_u32_le(header_bytes.data() + 4);
+        const std::uint32_t bloom_word_count =
+            detail::decode_u32_le(header_bytes.data() + 8);
+        const std::uint32_t bloom_shift =
+            detail::decode_u32_le(header_bytes.data() + 12);
 
         if (bucket_count == 0 || symbol_offset == 0 ||
             !is_power_of_two(bloom_word_count) ||
@@ -567,17 +565,10 @@ static Elf32ObjectSymbolLookupResult lookup_elf32_symbol_impl(
             return lookup_failure(Elf32SymbolLookupError::UnsupportedBinding);
         }
 
-        // Only the low two visibility bits are defined for this feature.
-        std::array<std::uint8_t, kElf32SymbolEntrySize> raw{};
-        std::uint32_t raw_address = 0;
-        if (!detail::checked_add_guest_address(metadata.symbol_table->guest_address,
-                         static_cast<std::uint64_t>(symbol_index) *
-                             kElf32SymbolEntrySize,
-                         raw_address) ||
-            !memory.read(raw_address, raw)) {
-            return lookup_failure(Elf32SymbolLookupError::SymbolReadFailed);
-        }
-        if ((raw[13] & 0xfcU) != 0 ||
+        // read_symbol already preserved the complete st_other byte, so do not
+        // re-read the same 16-byte symbol entry just to validate its upper
+        // visibility bits.
+        if ((symbol.raw_other & 0xfcU) != 0 ||
             (symbol.visibility != kStvDefault &&
              symbol.visibility != kStvProtected)) {
             return lookup_failure(
