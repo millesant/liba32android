@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -104,7 +105,7 @@ struct ProgressiveReadResult {
     return false;
 }
 
-void write_signed_result(void write_signed_result(
+void write_signed_result(
     std::array<std::uint32_t, 16>& regs,
     std::int32_t value) noexcept {
     regs[0] = std::bit_cast<std::uint32_t>(value);
