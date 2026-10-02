@@ -17,6 +17,9 @@ using liba32android::compat::A32PthreadThreadPhase;
 using liba32android::compat::A32PthreadThreadState;
 using liba32android::compat::kA32AndroidEagain;
 using liba32android::compat::kA32AndroidEinval;
+using liba32android::compat::kA32AndroidEperm;
+using liba32android::compat::kA32AndroidErange;
+using liba32android::compat::kA32AndroidEsrch;
 using liba32android::compat::kA32PthreadAttrDestroySvcImmediate;
 using liba32android::compat::kA32PthreadAttrGetdetachstateSvcImmediate;
 using liba32android::compat::kA32PthreadAttrGetstacksizeSvcImmediate;
@@ -28,7 +31,11 @@ using liba32android::compat::kA32PthreadCreateJoinable;
 using liba32android::compat::kA32PthreadCreateSvcImmediate;
 using liba32android::compat::kA32PthreadEqualSvcImmediate;
 using liba32android::compat::kA32PthreadExitSvcImmediate;
+using liba32android::compat::kA32PthreadGetschedparamSvcImmediate;
+using liba32android::compat::kA32PthreadSetschedparamSvcImmediate;
+using liba32android::compat::kA32PthreadSetnameNpSvcImmediate;
 using liba32android::compat::kA32PthreadSelfSvcImmediate;
+using liba32android::compat::kA32SchedOther;
 using liba32android::memory::LinearGuestMemory;
 using liba32android::runtime::A32HostServiceDisposition;
 using liba32android::runtime::A32LogicalThreadId;
@@ -46,6 +53,19 @@ int fail(const char* message) {
 
 std::int32_t signed_r0(std::uint32_t value) {
     return std::bit_cast<std::int32_t>(value);
+}
+
+bool write_u32(
+    LinearGuestMemory& memory,
+    std::uint32_t address,
+    std::uint32_t value) {
+    const std::array<std::uint8_t, 4> bytes{{
+        static_cast<std::uint8_t>(value),
+        static_cast<std::uint8_t>(value >> 8U),
+        static_cast<std::uint8_t>(value >> 16U),
+        static_cast<std::uint8_t>(value >> 24U),
+    }};
+    return memory.write(address, bytes);
 }
 
 bool read_u32(
@@ -213,6 +233,117 @@ int test_identity_and_attrs() {
         return fail("pthread_attr_destroy failed");
     }
 
+    return 0;
+}
+
+int test_scheduler_and_name_helpers() {
+    Fixture fixture;
+    constexpr std::uint32_t kPolicyOut = 0x520U;
+    constexpr std::uint32_t kSchedParam = 0x524U;
+    constexpr std::uint32_t kName = 0x540U;
+    constexpr std::uint32_t kLongName = 0x560U;
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t value{};
+
+    if (!write_u32(fixture.memory, kSchedParam, 0U)) {
+        return fail("could not stage sched_param");
+    }
+    regs[0] = 1U;
+    regs[1] = kPolicyOut;
+    regs[2] = kSchedParam;
+    if (call(fixture, kA32PthreadGetschedparamSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0U ||
+        !read_u32(fixture.memory, kPolicyOut, value) ||
+        std::bit_cast<std::int32_t>(value) != kA32SchedOther ||
+        !read_u32(fixture.memory, kSchedParam, value) ||
+        std::bit_cast<std::int32_t>(value) != 0) {
+        return fail("pthread_getschedparam did not return logical SCHED_OTHER/0");
+    }
+
+    regs = {};
+    regs[0] = 1U;
+    regs[1] = std::bit_cast<std::uint32_t>(kA32SchedOther);
+    regs[2] = kSchedParam;
+    if (call(fixture, kA32PthreadSetschedparamSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("pthread_setschedparam rejected logical SCHED_OTHER/0");
+    }
+
+    if (!write_u32(fixture.memory, kSchedParam, 1U)) {
+        return fail("could not stage invalid SCHED_OTHER priority");
+    }
+    regs = {};
+    regs[0] = 1U;
+    regs[1] = std::bit_cast<std::uint32_t>(kA32SchedOther);
+    regs[2] = kSchedParam;
+    if (call(fixture, kA32PthreadSetschedparamSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled ||
+        signed_r0(regs[0]) != kA32AndroidEinval) {
+        return fail("pthread_setschedparam accepted nonzero SCHED_OTHER priority");
+    }
+
+    regs = {};
+    regs[0] = 1U;
+    regs[1] = 1U;
+    regs[2] = kSchedParam;
+    if (call(fixture, kA32PthreadSetschedparamSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled ||
+        signed_r0(regs[0]) != kA32AndroidEperm) {
+        return fail("pthread_setschedparam faked unsupported policy success");
+    }
+
+    regs = {};
+    regs[0] = 99U;
+    regs[1] = kPolicyOut;
+    regs[2] = kSchedParam;
+    if (call(fixture, kA32PthreadGetschedparamSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled ||
+        signed_r0(regs[0]) != kA32AndroidEsrch) {
+        return fail("pthread_getschedparam did not reject unknown pthread_t");
+    }
+
+    constexpr std::array<std::uint8_t, 5> name{{'m','a','i','n',0}};
+    if (!fixture.memory.write(kName, name)) {
+        return fail("could not stage pthread name");
+    }
+    regs = {};
+    regs[0] = 1U;
+    regs[1] = kName;
+    if (call(fixture, kA32PthreadSetnameNpSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0U ||
+        fixture.threads[0].name[0] != 'm' ||
+        fixture.threads[0].name[1] != 'a' ||
+        fixture.threads[0].name[2] != 'i' ||
+        fixture.threads[0].name[3] != 'n' ||
+        fixture.threads[0].name[4] != 0U) {
+        return fail("pthread_setname_np did not store bounded logical name");
+    }
+
+    std::array<std::uint8_t, 16> long_name{};
+    long_name.fill('x');
+    if (!fixture.memory.write(kLongName, long_name)) {
+        return fail("could not stage overlong pthread name");
+    }
+    regs = {};
+    regs[0] = 1U;
+    regs[1] = kLongName;
+    if (call(fixture, kA32PthreadSetnameNpSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled ||
+        signed_r0(regs[0]) != kA32AndroidErange) {
+        return fail("pthread_setname_np did not return ERANGE for 16-byte name");
+    }
+
+    regs = {};
+    regs[0] = 99U;
+    regs[1] = kName;
+    if (call(fixture, kA32PthreadSetnameNpSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled ||
+        signed_r0(regs[0]) != kA32AndroidEsrch) {
+        return fail("pthread_setname_np did not reject unknown pthread_t");
+    }
     return 0;
 }
 
@@ -401,6 +532,9 @@ int test_transactional_failure_and_capacity() {
 
 int main() {
     if (const int status = test_identity_and_attrs(); status != 0) {
+        return status;
+    }
+    if (const int status = test_scheduler_and_name_helpers(); status != 0) {
         return status;
     }
     if (const int status = test_create_return_and_explicit_exit(); status != 0) {

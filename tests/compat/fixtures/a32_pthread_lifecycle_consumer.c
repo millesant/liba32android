@@ -2,6 +2,9 @@
 
 typedef __SIZE_TYPE__ fixture_size_t;
 typedef unsigned int fixture_pthread_t;
+typedef struct fixture_sched_param {
+    int sched_priority;
+} fixture_sched_param;
 
 __attribute__((visibility("default")))
 int pthread_attr_init(void* attr);
@@ -31,6 +34,18 @@ __attribute__((visibility("default")))
 int pthread_join(fixture_pthread_t thread, void** value);
 __attribute__((visibility("default")))
 int pthread_detach(fixture_pthread_t thread);
+__attribute__((visibility("default")))
+int pthread_getschedparam(
+    fixture_pthread_t thread,
+    int* policy,
+    fixture_sched_param* param);
+__attribute__((visibility("default")))
+int pthread_setschedparam(
+    fixture_pthread_t thread,
+    int policy,
+    const fixture_sched_param* param);
+__attribute__((visibility("default")))
+int pthread_setname_np(fixture_pthread_t thread, const char* name);
 __attribute__((visibility("default")))
 int pthread_cond_init(void* cond, const void* attr);
 __attribute__((visibility("default")))
@@ -123,6 +138,24 @@ int fixture_pthread_join(fixture_pthread_t thread, void** value) {
 __attribute__((visibility("default"), noinline))
 int fixture_pthread_detach(fixture_pthread_t thread) {
     return pthread_detach(thread);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_getschedparam(
+    fixture_pthread_t thread,
+    int* policy,
+    fixture_sched_param* param) {
+    return pthread_getschedparam(thread, policy, param);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_setschedparam(
+    fixture_pthread_t thread,
+    int policy,
+    const fixture_sched_param* param) {
+    return pthread_setschedparam(thread, policy, param);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_setname_np(fixture_pthread_t thread, const char* name) {
+    return pthread_setname_np(thread, name);
 }
 __attribute__((visibility("default"), noinline))
 int fixture_pthread_cond_init(void* cond, const void* attr) {

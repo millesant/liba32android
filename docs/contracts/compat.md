@@ -1960,8 +1960,8 @@ the relevant Bionic behavior rather than inventing per-reader identity.
 
 The issue contract also accepts bounded pthread_rwlock_tryrdlock and
 pthread_rwlock_trywrlock, although the supplied ARM32 artifacts do not directly
-import those two functions. Timed rwlocks, rwlock attrs, process-shared locks,
-priority policy, cancellation, and robust recovery remain out of scope.
+import those two functions. Timed rwlocks, rwlock attrs, process-shared locks, cancellation, and robust
+recovery remain out of scope for this synchronization slice.
 
 The prepared partial libc shim now contains 74 libc-compatible exports: the
 original 45 base wrappers, twelve lifecycle functions, six condition-variable
@@ -1970,3 +1970,40 @@ exports one internal once-completion trampoline. The dedicated ARM32 pthread
 consumer requires 32 eager JUMP_SLOT imports and executes recursive typed mutex,
 pthread_once, concurrent rwlock readers, blocked writer wake, and post-SVC
 writer resume end to end.
+
+## L32-C066 — ARM32 pthread scheduling/name utility subset
+
+The supplied VLC Android APK's ARMv7 `libvlc.so` imports
+`pthread_getschedparam`, `pthread_setschedparam`, and `pthread_setname_np`.
+Private SVC IDs `0x122`, `0x123`, and `0x124` extend the existing bounded
+pthread lifecycle service with exactly those calls.
+
+The lifecycle service keeps scheduler/name state in finite logical-thread
+metadata; it never exposes or mutates a host pthread. Every running logical
+thread begins with synthetic `SCHED_OTHER` policy and priority zero.
+`pthread_getschedparam` returns that logical state. The accepted
+`pthread_setschedparam` operation is `SCHED_OTHER` with priority zero and
+returns success. A nonzero priority under SCHED_OTHER returns EINVAL; policy
+changes outside the accepted logical surface return EPERM. Unknown/non-running
+pthread identities return ESRCH. Invalid guest sched-param/output memory is a
+host-service failure and does not publish partial compatibility success.
+
+`pthread_setname_np` stores at most 15 guest name bytes plus the terminating
+NUL in the logical thread record. A name with no NUL in the first 16 bytes
+returns ERANGE; an unknown/non-running pthread identity returns ESRCH. Invalid
+or unreadable guest name memory is a host-service failure. The stored name is
+logical metadata only and is not forwarded to a host thread.
+
+The prepared partial libc shim now contains 77 libc-compatible public exports:
+the prior 74-function surface plus these three pthread utilities. It still
+exports the internal pthread_once completion trampoline separately. The
+freestanding ARM32 pthread consumer now requires 35 eager JUMP_SLOT imports
+and executes all three utility wrappers end to end in addition to the prior
+lifecycle/condition/synchronization coverage.
+
+The supplied `libemu32.so` is AArch64. Its `sem_trywait`, `sem_getvalue`, and
+`pthread_attr_setschedparam` imports are not AArch32 evidence and do not expand
+this contract. No supplied ARM32 artifact currently justifies
+`sem_trywait`, `sem_getvalue`, `sem_timedwait`, `pthread_mutex_timedlock`,
+`pthread_attr_setschedparam`, or `pthread_getattr_np`.
+

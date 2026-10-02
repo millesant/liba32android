@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -28,6 +29,9 @@ using runtime::A32HostServiceDisposition;
     case kA32PthreadExitSvcImmediate:
     case kA32PthreadJoinSvcImmediate:
     case kA32PthreadDetachSvcImmediate:
+    case kA32PthreadGetschedparamSvcImmediate:
+    case kA32PthreadSetschedparamSvcImmediate:
+    case kA32PthreadSetnameNpSvcImmediate:
         return true;
     default:
         return false;
@@ -45,6 +49,19 @@ using runtime::A32HostServiceDisposition;
         static_cast<std::uint8_t>(value >> 24U),
     }};
     return memory.write(address, bytes);
+}
+
+[[nodiscard]] bool read_u32_le(
+    const memory::GuestMemory& memory,
+    std::uint32_t address,
+    std::uint32_t& value) {
+    std::array<std::uint8_t, 4> bytes{};
+    if (!memory.read(address, bytes)) return false;
+    value = static_cast<std::uint32_t>(bytes[0]) |
+            (static_cast<std::uint32_t>(bytes[1]) << 8U) |
+            (static_cast<std::uint32_t>(bytes[2]) << 16U) |
+            (static_cast<std::uint32_t>(bytes[3]) << 24U);
+    return true;
 }
 
 [[nodiscard]] bool readable_u32(
@@ -633,6 +650,89 @@ runtime::A32HostServiceDisposition A32PthreadLifecycleService::handle(
     if (current >= threads_.size() ||
         threads_[current].phase != A32PthreadThreadPhase::Running) {
         return A32HostServiceDisposition::Failed;
+    }
+
+    if (svc_immediate == kA32PthreadGetschedparamSvcImmediate ||
+        svc_immediate == kA32PthreadSetschedparamSvcImmediate ||
+        svc_immediate == kA32PthreadSetnameNpSvcImmediate) {
+        const std::size_t target = find_thread(regs[0]);
+        if (target >= threads_.size() ||
+            threads_[target].phase != A32PthreadThreadPhase::Running) {
+            regs[0] = static_cast<std::uint32_t>(kA32AndroidEsrch);
+            return A32HostServiceDisposition::Handled;
+        }
+        auto& target_thread = threads_[target];
+
+        if (svc_immediate == kA32PthreadGetschedparamSvcImmediate) {
+            if (regs[1] == 0U || regs[2] == 0U ||
+                !write_u32_le(
+                    memory,
+                    regs[1],
+                    std::bit_cast<std::uint32_t>(target_thread.sched_policy)) ||
+                !write_u32_le(
+                    memory,
+                    regs[2],
+                    std::bit_cast<std::uint32_t>(target_thread.sched_priority))) {
+                return A32HostServiceDisposition::Failed;
+            }
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+
+        if (svc_immediate == kA32PthreadSetschedparamSvcImmediate) {
+            std::uint32_t priority_word{};
+            if (regs[2] == 0U ||
+                !read_u32_le(memory, regs[2], priority_word)) {
+                return A32HostServiceDisposition::Failed;
+            }
+            const std::int32_t policy = std::bit_cast<std::int32_t>(regs[1]);
+            const std::int32_t priority =
+                std::bit_cast<std::int32_t>(priority_word);
+            if (policy == kA32SchedOther) {
+                if (priority != 0) {
+                    regs[0] = static_cast<std::uint32_t>(kA32AndroidEinval);
+                    return A32HostServiceDisposition::Handled;
+                }
+                target_thread.sched_policy = policy;
+                target_thread.sched_priority = priority;
+                regs[0] = 0U;
+                return A32HostServiceDisposition::Handled;
+            }
+            // The cooperative runtime has no host scheduler identity. Keep the
+            // accepted surface at SCHED_OTHER/0 rather than faking policy
+            // changes against an unrelated host thread.
+            regs[0] = static_cast<std::uint32_t>(kA32AndroidEperm);
+            return A32HostServiceDisposition::Handled;
+        }
+
+        if (regs[1] == 0U) {
+            return A32HostServiceDisposition::Failed;
+        }
+        std::array<std::uint8_t, kA32PthreadNameBytes> name{};
+        bool terminated = false;
+        for (std::size_t index = 0; index < name.size(); ++index) {
+            if (regs[1] >
+                std::numeric_limits<std::uint32_t>::max() - index) {
+                return A32HostServiceDisposition::Failed;
+            }
+            std::array<std::uint8_t, 1> byte{};
+            if (!memory.read(
+                    regs[1] + static_cast<std::uint32_t>(index), byte)) {
+                return A32HostServiceDisposition::Failed;
+            }
+            name[index] = byte[0];
+            if (byte[0] == 0U) {
+                terminated = true;
+                break;
+            }
+        }
+        if (!terminated) {
+            regs[0] = static_cast<std::uint32_t>(kA32AndroidErange);
+            return A32HostServiceDisposition::Handled;
+        }
+        target_thread.name = name;
+        regs[0] = 0U;
+        return A32HostServiceDisposition::Handled;
     }
 
     if (svc_immediate == kA32PthreadSelfSvcImmediate) {
