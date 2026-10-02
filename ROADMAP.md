@@ -39,9 +39,10 @@ logical static object state and local-reference return semantics.
 The supplied ARMv7 JNI surfaces currently exercised by the VLC artifacts are
 covered through GetStaticObjectField. Parallel compatibility work now advances
 through the evidence-backed pthread lifecycle family: logical
-create/self/equal/exit, basic creation attrs, join/detach ownership, and bounded
-thread-exit TLS destructor cleanup now build on the completed
-synchronization/TLS-key and logical-thread seams.
+create/self/equal/exit, basic creation attrs, join/detach ownership, bounded
+thread-exit TLS destructor cleanup, and default condition variables with a
+deterministic timed-wait clock seam now build on the completed logical-thread
+foundation.
 In particular,
 generic ELF dlclose is not treated as equivalent to VM/class-loader
 JNI_OnUnload ownership. Local frames, NewLocalRef, IsSameObject, GC behavior,

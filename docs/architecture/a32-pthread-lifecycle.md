@@ -141,7 +141,8 @@ destructor repopulation and cleanup-failure latching.
 ## Boundaries
 
 This service does not implement cancellation/cleanup handlers, signals,
-condition variables, rwlocks, pthread_once, robust/process-shared
-synchronization, scheduler-priority policy, host pthread lifecycle, or actual
-JNI per-thread cleanup. Explicit caller-supplied stacks and broader pthread
+rwlocks, pthread_once, robust/process-shared synchronization,
+scheduler-priority policy, host pthread lifecycle, or actual JNI per-thread
+cleanup. Condition variables are handled by the shared pthread synchronization
+service and reuse lifecycle's logical thread identity only. Explicit caller-supplied stacks and broader pthread
 attributes also remain evidence-driven follow-up work.

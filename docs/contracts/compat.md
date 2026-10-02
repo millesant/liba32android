@@ -1837,3 +1837,63 @@ live join suspension/wake/post-SVC resume plus detach reclamation. Cancellation,
 signals, condition variables, rwlocks, pthread_once, robust/process-shared
 semantics, host pthread lifecycle, and actual JNI thread cleanup remain out of
 scope.
+
+
+## L32-C064 — ARM32 bounded pthread condition variables
+
+Supplied VLC ARMv7 `libc++_shared.so`, `libvlc.so`, and `libvlcjni.so`
+have eager libc imports across `pthread_cond_init/destroy`,
+`pthread_cond_wait`, `pthread_cond_timedwait`, `pthread_cond_signal`, and
+`pthread_cond_broadcast`. No supplied ARM32 artifact imports pthread condattr
+functions.
+
+Private SVC IDs `0x110` through `0x115` implement exactly those six
+condition operations. Condition addresses remain opaque nonzero logical
+identities; no Bionic private pthread_cond_t representation or host condition
+variable is stored or exposed.
+
+Condition waits reuse the existing finite `A32PthreadWaiter` table and the
+existing logical mutex ownership/grant path. A wait reserves its condition
+waiter before releasing the associated mutex. Capacity failure therefore does
+not release the caller's mutex. Releasing the mutex may wake an already queued
+ordinary mutex waiter.
+
+Signal transfers the oldest condition waiter into the existing mutex
+reacquisition queue; broadcast transfers all current waiters in deterministic
+arrival order. A signaled/timed waiter is not published runnable until it owns
+the associated mutex. Ordinary mutex waiters and condition reacquirers compete
+through the same deterministic sequence/grant mechanism.
+
+Current Bionic `pthread_cond_destroy` does not reject active waiters; the
+bounded compatibility service likewise returns success rather than inventing
+EBUSY for application-undefined concurrent destruction.
+
+`pthread_cond_timedwait` consumes the Bionic LP32 timespec ABI: signed
+32-bit seconds followed by signed 32-bit nanoseconds. Nanoseconds outside
+[0,1_000_000_000) return `EINVAL=22`; negative seconds return
+`ETIMEDOUT=110` before mutex release. A null timeout pointer behaves as an
+untimed wait.
+
+Default condition timed waits use CLOCK_REALTIME through an embedding-owned
+`A32PthreadClock`; compatibility code does not read host wall time directly.
+The service exposes the next condition deadline and an explicit deadline poll,
+allowing deterministic fake-clock tests with no host sleeps.
+
+When a deadline expires, the waiter transitions exactly once into the same
+mutex-reacquisition path with eventual return value ETIMEDOUT. The wake record
+carries that return value so the embedding can patch r0 in the saved post-SVC
+continuation before resume. Signal/broadcast polls expired timed waits first,
+giving the bounded single-threaded model one deterministic deadline-first rule
+for timeout-vs-signal races.
+
+The prepared partial libc shim now has 63 exports total: the original 45 base
+wrappers, twelve pthread lifecycle functions, and six condition-variable
+functions. The dedicated ARM32 pthread fixture requires eighteen lifecycle /
+condition JUMP_SLOT imports and exercises wait/signal/reacquire/resume plus a
+fake-clock timed timeout end to end.
+
+Supplied VLC ARMv7 libraries also import `clock_gettime`. That guest-visible
+libc clock API is not part of this condition-variable contract and remains
+separate evidence-backed utility work. Process-shared condvars, cond attrs,
+cancellation points, rwlocks, pthread_once, and host futex/condvar passthrough
+remain out of scope.

@@ -30,6 +30,12 @@ The VLC libraries were extracted from the supplied
 
 ### VLC libc++_shared
 
+- `0x000870d0 clock_gettime@LIBC`
+- `0x000870e0 pthread_cond_signal@LIBC`
+- `0x000870e4 pthread_cond_broadcast@LIBC`
+- `0x000870e8 pthread_cond_wait@LIBC`
+- `0x000870ec pthread_cond_timedwait@LIBC`
+- `0x0008710c pthread_cond_destroy@LIBC`
 - `0x00087ee8 pthread_join@LIBC`
 - `0x00087eec pthread_detach@LIBC`
 
@@ -43,6 +49,7 @@ The VLC libraries were extracted from the supplied
 ### VLC libvlc
 
 - `0x025fbaa4 pthread_attr_init@LIBC`
+- `0x025fbacc clock_gettime@LIBC`
 - `0x025fbaa8 pthread_attr_setdetachstate@LIBC`
 - `0x025fbaac pthread_create@LIBC`
 - `0x025fbab0 pthread_attr_destroy@LIBC`
@@ -55,6 +62,10 @@ The VLC libraries were extracted from the supplied
 
 ### VLC libvlcjni
 
+- `0x00013eec pthread_cond_init@LIBC`
+- `0x00013f14 pthread_cond_destroy@LIBC`
+- `0x00013f3c pthread_cond_wait@LIBC`
+- `0x00013f60 pthread_cond_signal@LIBC`
 - `0x00013ff0 pthread_create@LIBC`
 - `0x00013ffc pthread_join@LIBC`
 
@@ -73,6 +84,18 @@ The supplied ARM32 artifacts directly require:
 - `pthread_exit`
 - `pthread_join`
 - `pthread_detach`
+- `pthread_cond_init`
+- `pthread_cond_destroy`
+- `pthread_cond_wait`
+- `pthread_cond_timedwait`
+- `pthread_cond_signal`
+- `pthread_cond_broadcast`
+
+No supplied ARM32 artifact imports pthread condattr functions, so the accepted
+condvar slice keeps default condition attributes only. VLC's
+`libc++_shared.so` and `libvlc.so` also import `clock_gettime`; that
+guest-visible libc API is evidence for separate utility work, while the condvar
+implementation uses an internal deterministic clock seam.
 
 The bounded compatibility surface additionally includes
 `pthread_attr_getdetachstate` as the read side of the accepted detach-state
