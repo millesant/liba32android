@@ -10,8 +10,8 @@ dependency/symbol/relocation path using one reproducible partial ARM32
 
 The feature is deliberately partial. The accepted base grew from memory/string
 helpers through allocator, EABI, finalization, synchronization, and TLS-key
-extensions to 45 exports. The bounded pthread lifecycle slice adds ten more
-direct guest stubs, bringing the prepared partial-libc export surface to 55.
+extensions to 45 exports. The bounded pthread lifecycle surface adds twelve
+direct guest stubs, bringing the prepared partial-libc export surface to 57.
 
 ## Guest stubs
 
@@ -138,23 +138,26 @@ remain outside this partial libc.
 
 ## Pthread lifecycle extension
 
-The bounded logical pthread lifecycle slice adds ten direct private-SVC exports:
-`pthread_attr_init`, `pthread_attr_destroy`,
+The bounded logical pthread lifecycle surface adds twelve direct private-SVC
+exports: `pthread_attr_init`, `pthread_attr_destroy`,
 `pthread_attr_getdetachstate`, `pthread_attr_setdetachstate`,
 `pthread_attr_getstacksize`, `pthread_attr_setstacksize`,
-`pthread_create`, `pthread_self`, `pthread_equal`, and
-`pthread_exit`.
+`pthread_create`, `pthread_self`, `pthread_equal`, `pthread_exit`,
+`pthread_join`, and `pthread_detach`.
 
-A dedicated freestanding ARM32 lifecycle consumer requires exactly those ten
-imports through eager `R_ARM_JUMP_SLOT` relocations. Integration validates
-basic attr state, logical identity/equality, two logical thread creations, one
-normal start-routine return into the configured pthread_exit trampoline, and
-one explicit pthread_exit path.
+A dedicated freestanding ARM32 lifecycle consumer requires exactly those
+twelve imports through eager `R_ARM_JUMP_SLOT` relocations. Integration
+validates basic attr state and logical identity/equality, then proves a live
+join suspension, target exit and return-value publication, wake/reclamation,
+post-SVC join continuation, and a running detach followed by detached exit
+reclamation.
 
 The original 45-wrapper partial-libc consumer remains unchanged and continues
 to prove the previously accepted surface. The lifecycle consumer is separate so
 new thread behavior does not broaden unrelated libc fixture assumptions.
 
-This remains a logical/cooperative model: no host pthread is created, the
-service does not map guest stacks, and join/detach reclamation plus TLS
-destructor iteration remain separate work.
+This remains a logical/cooperative model: no host pthread is created and the
+service does not map guest stacks. Join/detach reclamation and bounded
+four-pass TLS destructor cleanup are owned by the pthread lifecycle service;
+condition variables, rwlocks, pthread_once, cancellation, and broader Bionic
+surface remain separate work.

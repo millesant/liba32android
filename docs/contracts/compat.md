@@ -1743,3 +1743,97 @@ Thread-exit destructor execution/iteration, `pthread_create`,
 `pthread_join`, `pthread_detach`, `pthread_self`, `pthread_equal`,
 cancellation, scheduler lifecycle, host TLS, and broader bionic pthread
 semantics remain separate work.
+
+
+## L32-C062 — ARM32 bounded pthread logical lifecycle
+
+Supplied ARM32 FMOD/VLC artifacts require `pthread_create`,
+`pthread_self`, `pthread_equal`, `pthread_exit`, and the basic
+creation-attribute subset `pthread_attr_init/destroy`,
+`pthread_attr_setdetachstate`, and `pthread_attr_get/setstacksize`.
+The compatibility surface additionally accepts `pthread_attr_getdetachstate`
+as the paired read operation.
+
+Private SVC IDs `0x104` through `0x10D` implement that bounded surface.
+Guest `pthread_t` values are deterministic opaque non-zero 32-bit logical
+identities. Internally they share the numeric identity of
+`runtime::A32LogicalThreadId`; this is not a public C ABI and never exposes a
+host pthread ID or pointer.
+
+`pthread_create` allocates finite caller-owned lifecycle metadata plus one
+page-aligned first-fit stack range from a caller-configured already-mapped
+guest arena. The service never maps stack memory itself. The new logical A32
+context receives the start argument in r0, an 8-byte-aligned guest SP, and the
+configured pthread_exit guest stub in LR, so normal start-routine return
+preserves its r0 result into pthread_exit.
+
+Creation publication is transactional: failed output-memory publication,
+identity allocation, or stack allocation commits no logical thread/stack state.
+Finite thread/stack exhaustion returns Android `EAGAIN`.
+
+`pthread_self` returns the selected logical identity and `pthread_equal`
+compares identities. `pthread_exit` records the 32-bit guest return value and
+terminates through the existing cooperative service-suspension boundary rather
+than creating or joining a host thread.
+
+The prepared partial ARM32 libc shim exports these ten lifecycle functions as
+direct private-SVC stubs. A dedicated ARM32 consumer resolves and executes
+them separately from the established 45-wrapper base libc integration.
+
+## L32-C063 — ARM32 pthread join/detach and bounded thread-exit cleanup
+
+Supplied VLC ARMv7 libraries have eager libc imports for `pthread_join`, and
+the shipped ARMv7 `libc++_shared.so` imports both `pthread_join` and
+`pthread_detach`. Private SVC `0x10E` implements pthread_join and
+`0x10F` implements pthread_detach.
+
+The lifecycle state preserves Bionic-observable ownership errors:
+self-join returns Android `EDEADLK=35`; an unknown/reclaimed target returns
+`ESRCH=3`; detached or already-claimed join state returns `EINVAL=22`.
+
+Joining a live joinable target claims it exactly once, records an optional
+guest return-value address, publishes eventual guest return code zero, and
+returns `Suspended` without blocking the host executor. Successful target
+exit publishes its stored return value and marks one deterministic wake record.
+The embedding pops that wake and resumes the joiner from its preserved post-SVC
+continuation; popping also reclaims the target exactly once. Joining an
+already-exited target publishes its optional value and reclaims synchronously.
+
+Detaching a running joinable target changes ownership without host action.
+Detaching an already-exited joinable target reclaims synchronously. A detached
+target reclaims its lifecycle/owned-stack metadata immediately after successful
+exit cleanup. Reclaimed thread slots and stack ranges are deterministically
+reusable.
+
+When a lifecycle service borrows `A32PthreadSyncService`, pthread_exit runs
+bounded TLS destructor cleanup before publishing Exited/reclaimable state.
+For each active key with nonzero destructor and non-null value, the value is
+cleared before executing the guest destructor on the exiting logical thread's
+live stack. The callback may repopulate TLS through the ordinary pthread TLS
+service. Scanning repeats for at most four destructor rounds, matching Bionic's
+`PTHREAD_DESTRUCTOR_ITERATIONS`; any remaining per-thread TLS values are then
+discarded. pthread_key_delete continues to clear values without destructor
+execution.
+
+Destructor callbacks execute through bounded A32 service-aware execution with
+explicit instruction/service ceilings. This slice exposes the pthread
+synchronization/TLS service to those callbacks; it does not imply arbitrary
+JNI/Android nested services.
+
+After TLS cleanup, an optional compatibility-layer thread-exit hook may run for
+future per-thread JNI/reference cleanup. No JNI semantics are implemented by
+this contract. Only then does the target become Exited, wake a joiner, or
+reclaim if detached.
+
+Cleanup failure latches a non-replayable CleanupFailed thread state with
+bounded diagnostic classification; a later pthread_exit attempt does not rerun
+partially executed destructors. Join-result publication failure after cleanup
+also latches failure rather than silently losing ownership.
+
+The prepared partial libc shim therefore exposes 57 functions total: the
+existing 45-wrapper base surface plus twelve pthread lifecycle stubs. The
+dedicated lifecycle consumer requires twelve eager JUMP_SLOT imports and proves
+live join suspension/wake/post-SVC resume plus detach reclamation. Cancellation,
+signals, condition variables, rwlocks, pthread_once, robust/process-shared
+semantics, host pthread lifecycle, and actual JNI thread cleanup remain out of
+scope.

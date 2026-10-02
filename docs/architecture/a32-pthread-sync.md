@@ -69,6 +69,17 @@ including null for an invalid/deleted key.
 `pthread_key_delete` invalidates the key and clears every stored value for it.
 Deletion does not execute the guest destructor.
 
+The synchronization/TLS service also exposes an internal exit-cleanup seam to
+the pthread lifecycle layer. For one logical thread/key slot, lifecycle cleanup
+may atomically take a non-null value together with its active nonzero destructor
+metadata; taking clears the value before the guest callback. A destructor can
+therefore observe null or repopulate the key through the normal getspecific /
+setspecific services. After the finite lifecycle cleanup passes, remaining
+values for that exiting logical thread are cleared.
+
+This internal seam does not change pthread_key_delete: deleting a key still
+invalidates it and clears stored values without executing any destructor.
+
 The reproducible partial ARM32 libc shim exports all four TLS-key functions as
 direct private-SVC stubs. The base libc integration still executes its original
 45-wrapper surface; a dedicated lifecycle consumer independently covers the
@@ -76,7 +87,8 @@ additional pthread lifecycle exports.
 
 ## Scope limits
 
-Recursive/errorcheck mutexes, pthread_join/detach, pthread_once, condition
-variables, rwlocks, process-shared semaphores, signals/futex internals,
-cancellation, robust mutexes, scheduler policy, and thread-exit TLS destructor
-iteration remain outside this bounded synchronization/TLS service.
+Recursive/errorcheck mutexes, pthread_once, condition variables, rwlocks,
+process-shared semaphores, signals/futex internals, cancellation, robust
+mutexes, and scheduler policy remain outside this bounded synchronization/TLS
+service. Join/detach ownership and thread-exit destructor iteration are handled
+by the separate pthread lifecycle service.

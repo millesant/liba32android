@@ -1,21 +1,20 @@
 # A32 pthread logical lifecycle service
 
-Status: issue #39 implementation
+Status: bounded creation/identity/exit plus join/detach/thread-exit cleanup implemented
 
 ## Goal
 
-Provide the evidence-backed ARM32 pthread creation/identity/exit surface on top
-of the existing logical A32 execution-context seam without creating host
-threads or exposing host pthread objects.
+Provide the evidence-backed ARM32 pthread lifecycle surface on top of the
+existing logical A32 execution-context seam without creating host threads,
+exposing host pthread objects, or adding a second runtime scheduler.
 
-The supplied ARM32 FMOD/VLC artifacts require pthread creation, identity,
-basic creation attributes, and pthread_exit. See
+The supplied ARM32 FMOD/VLC artifacts require pthread creation and identity,
+basic creation attributes, pthread_exit, and join/detach behavior. See
 [ARM32 pthread lifecycle import evidence](../research/evidence/arm32-pthread-lifecycle-imports-2026-10-01.md).
 
 ## Private service IDs
 
-The lifecycle slice uses the next private service range after the accepted TLS
-key services:
+The lifecycle service uses:
 
 - `0x104` pthread_attr_init
 - `0x105` pthread_attr_destroy
@@ -27,100 +26,122 @@ key services:
 - `0x10B` pthread_self
 - `0x10C` pthread_equal
 - `0x10D` pthread_exit
+- `0x10E` pthread_join
+- `0x10F` pthread_detach
 
-The guest partial-libc stubs remain direct `svc; bx lr` ARM functions.
+The partial-libc functions remain direct `svc; bx lr` ARM stubs.
 
-## Identity model
+## Identity and attribute model
 
-`pthread_t` is one opaque non-zero 32-bit logical identity. Inside this
-private compatibility implementation its numeric value is intentionally the
-same as `runtime::A32LogicalThreadId`, so pthread synchronization/TLS and
-lifecycle services can refer to one guest thread without a second identity
-registry.
+`pthread_t` is an opaque non-zero 32-bit logical identity. Inside the private
+compatibility implementation its numeric value is intentionally the same as
+`runtime::A32LogicalThreadId`, allowing lifecycle and synchronization/TLS
+services to refer to the same guest thread. This equivalence is not a public C
+ABI guarantee and is never a host thread ID or pointer.
 
-That numeric equivalence is not a public C ABI guarantee and never represents a
-host thread ID or pointer.
+`pthread_self` returns the current logical identity and `pthread_equal`
+performs identity equality.
 
-`pthread_self` returns the current logical identity. `pthread_equal` is pure
-identity equality and returns 1 or 0.
+Guest `pthread_attr_t*` values are opaque logical addresses keyed into finite
+caller-owned metadata. The accepted subset is init/destroy, detach-state
+get/set, and stack-size get/set. Init is joinable with the caller-configured
+default stack size. Detach state is 0 = joinable and 1 = detached. Stack sizes
+below two configured guest pages and invalid detach states return Android
+`EINVAL`.
 
-## Attribute model
+## pthread_create and guest stack ownership
 
-Guest `pthread_attr_t*` values are treated as opaque logical addresses keyed
-into finite caller-owned metadata; the service does not publish or depend on a
-Bionic private struct layout.
+`pthread_create` never creates a host pthread. It transactionally allocates
+one finite thread slot, one deterministic non-zero logical identity, and one
+page-aligned first-fit region from a caller-configured already-mapped guest
+stack arena. The compatibility service itself never maps memory.
 
-The accepted subset is:
+The new `A32LogicalExecutionContext` starts at the exact guest start routine,
+passes the argument in r0, uses an 8-byte-aligned guest SP, and places the
+configured pthread_exit stub in LR. A normal start-routine return therefore
+flows into pthread_exit with its r0 return value unchanged.
 
-- init/destroy;
-- get/set detach state;
-- get/set stack size.
+The pthread output word is published only after bounded identity/stack
+validation succeeds. Failed publication consumes no thread/stack metadata or
+logical identity. Finite thread or stack exhaustion returns Android `EAGAIN`.
 
-Initialization is joinable and uses the caller-configured default stack size.
-Detach-state values follow Bionic's 0 = joinable and 1 = detached convention.
-On 32-bit ARM the minimum accepted stack size is two configured guest pages.
-Invalid state or sub-minimum stack size returns Android EINVAL.
+## Join and detach ownership
 
-Scheduling, guard, inherit-sched, explicit-stack, and other attributes are not
-part of this slice.
+The model follows the observed Bionic join-state behavior.
 
-## pthread_create
+`pthread_join` returns `EDEADLK` for self-join, `ESRCH` for an unknown or
+already-reclaimed target, and `EINVAL` for detached, already-claimed,
+cleaning, or cleanup-failed targets.
 
-`pthread_create` never creates a host pthread.
+Joining a live joinable target claims it exactly once, records the optional
+return-value address, sets the eventual return code to zero, and returns
+`Suspended`. No host wait occurs. After target cleanup completes, its return
+value is published, the join wake becomes ready, and the embedding may pop the
+wake. Popping reclaims the target metadata/owned stack before the joiner
+resumes from the existing post-SVC continuation, so pthread_join is not
+replayed.
 
-The service allocates:
+Joining an already-exited joinable target completes synchronously, publishes
+the optional return value, and reclaims the target exactly once.
 
-1. one finite caller-owned thread metadata slot;
-2. one deterministic non-zero logical pthread/thread ID;
-3. one page-aligned first-fit range from a caller-configured, already-mapped
-   guest stack arena.
+`pthread_detach` returns `ESRCH` for an unknown/reclaimed target and
+`EINVAL` for an already detached or join-claimed target. A running joinable
+target becomes detached; an already-exited joinable target is reclaimed
+immediately. A detached thread reclaims its owned metadata/stack as soon as
+successful exit cleanup completes.
 
-The service itself never maps memory.
+Reclamation makes the finite thread slot and first-fit stack range reusable.
 
-The new `A32LogicalExecutionContext` begins at the exact guest start-routine
-function pointer, passes the guest argument in r0, sets an 8-byte-aligned guest
-SP at the top of the owned stack, and places the configured pthread_exit shim
-address in LR.
+## Thread-exit cleanup and TLS destructors
 
-The guest pthread output word is written only after all bounded identity/stack
-validation succeeds. A failed guest output write commits no thread or stack
-metadata and does not consume the next logical identity.
+pthread_exit first stores the 32-bit return value and moves the logical thread
+into a non-replayable Cleaning state.
 
-Finite thread or stack exhaustion returns Android EAGAIN.
+When the lifecycle service borrows the pthread synchronization/TLS service, it
+runs TLS destructors on the exiting logical thread and its live guest stack.
+For each active key with a non-null value and nonzero guest destructor address,
+the value is cleared before callback execution. The callback may therefore use
+pthread_getspecific/setspecific through the borrowed synchronization/TLS
+service and may repopulate a key.
 
-## Start return and pthread_exit
+The scan repeats for at most four destructor rounds, matching Bionic's
+`PTHREAD_DESTRUCTOR_ITERATIONS` behavior. Values still populated after the
+fourth pass are discarded with the exiting thread state. `pthread_key_delete`
+never runs a destructor.
 
-A normal start-routine `bx lr` returns directly into the guest pthread_exit
-shim with the start routine's r0 result unchanged.
+Each callback has explicit instruction and service-call ceilings and returns to
+a caller-configured normalized guest stop PC. This slice makes pthread
+synchronization/TLS services available during the callback; it does not imply
+that arbitrary Android/JNI services are nested automatically.
 
-`pthread_exit` records that 32-bit result in the current logical thread state,
-marks the thread Exited, and returns the existing runtime
-`A32HostServiceDisposition::Suspended`. This terminates that guest execution
-at the scheduling handoff rather than executing the shim's trailing `bx lr`.
+After TLS cleanup, an optional `A32PthreadThreadExitHook` runs. It is an
+explicit compatibility-layer seam for future per-thread JNI/local-reference
+cleanup and contains no JNI semantics itself.
 
-This slice records detached-at-create state but does not reclaim detached
-threads or stacks. Join/detach ownership and reclamation are issue #40.
+Only after successful cleanup does the thread become Exited, wake a claimed
+joiner, or reclaim itself if detached. Cleanup faults, invalid destructor
+addresses, service failures/suspension, instruction exhaustion, exit-hook
+failure, or a late join-result write failure latch `CleanupFailed`; the
+pthread_exit cleanup transaction is not replayed.
 
-## Stack ownership
+## ARM32 integration
 
-Only the caller-configured guest stack arena is allocated in this slice.
-Allocation is deterministic first-fit against live lifecycle metadata, bounded
-by the finite thread span, page-aligned, and non-overlapping.
+The dedicated lifecycle consumer imports all twelve accepted lifecycle symbols
+through eager `R_ARM_JUMP_SLOT` relocations. Integration exercises:
 
-Explicit caller-supplied stacks through pthread_attr_setstack/getstack are
-deferred because the supplied ARM32 evidence does not require them.
+- attrs plus logical self/equality;
+- a live pthread_join that suspends;
+- target return through pthread_exit;
+- return-value publication, wake, reclamation, and post-SVC join resume;
+- pthread_detach of a running target followed by immediate reclamation at exit.
+
+A focused host/ARM execution regression additionally proves four-pass TLS
+destructor repopulation and cleanup-failure latching.
 
 ## Boundaries
 
-This service does not implement:
-
-- pthread_join or pthread_detach;
-- thread-exit TLS destructor iteration;
-- detached resource reclamation;
-- host pthread creation;
-- condition variables, rwlocks, pthread_once, cancellation, or signals;
-- JNI per-thread attachment/local-reference cleanup;
-- public C API changes.
-
-The existing synchronization/TLS-key service remains separate and keeps its
-own mutex/semaphore/key policy while consuming the same logical thread identity.
+This service does not implement cancellation/cleanup handlers, signals,
+condition variables, rwlocks, pthread_once, robust/process-shared
+synchronization, scheduler-priority policy, host pthread lifecycle, or actual
+JNI per-thread cleanup. Explicit caller-supplied stacks and broader pthread
+attributes also remain evidence-driven follow-up work.
