@@ -20,6 +20,7 @@ function(liba32android_enable_android_16k_elf_alignment target)
 endfunction()
 
 option(LIBA32ANDROID_BUILD_TESTS "Build liba32android tests" ${BUILD_TESTING})
+option(LIBA32ANDROID_BUILD_BENCHMARKS "Build opt-in runtime benchmarks" OFF)
 option(LIBA32ANDROID_BUILD_ANDROID_PROBES "Build Android-only diagnostic probes" OFF)
 set(LIBA32ANDROID_ARM32_FIXTURE_PATH "" CACHE FILEPATH
     "Optional generated ARM32 Android ET_DYN fixture used by the real ELF32 loader integration test")
@@ -60,5 +61,6 @@ set(LIBA32ANDROID_ARM32_JNI_ONLOAD_FIXTURE_PATH "" CACHE FILEPATH
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibA32AndroidDependencies.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibA32AndroidRuntime.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibA32AndroidBenchmarks.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibA32AndroidAndroidProbes.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibA32AndroidTests.cmake)
