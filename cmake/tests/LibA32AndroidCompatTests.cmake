@@ -99,6 +99,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_pthread_rwlock_once_test
+    tests/compat/a32_pthread_rwlock_once.cpp
+)
+
+add_test(
+    NAME a32_pthread_rwlock_once_mutex_types
+    COMMAND compat_pthread_rwlock_once_test
+)
+
+liba32android_add_test_executable(
     compat_pthread_lifecycle_test
     tests/compat/a32_pthread_lifecycle.cpp
 )
