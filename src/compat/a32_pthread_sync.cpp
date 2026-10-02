@@ -558,6 +558,7 @@ bool A32PthreadSyncService::transfer_condition_waiter(
 
     if (mutexes_[mutex_index].owner_thread_id == 0U) {
         mutexes_[mutex_index].owner_thread_id = waiter.thread_id;
+        mutexes_[mutex_index].recursion_depth = 1U;
         waiter.ready = true;
     }
     return true;
@@ -667,7 +668,7 @@ runtime::A32HostServiceDisposition A32PthreadSyncService::handle(
     memory::GuestMemory& memory,
     std::uint32_t svc_immediate,
     std::array<std::uint32_t, 16>& regs,
-    std::uint32_t&) {
+    std::uint32_t& cpsr) {
     if (!is_sync_svc(svc_immediate)) {
         return A32HostServiceDisposition::Unhandled;
     }
