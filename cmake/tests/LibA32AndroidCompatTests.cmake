@@ -99,6 +99,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_pthread_join_cleanup_test
+    tests/compat/a32_pthread_join_cleanup.cpp
+)
+
+add_test(
+    NAME a32_pthread_join_exit_cleanup
+    COMMAND compat_pthread_join_cleanup_test
+)
+
+liba32android_add_test_executable(
     compat_aeabi_atexit_test
     tests/compat/a32_aeabi_atexit.cpp
 )

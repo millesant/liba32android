@@ -139,6 +139,44 @@ std::size_t A32PthreadSyncService::allocate_tls_value(
     return tls_values_.size();
 }
 
+std::optional<A32PthreadTlsDestructorCall>
+A32PthreadSyncService::take_tls_destructor(
+    std::uint32_t thread_id,
+    std::size_t key_slot) noexcept {
+    if (thread_id == 0U || key_slot >= keys_.size()) {
+        return std::nullopt;
+    }
+    const auto& key = keys_[key_slot];
+    if (!key.active || key.destructor == 0U) {
+        return std::nullopt;
+    }
+
+    const std::size_t value_index =
+        find_tls_value(key.key, thread_id);
+    if (value_index >= tls_values_.size() ||
+        tls_values_[value_index].value == 0U) {
+        return std::nullopt;
+    }
+
+    const A32PthreadTlsDestructorCall call{
+        .key = key.key,
+        .destructor = key.destructor,
+        .value = tls_values_[value_index].value,
+    };
+    tls_values_[value_index] = {};
+    return call;
+}
+
+void A32PthreadSyncService::clear_tls_values_for_thread(
+    std::uint32_t thread_id) noexcept {
+    if (thread_id == 0U) return;
+    for (auto& value : tls_values_) {
+        if (value.active && value.thread_id == thread_id) {
+            value = {};
+        }
+    }
+}
+
 std::size_t A32PthreadSyncService::find_mutex(
     std::uint32_t address) const noexcept {
     for (std::size_t index = 0; index < mutexes_.size(); ++index) {
