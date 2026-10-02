@@ -1,0 +1,622 @@
+#include <array>
+#include <bit>
+#include <cstddef>
+#include <cstdint>
+#include <iostream>
+#include <limits>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "support/fixture_io.h"
+
+#include "compat/a32_android_namespace_policy.h"
+#include "compat/a32_android_platform_provider.h"
+#include "compat/a32_libc_memory_string_shim.h"
+#include "compat/a32_pthread_lifecycle.h"
+#include "cpu/a32_cpu.h"
+#include "elf/elf32_dependency_graph.h"
+#include "elf/elf32_dependency_loader.h"
+#include "elf/elf32_relocation.h"
+#include "elf/elf32_symbol_lookup.h"
+#include "memory/guest_memory.h"
+#include "runtime/a32_service_dispatch.h"
+#include "runtime/a32_service_registry.h"
+
+namespace {
+
+using liba32android::compat::A32AndroidNamespaceAccessPolicy;
+using liba32android::compat::A32AndroidNamespaceBinding;
+using liba32android::compat::A32AndroidNamespaceLink;
+using liba32android::compat::A32AndroidPlatformCatalogProvider;
+using liba32android::compat::A32PthreadAttrState;
+using liba32android::compat::A32PthreadLifecycleOptions;
+using liba32android::compat::A32PthreadLifecycleService;
+using liba32android::compat::A32PthreadThreadPhase;
+using liba32android::compat::A32PthreadThreadState;
+using liba32android::compat::kA32LibcMemoryStringShimIdentity;
+using liba32android::compat::kA32LibcMemoryStringShimSoname;
+using liba32android::compat::kA32PthreadAttrDestroySvcImmediate;
+using liba32android::compat::kA32PthreadAttrGetdetachstateSvcImmediate;
+using liba32android::compat::kA32PthreadAttrGetstacksizeSvcImmediate;
+using liba32android::compat::kA32PthreadAttrInitSvcImmediate;
+using liba32android::compat::kA32PthreadAttrSetdetachstateSvcImmediate;
+using liba32android::compat::kA32PthreadAttrSetstacksizeSvcImmediate;
+using liba32android::compat::kA32PthreadCreateDetached;
+using liba32android::compat::kA32PthreadCreateSvcImmediate;
+using liba32android::compat::kA32PthreadEqualSvcImmediate;
+using liba32android::compat::kA32PthreadExitSvcImmediate;
+using liba32android::compat::kA32PthreadSelfSvcImmediate;
+using liba32android::compat::make_a32_libc_memory_string_shim_catalog_entry;
+using liba32android::cpu::ExecutionRequest;
+using liba32android::cpu::InstructionSet;
+using liba32android::elf::Elf32DependencyCatalogEntry;
+using liba32android::elf::Elf32DependencyCatalogProvider;
+using liba32android::elf::Elf32DependencyGraph;
+using liba32android::elf::Elf32DependencyLoadOptions;
+using liba32android::elf::Elf32DependencyLoadSource;
+using liba32android::elf::Elf32DependencyProvider;
+using liba32android::elf::Elf32DependencyProviderChain;
+using liba32android::elf::Elf32GraphSymbolLookupResult;
+using liba32android::elf::Elf32RelocationOptions;
+using liba32android::elf::Elf32SymbolLookupOptions;
+using liba32android::elf::apply_elf32_combined_relocations;
+using liba32android::elf::kRArmJumpSlot;
+using liba32android::elf::load_elf32_dependency_graph;
+using liba32android::elf::lookup_elf32_graph_symbol;
+using liba32android::memory::MappedGuestMemory;
+using liba32android::memory::MemoryPermission;
+using liba32android::runtime::A32HostServiceRegistry;
+using liba32android::runtime::A32HostServiceRegistryEntry;
+using liba32android::runtime::A32LogicalThreadId;
+using liba32android::runtime::A32ServiceDispatchResult;
+using liba32android::runtime::execute_a32_with_services;
+
+constexpr std::uint32_t kMaxFixtureNameBytes = 128U;
+constexpr std::uint64_t kMaxFixtureImageBytes = 4U << 20U;
+constexpr std::uint64_t kMaxTotalImageBytes = 8U << 20U;
+constexpr std::size_t kInstructionBudget = 256U;
+
+int fail(const std::string& message) {
+    std::cerr << message << '\n';
+    return 1;
+}
+
+Elf32SymbolLookupOptions symbol_options() {
+    return Elf32SymbolLookupOptions{
+        .max_symbols = 256,
+        .max_hash_buckets = 256,
+        .max_gnu_bloom_words = 128,
+        .max_scope_objects = 8,
+        .max_name_bytes = kMaxFixtureNameBytes,
+    };
+}
+
+Elf32RelocationOptions relocation_options() {
+    Elf32RelocationOptions result;
+    result.max_relocations = 32U;
+    result.symbols = symbol_options();
+    return result;
+}
+
+std::string lookup_error(
+    std::string_view name,
+    const Elf32GraphSymbolLookupResult& result) {
+    return std::string("pthread lifecycle symbol lookup failed for ") +
+           std::string(name) + ": graph=" +
+           liba32android::elf::to_string(result.error) + ", index=" +
+           liba32android::elf::to_string(result.index_error) + ", lookup=" +
+           liba32android::elf::to_string(result.lookup_error) + ", string=" +
+           liba32android::elf::to_string(result.string_error);
+}
+
+std::optional<std::uint32_t> find_unmapped_region(
+    const MappedGuestMemory& memory,
+    std::uint32_t start,
+    std::size_t page_count) {
+    const std::uint64_t page_size = memory.page_size();
+    const std::uint64_t length = page_size * page_count;
+    if (page_count == 0U ||
+        length > std::numeric_limits<std::uint32_t>::max()) {
+        return std::nullopt;
+    }
+    for (std::uint64_t candidate = start;
+         candidate + length <= 0xf0000000ULL;
+         candidate += page_size * 16U) {
+        bool available = true;
+        for (std::size_t i = 0; i < page_count; ++i) {
+            const std::uint64_t page = candidate + i * page_size;
+            if (page > std::numeric_limits<std::uint32_t>::max() ||
+                memory.is_mapped(static_cast<std::uint32_t>(page))) {
+                available = false;
+                break;
+            }
+        }
+        if (available) {
+            return static_cast<std::uint32_t>(candidate);
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<std::uint32_t> root_function(
+    MappedGuestMemory& memory,
+    const Elf32DependencyGraph& graph,
+    std::string_view name) {
+    const auto lookup =
+        lookup_elf32_graph_symbol(memory, graph, 0, name, symbol_options());
+    if (!lookup || lookup.symbol.object_index != 0 ||
+        lookup.symbol.symbol.symbol.type != 2U) {
+        if (!lookup) std::cerr << lookup_error(name, lookup) << '\n';
+        return std::nullopt;
+    }
+    return lookup.symbol.symbol.guest_value;
+}
+
+std::optional<A32ServiceDispatchResult> run_wrapper(
+    MappedGuestMemory& memory,
+    const Elf32DependencyGraph& graph,
+    std::string_view name,
+    A32HostServiceRegistry& registry,
+    std::uint32_t stack_top,
+    std::uint32_t stop_pc,
+    std::uint32_t r0 = 0U,
+    std::uint32_t r1 = 0U,
+    std::uint32_t r2 = 0U,
+    std::uint32_t r3 = 0U) {
+    const auto function = root_function(memory, graph, name);
+    if (!function.has_value()) return std::nullopt;
+
+    const bool thumb = (*function & 1U) != 0U;
+    ExecutionRequest request{};
+    request.instruction_set =
+        thumb ? InstructionSet::Thumb : InstructionSet::Arm;
+    request.entry_pc = *function & ~1U;
+    request.regs[0] = r0;
+    request.regs[1] = r1;
+    request.regs[2] = r2;
+    request.regs[3] = r3;
+    request.regs[13] = stack_top;
+    request.regs[14] = stop_pc | (thumb ? 1U : 0U);
+    request.instruction_count = kInstructionBudget;
+    request.stop_pc = stop_pc;
+    return execute_a32_with_services(memory, request, registry, 1U);
+}
+
+std::uint32_t read_u32(
+    const MappedGuestMemory& memory,
+    std::uint32_t address) {
+    std::array<std::uint8_t, 4> bytes{};
+    if (!memory.read(address, bytes)) return 0xffffffffU;
+    return static_cast<std::uint32_t>(bytes[0]) |
+           (static_cast<std::uint32_t>(bytes[1]) << 8U) |
+           (static_cast<std::uint32_t>(bytes[2]) << 16U) |
+           (static_cast<std::uint32_t>(bytes[3]) << 24U);
+}
+
+const A32PthreadThreadState* find_thread(
+    std::span<const A32PthreadThreadState> threads,
+    std::uint32_t pthread_id) {
+    for (const auto& thread : threads) {
+        if (thread.phase != A32PthreadThreadPhase::Free &&
+            thread.pthread_id == pthread_id) {
+            return &thread;
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    if (argc != 3) {
+        return fail("expected paths to pthread lifecycle consumer and partial libc.so shim");
+    }
+
+    const auto consumer_image =
+        liba32android::test_support::read_binary_file(argv[1]);
+    const auto shim_image =
+        liba32android::test_support::read_binary_file(argv[2]);
+    if (consumer_image.empty() || shim_image.empty()) {
+        return fail("pthread lifecycle ARM32 fixture is missing or empty");
+    }
+
+    MappedGuestMemory memory;
+    const std::array<Elf32DependencyCatalogEntry, 0> app_entries{};
+    Elf32DependencyCatalogProvider app_provider{std::span{app_entries}};
+    const std::array<Elf32DependencyCatalogEntry, 1> platform_entries{{
+        make_a32_libc_memory_string_shim_catalog_entry(shim_image),
+    }};
+    const std::array<A32AndroidNamespaceBinding, 1> namespace_bindings{{
+        {"pthread-lifecycle-consumer", "app"},
+    }};
+    const std::array<std::string_view, 1> shared_libs{{
+        kA32LibcMemoryStringShimSoname,
+    }};
+    const std::array<A32AndroidNamespaceLink, 1> namespace_links{{
+        {"app", "platform", false, std::span{shared_libs}},
+    }};
+    A32AndroidNamespaceAccessPolicy namespace_policy{
+        std::span{namespace_bindings},
+        std::span{namespace_links},
+        "platform",
+    };
+    A32AndroidPlatformCatalogProvider platform_provider{
+        std::span{platform_entries}, namespace_policy};
+    const std::array<Elf32DependencyProvider*, 2> providers{{
+        &app_provider,
+        &platform_provider,
+    }};
+    Elf32DependencyProviderChain provider_chain{std::span{providers}};
+
+    Elf32DependencyLoadOptions load_options;
+    load_options.max_objects = 8U;
+    load_options.max_depth = 8U;
+    load_options.max_dependency_occurrences = 8U;
+    load_options.max_image_bytes = kMaxFixtureImageBytes;
+    load_options.max_total_image_bytes = kMaxTotalImageBytes;
+    load_options.max_string_bytes = kMaxFixtureNameBytes;
+
+    const auto graph_result = load_elf32_dependency_graph(
+        memory,
+        Elf32DependencyLoadSource{
+            .identity = "pthread-lifecycle-consumer",
+            .image = consumer_image,
+        },
+        provider_chain,
+        load_options);
+    if (!graph_result || graph_result.graph.objects.size() != 2U) {
+        return fail("pthread lifecycle dependency graph load failed");
+    }
+    if (graph_result.graph.objects[1].identity !=
+        kA32LibcMemoryStringShimIdentity) {
+        return fail("pthread lifecycle consumer did not bind partial libc shim");
+    }
+
+    constexpr std::array<std::string_view, 10> shim_names{{
+        "pthread_attr_init",
+        "pthread_attr_destroy",
+        "pthread_attr_getdetachstate",
+        "pthread_attr_setdetachstate",
+        "pthread_attr_getstacksize",
+        "pthread_attr_setstacksize",
+        "pthread_create",
+        "pthread_self",
+        "pthread_equal",
+        "pthread_exit",
+    }};
+    std::array<std::uint32_t, shim_names.size()> targets{};
+    for (std::size_t i = 0; i < shim_names.size(); ++i) {
+        const auto lookup = lookup_elf32_graph_symbol(
+            memory, graph_result.graph, 0, shim_names[i], symbol_options());
+        if (!lookup) return fail(lookup_error(shim_names[i], lookup));
+        if (lookup.symbol.object_index != 1U ||
+            lookup.symbol.symbol.symbol.type != 2U) {
+            return fail("pthread lifecycle import did not resolve to shim");
+        }
+        targets[i] = lookup.symbol.symbol.guest_value;
+    }
+
+    const auto relocated = apply_elf32_combined_relocations(
+        memory,
+        graph_result.graph,
+        0,
+        relocation_options());
+    if (!relocated) {
+        return fail("pthread lifecycle consumer relocation failed");
+    }
+    for (const std::uint32_t target : targets) {
+        bool found = false;
+        for (const auto& write : relocated.application.writes) {
+            if (write.type == kRArmJumpSlot &&
+                write.final_word == target) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            return fail("pthread lifecycle consumer missing JUMP_SLOT target");
+        }
+    }
+
+    const auto data = find_unmapped_region(memory, 0x70000000U, 1U);
+    const auto call_stack = find_unmapped_region(memory, 0x71000000U, 4U);
+    const auto thread_stacks = find_unmapped_region(memory, 0x72000000U, 8U);
+    const auto stop = find_unmapped_region(memory, 0x73000000U, 1U);
+    if (!data.has_value() || !call_stack.has_value() ||
+        !thread_stacks.has_value() || !stop.has_value()) {
+        return fail("could not reserve pthread lifecycle harness regions");
+    }
+    const auto rw = MemoryPermission::Read | MemoryPermission::Write;
+    if (!memory.map(*data, memory.page_size(), rw) ||
+        !memory.map(*call_stack, memory.page_size() * 4U, rw) ||
+        !memory.map(*thread_stacks, memory.page_size() * 8U, rw)) {
+        return fail("could not map pthread lifecycle harness regions");
+    }
+    const std::uint32_t stack_top =
+        static_cast<std::uint32_t>(
+            static_cast<std::uint64_t>(*call_stack) +
+            memory.page_size() * 4U - 16U) & ~7U;
+
+    const auto exit_lookup = lookup_elf32_graph_symbol(
+        memory,
+        graph_result.graph,
+        0,
+        "pthread_exit",
+        symbol_options());
+    if (!exit_lookup || exit_lookup.symbol.object_index != 1U) {
+        return fail("could not resolve pthread_exit trampoline");
+    }
+
+    std::array<A32PthreadAttrState, 4> attrs{};
+    std::array<A32PthreadThreadState, 4> threads{};
+    A32PthreadLifecycleService lifecycle{
+        A32PthreadLifecycleOptions{
+            .stack_arena_base = *thread_stacks,
+            .stack_arena_size =
+                static_cast<std::uint32_t>(memory.page_size() * 8U),
+            .page_size = static_cast<std::uint32_t>(memory.page_size()),
+            .default_stack_size =
+                static_cast<std::uint32_t>(memory.page_size() * 2U),
+            .exit_trampoline = exit_lookup.symbol.symbol.guest_value,
+            .thread_instruction_budget = kInstructionBudget,
+            .first_thread_id = 2U,
+        },
+        std::span{attrs},
+        std::span{threads},
+    };
+    const auto root = A32LogicalThreadId::from_raw(1U);
+    if (!root.has_value() ||
+        !lifecycle.register_initial_thread(*root) ||
+        !lifecycle.set_current_thread_id(*root)) {
+        return fail("could not register initial logical pthread");
+    }
+
+    const std::array<A32HostServiceRegistryEntry, 10> services{{
+        {kA32PthreadAttrInitSvcImmediate, &lifecycle},
+        {kA32PthreadAttrDestroySvcImmediate, &lifecycle},
+        {kA32PthreadAttrGetdetachstateSvcImmediate, &lifecycle},
+        {kA32PthreadAttrSetdetachstateSvcImmediate, &lifecycle},
+        {kA32PthreadAttrGetstacksizeSvcImmediate, &lifecycle},
+        {kA32PthreadAttrSetstacksizeSvcImmediate, &lifecycle},
+        {kA32PthreadCreateSvcImmediate, &lifecycle},
+        {kA32PthreadSelfSvcImmediate, &lifecycle},
+        {kA32PthreadEqualSvcImmediate, &lifecycle},
+        {kA32PthreadExitSvcImmediate, &lifecycle},
+    }};
+    A32HostServiceRegistry registry{std::span{services}};
+
+    std::size_t wrapper_calls = 0U;
+    std::size_t thread_exits = 0U;
+
+    auto result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_self",
+        registry,
+        stack_top,
+        *stop);
+    if (!result || !*result || result->regs[0] != 1U) {
+        return fail("real pthread_self wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_equal",
+        registry,
+        stack_top,
+        *stop,
+        1U,
+        1U);
+    if (!result || !*result || result->regs[0] != 1U) {
+        return fail("real pthread_equal equal case failed");
+    }
+    ++wrapper_calls;
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_equal",
+        registry,
+        stack_top,
+        *stop,
+        1U,
+        2U);
+    if (!result || !*result || result->regs[0] != 0U) {
+        return fail("real pthread_equal distinct case failed");
+    }
+    ++wrapper_calls;
+
+    const std::uint32_t attr_address = *data + 0x100U;
+    const std::uint32_t detach_out = *data + 0x140U;
+    const std::uint32_t stack_size_out = *data + 0x144U;
+    const std::uint32_t thread_out = *data + 0x180U;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_attr_init",
+        registry,
+        stack_top,
+        *stop,
+        attr_address);
+    if (!result || !*result || result->regs[0] != 0U) {
+        return fail("real pthread_attr_init wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_attr_setdetachstate",
+        registry,
+        stack_top,
+        *stop,
+        attr_address,
+        kA32PthreadCreateDetached);
+    if (!result || !*result || result->regs[0] != 0U) {
+        return fail("real pthread_attr_setdetachstate wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_attr_getdetachstate",
+        registry,
+        stack_top,
+        *stop,
+        attr_address,
+        detach_out);
+    if (!result || !*result || result->regs[0] != 0U ||
+        read_u32(memory, detach_out) != kA32PthreadCreateDetached) {
+        return fail("real pthread_attr_getdetachstate wrapper failed");
+    }
+    ++wrapper_calls;
+
+    const std::uint32_t requested_stack =
+        static_cast<std::uint32_t>(memory.page_size() * 2U);
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_attr_setstacksize",
+        registry,
+        stack_top,
+        *stop,
+        attr_address,
+        requested_stack);
+    if (!result || !*result || result->regs[0] != 0U) {
+        return fail("real pthread_attr_setstacksize wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_attr_getstacksize",
+        registry,
+        stack_top,
+        *stop,
+        attr_address,
+        stack_size_out);
+    if (!result || !*result || result->regs[0] != 0U ||
+        read_u32(memory, stack_size_out) != requested_stack) {
+        return fail("real pthread_attr_getstacksize wrapper failed");
+    }
+    ++wrapper_calls;
+
+    const auto start_return =
+        root_function(memory, graph_result.graph, "fixture_pthread_start_return");
+    const auto start_exit =
+        root_function(memory, graph_result.graph, "fixture_pthread_start_exit");
+    if (!start_return.has_value() || !start_exit.has_value()) {
+        return fail("could not resolve pthread lifecycle start routines");
+    }
+
+    constexpr std::uint32_t kReturnValue = 0x12345678U;
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_create",
+        registry,
+        stack_top,
+        *stop,
+        thread_out,
+        attr_address,
+        *start_return,
+        kReturnValue);
+    if (!result || !*result || result->regs[0] != 0U) {
+        return fail("real pthread_create returning-thread wrapper failed");
+    }
+    ++wrapper_calls;
+    const std::uint32_t first_id = read_u32(memory, thread_out);
+    auto created = lifecycle.pop_created_thread();
+    if (!created.has_value() ||
+        created->pthread_id != first_id ||
+        !created->detached ||
+        !lifecycle.set_current_thread_context(created->context)) {
+        return fail("created returning thread context was incorrect");
+    }
+    const auto returned = execute_a32_with_services(
+        memory,
+        created->context.request,
+        registry,
+        2U);
+    const auto* first_state = find_thread(std::span{threads}, first_id);
+    if (!returned || !returned.service_suspended ||
+        !returned.suspended_svc_immediate.has_value() ||
+        *returned.suspended_svc_immediate != kA32PthreadExitSvcImmediate ||
+        first_state == nullptr ||
+        first_state->phase != A32PthreadThreadPhase::Exited ||
+        first_state->return_value != kReturnValue) {
+        return fail("returning ARM32 start routine did not become pthread_exit");
+    }
+    ++thread_exits;
+
+    lifecycle.set_current_thread_id(1U);
+    constexpr std::uint32_t kExplicitExitValue = 0xcafebabeU;
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_create",
+        registry,
+        stack_top,
+        *stop,
+        thread_out + 4U,
+        attr_address,
+        *start_exit,
+        kExplicitExitValue);
+    if (!result || !*result || result->regs[0] != 0U) {
+        return fail("real pthread_create explicit-exit wrapper failed");
+    }
+    ++wrapper_calls;
+    const std::uint32_t second_id = read_u32(memory, thread_out + 4U);
+    created = lifecycle.pop_created_thread();
+    if (!created.has_value() ||
+        created->pthread_id != second_id ||
+        !lifecycle.set_current_thread_context(created->context)) {
+        return fail("created explicit-exit context was incorrect");
+    }
+    const auto exited = execute_a32_with_services(
+        memory,
+        created->context.request,
+        registry,
+        2U);
+    const auto* second_state = find_thread(std::span{threads}, second_id);
+    if (!exited || !exited.service_suspended ||
+        second_state == nullptr ||
+        second_state->phase != A32PthreadThreadPhase::Exited ||
+        second_state->return_value != kExplicitExitValue) {
+        return fail("explicit ARM32 pthread_exit path failed");
+    }
+    ++thread_exits;
+
+    lifecycle.set_current_thread_id(1U);
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_attr_destroy",
+        registry,
+        stack_top,
+        *stop,
+        attr_address);
+    if (!result || !*result || result->regs[0] != 0U) {
+        return fail("real pthread_attr_destroy wrapper failed");
+    }
+    ++wrapper_calls;
+
+    std::cout
+        << "fixture.pthread_lifecycle.object_count="
+        << graph_result.graph.objects.size() << '\n'
+        << "fixture.pthread_lifecycle.required_jump_slots="
+        << targets.size() << '\n'
+        << "fixture.pthread_lifecycle.wrapper_calls="
+        << wrapper_calls << '\n'
+        << "fixture.pthread_lifecycle.thread_exits="
+        << thread_exits << '\n'
+        << "fixture.pthread_lifecycle.status=PASS\n";
+    return 0;
+}

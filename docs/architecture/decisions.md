@@ -1,4 +1,4 @@
-# Engineering decisions
+# Decisions
 
 ## D-0001 — Use Dynarmic behind an internal CPU adapter
 

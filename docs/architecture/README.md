@@ -34,7 +34,12 @@ grouped under `src/elf/loading/`, `metadata/`, `linking/`, and
 contracts are easy to discover and include paths stay stable within the
 repository.
 
-Each architecture document describes one boundary and should avoid folding later-layer policy into earlier layers.
+Logical guest execution identities are documented in
+[A32 logical thread execution context](a32-logical-thread-context.md). That
+internal seam reuses the existing A32 execution/service-suspension contracts
+and deliberately does not introduce a generic scheduler.
 
-Cross-cutting accepted engineering decisions are recorded in [decisions.md](decisions.md).
-Accepted current project contracts live under [`docs/contracts/`](../contracts/).
+Evidence-backed pthread creation/identity/exit semantics are documented in
+[A32 pthread logical lifecycle service](a32-pthread-lifecycle.md).
+
+Each architecture document describes one boundary and should avoid folding later-layer policy into earlier layers.

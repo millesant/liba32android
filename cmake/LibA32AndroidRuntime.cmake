@@ -2,6 +2,7 @@ add_library(liba32android SHARED
     src/public/liba32android_c.cpp
     src/cpu/dynarmic_cpu.cpp
     src/runtime/a32_service_dispatch.cpp
+    src/runtime/a32_logical_thread.cpp
     src/runtime/a32_service_registry.cpp
     src/compat/a32_android_log_write.cpp
     src/compat/a32_android_platform_provider.cpp
@@ -10,6 +11,7 @@ add_library(liba32android SHARED
     src/compat/a32_libc_integer.cpp
     src/compat/a32_libc_heap.cpp
     src/compat/a32_pthread_sync.cpp
+    src/compat/a32_pthread_lifecycle.cpp
     src/compat/a32_libdl.cpp
     src/compat/a32_libdl_close_transaction.cpp
     src/compat/a32_libdl_open_transaction.cpp

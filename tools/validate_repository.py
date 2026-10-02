@@ -76,6 +76,11 @@ def main() -> int:
             "legacy root specs/ should remain retired; see docs/history/pre-v7-specs.md"
         )
 
+    if (ROOT / ".agent").exists():
+        errors.append(
+            "retired repository-local .agent control/state tree must not be present"
+        )
+
     root_resolved = ROOT.resolve()
     for source in markdown_files():
         text = source.read_text(encoding="utf-8")

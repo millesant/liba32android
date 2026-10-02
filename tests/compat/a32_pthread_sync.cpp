@@ -1,11 +1,13 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <span>
 
 #include "compat/a32_pthread_sync.h"
 #include "cpu/a32_cpu.h"
 #include "memory/guest_memory.h"
+#include "runtime/a32_logical_thread.h"
 #include "runtime/a32_service_dispatch.h"
 
 namespace {
@@ -18,6 +20,7 @@ using liba32android::compat::A32PthreadWaitKind;
 using liba32android::compat::A32PthreadWaiter;
 using liba32android::compat::A32SemaphoreState;
 using liba32android::compat::kA32AndroidEagain;
+using liba32android::compat::kA32AndroidEnomem;
 using liba32android::compat::kA32AndroidEinval;
 using liba32android::compat::kA32AndroidEbusy;
 using liba32android::compat::kA32PthreadKeyCreateSvcImmediate;
@@ -36,8 +39,9 @@ using liba32android::compat::kA32SemWaitSvcImmediate;
 using liba32android::cpu::ExecutionRequest;
 using liba32android::memory::LinearGuestMemory;
 using liba32android::runtime::A32HostServiceDisposition;
+using liba32android::runtime::A32LogicalThreadId;
 using liba32android::runtime::execute_a32_with_services;
-using liba32android::runtime::make_a32_service_resume_request;
+using liba32android::runtime::make_a32_service_resume_context;
 
 constexpr std::uint32_t kStopPc = 4096U;
 
@@ -185,15 +189,18 @@ int test_mutex_suspend_wake_resume() {
         return fail("mutex unlock did not publish waiting thread");
     }
 
-    const auto resumed_request =
-        make_a32_service_resume_request(suspended, 2, kStopPc);
-    if (!resumed_request.has_value()) {
-        return fail("mutex suspension did not produce resume request");
+    const auto thread_two = A32LogicalThreadId::from_raw(2U);
+    const auto resumed_context = thread_two.has_value()
+        ? make_a32_service_resume_context(
+              *thread_two, suspended, 2U, kStopPc)
+        : std::nullopt;
+    if (!resumed_context.has_value() ||
+        !fixture.service.set_current_thread_context(*resumed_context)) {
+        return fail("mutex suspension did not preserve logical thread context");
     }
 
-    fixture.service.set_current_thread_id(2U);
     const auto resumed = execute_a32_with_services(
-        fixture.memory, *resumed_request, fixture.service, 1);
+        fixture.memory, resumed_context->request, fixture.service, 1);
     if (!resumed || resumed.service_suspended ||
         !resumed.stop_pc_reached ||
         resumed.regs[4] != 8U ||
@@ -265,14 +272,17 @@ int test_semaphore_suspend_post_resume() {
         return fail("sem_post did not publish waiting thread");
     }
 
-    const auto resumed_request =
-        make_a32_service_resume_request(suspended, 2, kStopPc);
-    fixture.service.set_current_thread_id(2U);
-    if (!resumed_request.has_value()) {
-        return fail("sem_wait suspension did not produce resume request");
+    const auto thread_two = A32LogicalThreadId::from_raw(2U);
+    const auto resumed_context = thread_two.has_value()
+        ? make_a32_service_resume_context(
+              *thread_two, suspended, 2U, kStopPc)
+        : std::nullopt;
+    if (!resumed_context.has_value() ||
+        !fixture.service.set_current_thread_context(*resumed_context)) {
+        return fail("sem_wait suspension did not preserve logical thread context");
     }
     const auto resumed = execute_a32_with_services(
-        fixture.memory, *resumed_request, fixture.service, 1);
+        fixture.memory, resumed_context->request, fixture.service, 1);
     if (!resumed || !resumed.stop_pc_reached || resumed.regs[5] != 12U) {
         return fail("woken semaphore waiter did not resume after wait SVC");
     }

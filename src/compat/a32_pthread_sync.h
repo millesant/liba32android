@@ -22,6 +22,8 @@
 #include <optional>
 #include <span>
 
+#include "compat/a32_android_errno.h"
+#include "runtime/a32_logical_thread.h"
 #include "runtime/a32_service_dispatch.h"
 
 namespace liba32android::compat {
@@ -53,10 +55,6 @@ inline constexpr std::uint32_t kA32PthreadGetspecificSvcImmediate =
 inline constexpr std::uint32_t kA32PthreadSetspecificSvcImmediate =
     LIBA32ANDROID_A32_PTHREAD_SETSPECIFIC_SVC;
 
-inline constexpr std::int32_t kA32AndroidEagain = 11;
-inline constexpr std::int32_t kA32AndroidEnomem = 12;
-inline constexpr std::int32_t kA32AndroidEbusy = 16;
-inline constexpr std::int32_t kA32AndroidEinval = 22;
 inline constexpr std::uint32_t kA32AndroidSemValueMax = 0x7fffffffU;
 
 enum class A32PthreadWaitKind : std::uint8_t {
@@ -122,10 +120,30 @@ public:
     A32PthreadSyncService& operator=(A32PthreadSyncService&&) = delete;
 
     void set_current_thread_id(std::uint32_t thread_id) noexcept {
+        current_thread_id_ =
+            runtime::A32LogicalThreadId::from_raw(thread_id).value_or(
+                runtime::A32LogicalThreadId{});
+    }
+
+    [[nodiscard]] bool set_current_thread_id(
+        runtime::A32LogicalThreadId thread_id) noexcept {
+        if (!thread_id.valid()) return false;
         current_thread_id_ = thread_id;
+        return true;
+    }
+
+    [[nodiscard]] bool set_current_thread_context(
+        const runtime::A32LogicalExecutionContext& context) noexcept {
+        if (!context.valid()) return false;
+        current_thread_id_ = context.thread_id;
+        return true;
     }
 
     [[nodiscard]] std::uint32_t current_thread_id() const noexcept {
+        return current_thread_id_.value();
+    }
+
+    [[nodiscard]] runtime::A32LogicalThreadId logical_thread_id() const noexcept {
         return current_thread_id_;
     }
 
@@ -171,7 +189,7 @@ private:
     std::span<A32PthreadWaiter> waiters_;
     std::span<A32PthreadKeyState> keys_;
     std::span<A32PthreadTlsValue> tls_values_;
-    std::uint32_t current_thread_id_{};
+    runtime::A32LogicalThreadId current_thread_id_{};
     std::uint64_t next_sequence_{1};
 };
 

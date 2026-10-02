@@ -2,6 +2,7 @@
 #include "compat/a32_libc_integer.h"
 #include "compat/a32_libc_heap.h"
 #include "compat/a32_pthread_sync.h"
+#include "compat/a32_pthread_lifecycle.h"
 #include "compat/a32_aeabi_atexit.h"
 
 .syntax unified
@@ -51,6 +52,16 @@ LIBA32_STUB pthread_key_create,     LIBA32ANDROID_A32_PTHREAD_KEY_CREATE_SVC
 LIBA32_STUB pthread_key_delete,     LIBA32ANDROID_A32_PTHREAD_KEY_DELETE_SVC
 LIBA32_STUB pthread_getspecific,    LIBA32ANDROID_A32_PTHREAD_GETSPECIFIC_SVC
 LIBA32_STUB pthread_setspecific,    LIBA32ANDROID_A32_PTHREAD_SETSPECIFIC_SVC
+LIBA32_STUB pthread_attr_init,       LIBA32ANDROID_A32_PTHREAD_ATTR_INIT_SVC
+LIBA32_STUB pthread_attr_destroy,    LIBA32ANDROID_A32_PTHREAD_ATTR_DESTROY_SVC
+LIBA32_STUB pthread_attr_getdetachstate, LIBA32ANDROID_A32_PTHREAD_ATTR_GETDETACHSTATE_SVC
+LIBA32_STUB pthread_attr_setdetachstate, LIBA32ANDROID_A32_PTHREAD_ATTR_SETDETACHSTATE_SVC
+LIBA32_STUB pthread_attr_getstacksize, LIBA32ANDROID_A32_PTHREAD_ATTR_GETSTACKSIZE_SVC
+LIBA32_STUB pthread_attr_setstacksize, LIBA32ANDROID_A32_PTHREAD_ATTR_SETSTACKSIZE_SVC
+LIBA32_STUB pthread_create,          LIBA32ANDROID_A32_PTHREAD_CREATE_SVC
+LIBA32_STUB pthread_self,            LIBA32ANDROID_A32_PTHREAD_SELF_SVC
+LIBA32_STUB pthread_equal,           LIBA32ANDROID_A32_PTHREAD_EQUAL_SVC
+LIBA32_STUB pthread_exit,            LIBA32ANDROID_A32_PTHREAD_EXIT_SVC
 
 
 .macro LIBA32_EABI_MEMSET name
