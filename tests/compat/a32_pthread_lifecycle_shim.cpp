@@ -32,6 +32,15 @@ using liba32android::compat::A32AndroidNamespaceBinding;
 using liba32android::compat::A32AndroidNamespaceLink;
 using liba32android::compat::A32AndroidPlatformCatalogProvider;
 using liba32android::compat::A32PthreadAttrState;
+using liba32android::compat::A32PthreadClock;
+using liba32android::compat::A32PthreadClockId;
+using liba32android::compat::A32PthreadKeyState;
+using liba32android::compat::A32PthreadMutexState;
+using liba32android::compat::A32PthreadSyncService;
+using liba32android::compat::A32PthreadTlsValue;
+using liba32android::compat::A32PthreadWaitKind;
+using liba32android::compat::A32PthreadWaiter;
+using liba32android::compat::A32SemaphoreState;
 using liba32android::compat::A32PthreadLifecycleOptions;
 using liba32android::compat::A32PthreadLifecycleService;
 using liba32android::compat::A32PthreadThreadPhase;
@@ -44,6 +53,13 @@ using liba32android::compat::kA32PthreadAttrGetstacksizeSvcImmediate;
 using liba32android::compat::kA32PthreadAttrInitSvcImmediate;
 using liba32android::compat::kA32PthreadAttrSetdetachstateSvcImmediate;
 using liba32android::compat::kA32PthreadAttrSetstacksizeSvcImmediate;
+using liba32android::compat::kA32AndroidEtimedout;
+using liba32android::compat::kA32PthreadCondBroadcastSvcImmediate;
+using liba32android::compat::kA32PthreadCondDestroySvcImmediate;
+using liba32android::compat::kA32PthreadCondInitSvcImmediate;
+using liba32android::compat::kA32PthreadCondSignalSvcImmediate;
+using liba32android::compat::kA32PthreadCondTimedwaitSvcImmediate;
+using liba32android::compat::kA32PthreadCondWaitSvcImmediate;
 using liba32android::compat::kA32PthreadCreateDetached;
 using liba32android::compat::kA32PthreadCreateJoinable;
 using liba32android::compat::kA32PthreadCreateSvcImmediate;
@@ -82,6 +98,39 @@ constexpr std::uint32_t kMaxFixtureNameBytes = 128U;
 constexpr std::uint64_t kMaxFixtureImageBytes = 4U << 20U;
 constexpr std::uint64_t kMaxTotalImageBytes = 8U << 20U;
 constexpr std::size_t kInstructionBudget = 256U;
+
+class FixtureClock final : public A32PthreadClock {
+public:
+    std::optional<std::int64_t> realtime_ns{0};
+
+    std::optional<std::int64_t> now_ns(
+        A32PthreadClockId clock_id) const noexcept override {
+        if (clock_id != A32PthreadClockId::Realtime) {
+            return std::nullopt;
+        }
+        return realtime_ns;
+    }
+};
+
+bool write_timespec(
+    MappedGuestMemory& memory,
+    std::uint32_t address,
+    std::int32_t seconds,
+    std::int32_t nanoseconds) {
+    const std::uint32_t sec = std::bit_cast<std::uint32_t>(seconds);
+    const std::uint32_t nsec = std::bit_cast<std::uint32_t>(nanoseconds);
+    const std::array<std::uint8_t, 8> bytes{{
+        static_cast<std::uint8_t>(sec),
+        static_cast<std::uint8_t>(sec >> 8U),
+        static_cast<std::uint8_t>(sec >> 16U),
+        static_cast<std::uint8_t>(sec >> 24U),
+        static_cast<std::uint8_t>(nsec),
+        static_cast<std::uint8_t>(nsec >> 8U),
+        static_cast<std::uint8_t>(nsec >> 16U),
+        static_cast<std::uint8_t>(nsec >> 24U),
+    }};
+    return memory.write(address, bytes);
+}
 
 int fail(const std::string& message) {
     std::cerr << message << '\n';
@@ -279,7 +328,7 @@ int main(int argc, char** argv) {
         return fail("pthread lifecycle consumer did not bind partial libc shim");
     }
 
-    constexpr std::array<std::string_view, 12> shim_names{{
+    constexpr std::array<std::string_view, 18> shim_names{{
         "pthread_attr_init",
         "pthread_attr_destroy",
         "pthread_attr_getdetachstate",
@@ -292,6 +341,12 @@ int main(int argc, char** argv) {
         "pthread_exit",
         "pthread_join",
         "pthread_detach",
+        "pthread_cond_init",
+        "pthread_cond_destroy",
+        "pthread_cond_wait",
+        "pthread_cond_timedwait",
+        "pthread_cond_signal",
+        "pthread_cond_broadcast",
     }};
     std::array<std::uint32_t, shim_names.size()> targets{};
     for (std::size_t i = 0; i < shim_names.size(); ++i) {
@@ -356,6 +411,21 @@ int main(int argc, char** argv) {
         return fail("could not resolve pthread_exit trampoline");
     }
 
+    FixtureClock clock{};
+    std::array<A32PthreadMutexState, 4> mutexes{};
+    std::array<A32SemaphoreState, 2> semaphores{};
+    std::array<A32PthreadWaiter, 8> waiters{};
+    std::array<A32PthreadKeyState, 2> keys{};
+    std::array<A32PthreadTlsValue, 4> tls_values{};
+    A32PthreadSyncService sync{
+        std::span{mutexes},
+        std::span{semaphores},
+        std::span{waiters},
+        std::span{keys},
+        std::span{tls_values},
+        &clock,
+    };
+
     std::array<A32PthreadAttrState, 4> attrs{};
     std::array<A32PthreadThreadState, 4> threads{};
     A32PthreadLifecycleService lifecycle{
@@ -376,11 +446,12 @@ int main(int argc, char** argv) {
     const auto root = A32LogicalThreadId::from_raw(1U);
     if (!root.has_value() ||
         !lifecycle.register_initial_thread(*root) ||
-        !lifecycle.set_current_thread_id(*root)) {
+        !lifecycle.set_current_thread_id(*root) ||
+        !sync.set_current_thread_id(*root)) {
         return fail("could not register initial logical pthread");
     }
 
-    const std::array<A32HostServiceRegistryEntry, 12> services{{
+    const std::array<A32HostServiceRegistryEntry, 18> services{{
         {kA32PthreadAttrInitSvcImmediate, &lifecycle},
         {kA32PthreadAttrDestroySvcImmediate, &lifecycle},
         {kA32PthreadAttrGetdetachstateSvcImmediate, &lifecycle},
@@ -393,6 +464,12 @@ int main(int argc, char** argv) {
         {kA32PthreadExitSvcImmediate, &lifecycle},
         {kA32PthreadJoinSvcImmediate, &lifecycle},
         {kA32PthreadDetachSvcImmediate, &lifecycle},
+        {kA32PthreadCondInitSvcImmediate, &sync},
+        {kA32PthreadCondDestroySvcImmediate, &sync},
+        {kA32PthreadCondWaitSvcImmediate, &sync},
+        {kA32PthreadCondTimedwaitSvcImmediate, &sync},
+        {kA32PthreadCondSignalSvcImmediate, &sync},
+        {kA32PthreadCondBroadcastSvcImmediate, &sync},
     }};
     A32HostServiceRegistry registry{std::span{services}};
 
@@ -443,6 +520,9 @@ int main(int argc, char** argv) {
     const std::uint32_t stack_size_out = *data + 0x144U;
     const std::uint32_t thread_out = *data + 0x180U;
     const std::uint32_t join_result_out = *data + 0x188U;
+    const std::uint32_t cond_address = *data + 0x1a0U;
+    const std::uint32_t mutex_address = *data + 0x1c0U;
+    const std::uint32_t timespec_address = *data + 0x1e0U;
 
     result = run_wrapper(
         memory,
@@ -676,6 +756,195 @@ int main(int argc, char** argv) {
         return fail("detached explicit pthread_exit did not reclaim target");
     }
     ++thread_exits;
+
+
+    sync.set_current_thread_id(1U);
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_cond_init",
+        registry,
+        stack_top,
+        *stop,
+        cond_address,
+        0U);
+    if (!result || !*result || result->regs[0] != 0U) {
+        return fail("real pthread_cond_init wrapper failed");
+    }
+    ++wrapper_calls;
+
+    std::array<std::uint32_t, 16> sync_regs{};
+    std::uint32_t sync_cpsr{};
+    sync_regs[0] = mutex_address;
+    if (sync.handle(
+            memory,
+            liba32android::compat::kA32PthreadMutexLockSvcImmediate,
+            sync_regs,
+            sync_cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("could not lock mutex for real pthread_cond_wait");
+    }
+
+    auto cond_wait = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_cond_wait",
+        registry,
+        stack_top,
+        *stop,
+        cond_address,
+        mutex_address);
+    if (!cond_wait.has_value() ||
+        !cond_wait->service_suspended ||
+        !cond_wait->suspended_svc_immediate.has_value() ||
+        *cond_wait->suspended_svc_immediate !=
+            kA32PthreadCondWaitSvcImmediate) {
+        return fail("real pthread_cond_wait did not suspend");
+    }
+    ++wrapper_calls;
+
+    sync.set_current_thread_id(2U);
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_cond_signal",
+        registry,
+        stack_top,
+        *stop,
+        cond_address);
+    if (!result || !*result || result->regs[0] != 0U) {
+        return fail("real pthread_cond_signal wrapper failed");
+    }
+    ++wrapper_calls;
+
+    auto cond_wake = sync.pop_ready();
+    if (!cond_wake.has_value() ||
+        cond_wake->kind != A32PthreadWaitKind::Condition ||
+        cond_wake->thread_id != 1U ||
+        cond_wake->result_value != 0U) {
+        return fail("real pthread_cond_signal did not publish waiter");
+    }
+    auto cond_resume = make_a32_service_resume_context(
+        *root, *cond_wait, kInstructionBudget, *stop);
+    if (!cond_resume.has_value() ||
+        !sync.set_current_thread_context(*cond_resume)) {
+        return fail("could not resume real pthread_cond_wait");
+    }
+    cond_resume->request.regs[0] = cond_wake->result_value;
+    const auto cond_complete = execute_a32_with_services(
+        memory,
+        cond_resume->request,
+        registry,
+        1U);
+    if (!cond_complete || !cond_complete.stop_pc_reached ||
+        cond_complete.regs[0] != 0U) {
+        return fail("real pthread_cond_wait continuation failed");
+    }
+
+    sync_regs = {};
+    sync_regs[0] = mutex_address;
+    if (sync.handle(
+            memory,
+            liba32android::compat::kA32PthreadMutexUnlockSvcImmediate,
+            sync_regs,
+            sync_cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("could not unlock mutex after real pthread_cond_wait");
+    }
+
+    sync.set_current_thread_id(1U);
+    sync_regs = {};
+    sync_regs[0] = mutex_address;
+    if (sync.handle(
+            memory,
+            liba32android::compat::kA32PthreadMutexLockSvcImmediate,
+            sync_regs,
+            sync_cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("could not lock mutex for real timed wait");
+    }
+    clock.realtime_ns = 4'000'000'000LL;
+    if (!write_timespec(memory, timespec_address, 5, 0)) {
+        return fail("could not write real timed-wait timespec");
+    }
+    auto timed_wait = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_cond_timedwait",
+        registry,
+        stack_top,
+        *stop,
+        cond_address,
+        mutex_address,
+        timespec_address);
+    if (!timed_wait.has_value() ||
+        !timed_wait->service_suspended) {
+        return fail("real pthread_cond_timedwait did not suspend");
+    }
+    ++wrapper_calls;
+
+    clock.realtime_ns = 5'000'000'000LL;
+    if (!sync.poll_condition_timeouts()) {
+        return fail("real timed wait deadline poll failed");
+    }
+    cond_wake = sync.pop_ready();
+    if (!cond_wake.has_value() ||
+        cond_wake->kind != A32PthreadWaitKind::Condition ||
+        static_cast<std::int32_t>(cond_wake->result_value) !=
+            kA32AndroidEtimedout) {
+        return fail("real timed wait did not publish ETIMEDOUT");
+    }
+    cond_resume = make_a32_service_resume_context(
+        *root, *timed_wait, kInstructionBudget, *stop);
+    if (!cond_resume.has_value() ||
+        !sync.set_current_thread_context(*cond_resume)) {
+        return fail("could not resume real timed wait");
+    }
+    cond_resume->request.regs[0] = cond_wake->result_value;
+    const auto timed_complete = execute_a32_with_services(
+        memory,
+        cond_resume->request,
+        registry,
+        1U);
+    if (!timed_complete || !timed_complete.stop_pc_reached ||
+        static_cast<std::int32_t>(timed_complete.regs[0]) !=
+            kA32AndroidEtimedout) {
+        return fail("real timed wait continuation returned wrong result");
+    }
+
+    sync_regs = {};
+    sync_regs[0] = mutex_address;
+    if (sync.handle(
+            memory,
+            liba32android::compat::kA32PthreadMutexUnlockSvcImmediate,
+            sync_regs,
+            sync_cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("could not unlock mutex after real timed wait");
+    }
+
+    sync.set_current_thread_id(2U);
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_cond_broadcast",
+        registry,
+        stack_top,
+        *stop,
+        cond_address);
+    if (!result || !*result || result->regs[0] != 0U) {
+        return fail("real pthread_cond_broadcast wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_cond_destroy",
+        registry,
+        stack_top,
+        *stop,
+        cond_address);
+    if (!result || !*result || result->regs[0] != 0U) {
+        return fail("real pthread_cond_destroy wrapper failed");
+    }
+    ++wrapper_calls;
 
     lifecycle.set_current_thread_id(1U);
     result = run_wrapper(
