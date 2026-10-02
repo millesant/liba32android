@@ -10,6 +10,7 @@
 #include <limits>
 #include <stdexcept>
 #include <system_error>
+#include <vector>
 
 namespace liba32android::memory {
 namespace {
@@ -33,7 +34,79 @@ constexpr std::uint8_t kPermissionMask =
     return static_cast<MemoryPermission>(state & kPermissionMask);
 }
 
+[[nodiscard]] bool guest_range_fits(
+    std::uint32_t address,
+    std::size_t length) noexcept {
+    return static_cast<std::uint64_t>(length) <=
+           kGuestAddressSpaceSize - static_cast<std::uint64_t>(address);
+}
+
+[[nodiscard]] std::int32_t normalize_compare_result(int result) noexcept {
+    if (result < 0) return -1;
+    if (result > 0) return 1;
+    return 0;
+}
+
 }  // namespace
+
+bool GuestMemory::copy_bytes(
+    std::uint32_t destination,
+    std::uint32_t source,
+    std::size_t length) {
+    if (length == 0) return true;
+    if (!guest_range_fits(destination, length) ||
+        !guest_range_fits(source, length)) {
+        return false;
+    }
+    std::vector<std::uint8_t> bytes(length);
+    return read(source, bytes) && write(destination, bytes);
+}
+
+bool GuestMemory::fill_bytes(
+    std::uint32_t address,
+    std::uint8_t value,
+    std::size_t length) {
+    if (length == 0) return true;
+    if (!guest_range_fits(address, length)) return false;
+    const std::vector<std::uint8_t> bytes(length, value);
+    return write(address, bytes);
+}
+
+bool GuestMemory::compare_bytes(
+    std::uint32_t lhs_address,
+    std::uint32_t rhs_address,
+    std::size_t length,
+    std::int32_t& result) const {
+    result = 0;
+    if (length == 0) return true;
+    if (!guest_range_fits(lhs_address, length) ||
+        !guest_range_fits(rhs_address, length)) {
+        return false;
+    }
+    std::vector<std::uint8_t> lhs(length);
+    std::vector<std::uint8_t> rhs(length);
+    if (!read(lhs_address, lhs) || !read(rhs_address, rhs)) return false;
+    result = normalize_compare_result(std::memcmp(lhs.data(), rhs.data(), length));
+    return true;
+}
+
+bool GuestMemory::find_byte(
+    std::uint32_t address,
+    std::uint8_t value,
+    std::size_t length,
+    std::optional<std::uint32_t>& found_address) const {
+    found_address.reset();
+    if (length == 0) return true;
+    if (!guest_range_fits(address, length)) return false;
+    std::vector<std::uint8_t> bytes(length);
+    if (!read(address, bytes)) return false;
+    const auto found = std::find(bytes.begin(), bytes.end(), value);
+    if (found != bytes.end()) {
+        found_address = address + static_cast<std::uint32_t>(
+            std::distance(bytes.begin(), found));
+    }
+    return true;
+}
 
 LinearGuestMemory::LinearGuestMemory(std::size_t size, std::uint32_t base)
         : base_{base}, bytes_(size) {
@@ -62,6 +135,75 @@ bool LinearGuestMemory::write(std::uint32_t address, std::span<const std::uint8_
     std::copy(input.begin(), input.end(), bytes_.begin() + static_cast<std::ptrdiff_t>(offset));
     if (!input.empty()) {
         ++code_generation_;
+    }
+    return true;
+}
+
+bool LinearGuestMemory::copy_bytes(
+    std::uint32_t destination,
+    std::uint32_t source,
+    std::size_t length) {
+    if (length == 0) return true;
+    std::size_t destination_offset = 0;
+    std::size_t source_offset = 0;
+    if (!translate(destination, length, destination_offset) ||
+        !translate(source, length, source_offset)) {
+        return false;
+    }
+    std::memmove(
+        bytes_.data() + destination_offset,
+        bytes_.data() + source_offset,
+        length);
+    ++code_generation_;
+    return true;
+}
+
+bool LinearGuestMemory::fill_bytes(
+    std::uint32_t address,
+    std::uint8_t value,
+    std::size_t length) {
+    if (length == 0) return true;
+    std::size_t offset = 0;
+    if (!translate(address, length, offset)) return false;
+    std::memset(bytes_.data() + offset, value, length);
+    ++code_generation_;
+    return true;
+}
+
+bool LinearGuestMemory::compare_bytes(
+    std::uint32_t lhs_address,
+    std::uint32_t rhs_address,
+    std::size_t length,
+    std::int32_t& result) const {
+    result = 0;
+    if (length == 0) return true;
+    std::size_t lhs_offset = 0;
+    std::size_t rhs_offset = 0;
+    if (!translate(lhs_address, length, lhs_offset) ||
+        !translate(rhs_address, length, rhs_offset)) {
+        return false;
+    }
+    result = normalize_compare_result(std::memcmp(
+        bytes_.data() + lhs_offset,
+        bytes_.data() + rhs_offset,
+        length));
+    return true;
+}
+
+bool LinearGuestMemory::find_byte(
+    std::uint32_t address,
+    std::uint8_t value,
+    std::size_t length,
+    std::optional<std::uint32_t>& found_address) const {
+    found_address.reset();
+    if (length == 0) return true;
+    std::size_t offset = 0;
+    if (!translate(address, length, offset)) return false;
+    const void* found = std::memchr(bytes_.data() + offset, value, length);
+    if (found != nullptr) {
+        const auto* byte = static_cast<const std::uint8_t*>(found);
+        const auto index = static_cast<std::size_t>(byte - bytes_.data());
+        found_address = base_ + static_cast<std::uint32_t>(index);
     }
     return true;
 }
@@ -277,6 +419,68 @@ bool MappedGuestMemory::write(std::uint32_t address, std::span<const std::uint8_
     }
     if (affects_code) {
         ++code_generation_;
+    }
+    return true;
+}
+
+bool MappedGuestMemory::copy_bytes(
+    std::uint32_t destination,
+    std::uint32_t source,
+    std::size_t length) {
+    if (length == 0) return true;
+    if (!valid_access(source, length, MemoryPermission::Read) ||
+        !valid_access(destination, length, MemoryPermission::Write)) {
+        return false;
+    }
+    const bool affects_code = range_has_execute(destination, length);
+    std::memmove(host_address(destination), host_address(source), length);
+    if (affects_code) ++code_generation_;
+    return true;
+}
+
+bool MappedGuestMemory::fill_bytes(
+    std::uint32_t address,
+    std::uint8_t value,
+    std::size_t length) {
+    if (length == 0) return true;
+    if (!valid_access(address, length, MemoryPermission::Write)) return false;
+    const bool affects_code = range_has_execute(address, length);
+    std::memset(host_address(address), value, length);
+    if (affects_code) ++code_generation_;
+    return true;
+}
+
+bool MappedGuestMemory::compare_bytes(
+    std::uint32_t lhs_address,
+    std::uint32_t rhs_address,
+    std::size_t length,
+    std::int32_t& result) const {
+    result = 0;
+    if (length == 0) return true;
+    if (!valid_access(lhs_address, length, MemoryPermission::Read) ||
+        !valid_access(rhs_address, length, MemoryPermission::Read)) {
+        return false;
+    }
+    result = normalize_compare_result(std::memcmp(
+        host_address(lhs_address),
+        host_address(rhs_address),
+        length));
+    return true;
+}
+
+bool MappedGuestMemory::find_byte(
+    std::uint32_t address,
+    std::uint8_t value,
+    std::size_t length,
+    std::optional<std::uint32_t>& found_address) const {
+    found_address.reset();
+    if (length == 0) return true;
+    if (!valid_access(address, length, MemoryPermission::Read)) return false;
+    const void* found = std::memchr(host_address(address), value, length);
+    if (found != nullptr) {
+        const auto* start = static_cast<const std::uint8_t*>(host_address(address));
+        const auto* byte = static_cast<const std::uint8_t*>(found);
+        found_address = address + static_cast<std::uint32_t>(byte - start);
     }
     return true;
 }

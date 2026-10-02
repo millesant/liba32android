@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <span>
 #include <vector>
 
 #include "memory/guest_memory.h"
@@ -26,20 +27,49 @@ using runtime::A32HostServiceDisposition;
            std::numeric_limits<std::uint32_t>::max();
 }
 
-[[nodiscard]] bool read_byte(
+constexpr std::size_t kStringScanChunkBytes = 256U;
+
+struct ProgressiveReadResult {
+    std::size_t bytes_read{};
+    bool complete{};
+};
+
+[[nodiscard]] std::size_t next_string_chunk_size(
+    std::uint32_t address,
+    std::uint64_t offset,
+    std::uint64_t remaining) noexcept {
+    if (remaining == 0) return 0;
+    const std::uint64_t current =
+        static_cast<std::uint64_t>(address) + offset;
+    if (current > std::numeric_limits<std::uint32_t>::max()) return 0;
+    const std::uint64_t until_wrap =
+        static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max()) -
+        current + 1U;
+    return static_cast<std::size_t>(std::min({
+        remaining,
+        until_wrap,
+        static_cast<std::uint64_t>(kStringScanChunkBytes),
+    }));
+}
+
+[[nodiscard]] ProgressiveReadResult read_progressive_chunk(
     const memory::GuestMemory& memory,
     std::uint32_t address,
-    std::uint32_t offset,
-    std::uint8_t& value) {
-    if (offset > std::numeric_limits<std::uint32_t>::max() - address) {
-        return false;
+    std::span<std::uint8_t> output) {
+    if (output.empty()) return {0, true};
+    if (memory.read(address, output)) {
+        return {output.size(), true};
     }
-    std::array<std::uint8_t, 1> byte{};
-    if (!memory.read(address + offset, byte)) {
-        return false;
+
+    for (std::size_t index = 0; index < output.size(); ++index) {
+        std::array<std::uint8_t, 1> byte{};
+        if (!memory.read(
+                address + static_cast<std::uint32_t>(index), byte)) {
+            return {index, false};
+        }
+        output[index] = byte[0];
     }
-    value = byte[0];
-    return true;
+    return {output.size(), true};
 }
 
 [[nodiscard]] bool read_c_string_with_nul(
@@ -48,22 +78,33 @@ using runtime::A32HostServiceDisposition;
     std::uint32_t max_payload_bytes,
     std::vector<std::uint8_t>& output) {
     output.clear();
-    for (std::uint32_t offset = 0;; ++offset) {
-        std::uint8_t byte{};
-        if (!read_byte(memory, address, offset, byte)) {
-            return false;
+    std::array<std::uint8_t, kStringScanChunkBytes> buffer{};
+    std::uint64_t offset = 0;
+    std::uint64_t remaining =
+        static_cast<std::uint64_t>(max_payload_bytes) + 1U;
+
+    while (remaining != 0) {
+        const std::size_t chunk_size =
+            next_string_chunk_size(address, offset, remaining);
+        if (chunk_size == 0) return false;
+        const auto current_address = static_cast<std::uint32_t>(
+            static_cast<std::uint64_t>(address) + offset);
+        const ProgressiveReadResult read = read_progressive_chunk(
+            memory,
+            current_address,
+            std::span<std::uint8_t>{buffer}.first(chunk_size));
+        for (std::size_t index = 0; index < read.bytes_read; ++index) {
+            output.push_back(buffer[index]);
+            if (buffer[index] == 0) return true;
         }
-        output.push_back(byte);
-        if (byte == 0) {
-            return true;
-        }
-        if (offset == max_payload_bytes) {
-            return false;
-        }
+        if (!read.complete) return false;
+        offset += chunk_size;
+        remaining -= chunk_size;
     }
+    return false;
 }
 
-void write_signed_result(
+void write_signed_result(void write_signed_result(
     std::array<std::uint32_t, 16>& regs,
     std::int32_t value) noexcept {
     regs[0] = std::bit_cast<std::uint32_t>(value);
@@ -79,6 +120,95 @@ void write_signed_result(
         return 1;
     }
     return 0;
+}
+
+[[nodiscard]] bool find_c_string_length(
+    const memory::GuestMemory& memory,
+    std::uint32_t address,
+    std::uint32_t max_payload_bytes,
+    std::uint32_t& length) {
+    std::array<std::uint8_t, kStringScanChunkBytes> buffer{};
+    std::uint64_t offset = 0;
+    std::uint64_t remaining =
+        static_cast<std::uint64_t>(max_payload_bytes) + 1U;
+
+    while (remaining != 0) {
+        const std::size_t chunk_size =
+            next_string_chunk_size(address, offset, remaining);
+        if (chunk_size == 0) return false;
+        const auto current_address = static_cast<std::uint32_t>(
+            static_cast<std::uint64_t>(address) + offset);
+        const ProgressiveReadResult read = read_progressive_chunk(
+            memory,
+            current_address,
+            std::span<std::uint8_t>{buffer}.first(chunk_size));
+        for (std::size_t index = 0; index < read.bytes_read; ++index) {
+            if (buffer[index] == 0) {
+                length = static_cast<std::uint32_t>(
+                    offset + static_cast<std::uint64_t>(index));
+                return true;
+            }
+        }
+        if (!read.complete) return false;
+        offset += chunk_size;
+        remaining -= chunk_size;
+    }
+    return false;
+}
+
+[[nodiscard]] bool compare_c_strings(
+    const memory::GuestMemory& memory,
+    std::uint32_t lhs_address,
+    std::uint32_t rhs_address,
+    std::uint64_t max_bytes,
+    std::int32_t& result) {
+    result = 0;
+    std::array<std::uint8_t, kStringScanChunkBytes> lhs_buffer{};
+    std::array<std::uint8_t, kStringScanChunkBytes> rhs_buffer{};
+    std::uint64_t offset = 0;
+    std::uint64_t remaining = max_bytes;
+
+    while (remaining != 0) {
+        const std::size_t lhs_chunk =
+            next_string_chunk_size(lhs_address, offset, remaining);
+        const std::size_t rhs_chunk =
+            next_string_chunk_size(rhs_address, offset, remaining);
+        const std::size_t chunk_size = std::min(lhs_chunk, rhs_chunk);
+        if (chunk_size == 0) return false;
+
+        const auto lhs_current = static_cast<std::uint32_t>(
+            static_cast<std::uint64_t>(lhs_address) + offset);
+        const auto rhs_current = static_cast<std::uint32_t>(
+            static_cast<std::uint64_t>(rhs_address) + offset);
+        const ProgressiveReadResult lhs_read = read_progressive_chunk(
+            memory,
+            lhs_current,
+            std::span<std::uint8_t>{lhs_buffer}.first(chunk_size));
+        const ProgressiveReadResult rhs_read = read_progressive_chunk(
+            memory,
+            rhs_current,
+            std::span<std::uint8_t>{rhs_buffer}.first(chunk_size));
+
+        const std::size_t comparable =
+            std::min(lhs_read.bytes_read, rhs_read.bytes_read);
+        for (std::size_t index = 0; index < comparable; ++index) {
+            result = byte_compare(lhs_buffer[index], rhs_buffer[index]);
+            if (result != 0) return true;
+            if (lhs_buffer[index] == 0) {
+                result = 0;
+                return true;
+            }
+        }
+        if (!lhs_read.complete || !rhs_read.complete ||
+            lhs_read.bytes_read != chunk_size ||
+            rhs_read.bytes_read != chunk_size) {
+            return false;
+        }
+        offset += chunk_size;
+        remaining -= chunk_size;
+    }
+    result = 0;
+    return true;
 }
 
 }  // namespace
@@ -102,9 +232,7 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
             return A32HostServiceDisposition::Handled;
         }
 
-        std::vector<std::uint8_t> bytes(count);
-        if (!memory.read(source, bytes) ||
-            !memory.write(destination, bytes)) {
+        if (!memory.copy_bytes(destination, source, count)) {
             return A32HostServiceDisposition::Failed;
         }
         regs[0] = destination;
@@ -124,9 +252,7 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
             return A32HostServiceDisposition::Handled;
         }
 
-        std::vector<std::uint8_t> bytes(count);
-        if (!memory.read(source, bytes) ||
-            !memory.write(destination, bytes)) {
+        if (!memory.copy_bytes(destination, source, count)) {
             return A32HostServiceDisposition::Failed;
         }
         regs[0] = destination;
@@ -146,8 +272,7 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
             return A32HostServiceDisposition::Handled;
         }
 
-        const std::vector<std::uint8_t> bytes(count, value);
-        if (!memory.write(destination, bytes)) {
+        if (!memory.fill_bytes(destination, value, count)) {
             return A32HostServiceDisposition::Failed;
         }
         regs[0] = destination;
@@ -168,20 +293,12 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
             return A32HostServiceDisposition::Handled;
         }
 
-        std::vector<std::uint8_t> lhs(count);
-        std::vector<std::uint8_t> rhs(count);
-        if (!memory.read(lhs_address, lhs) ||
-            !memory.read(rhs_address, rhs)) {
+        std::int32_t result = 0;
+        if (!memory.compare_bytes(
+                lhs_address, rhs_address, count, result)) {
             return A32HostServiceDisposition::Failed;
         }
-        for (std::uint32_t i = 0; i < count; ++i) {
-            const std::int32_t result = byte_compare(lhs[i], rhs[i]);
-            if (result != 0) {
-                write_signed_result(regs, result);
-                return A32HostServiceDisposition::Handled;
-            }
-        }
-        write_signed_result(regs, 0);
+        write_signed_result(regs, result);
         return A32HostServiceDisposition::Handled;
     }
 
@@ -199,60 +316,39 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
             return A32HostServiceDisposition::Handled;
         }
 
-        std::vector<std::uint8_t> bytes(count);
-        if (!memory.read(address, bytes)) {
+        std::optional<std::uint32_t> found_address;
+        if (!memory.find_byte(address, value, count, found_address)) {
             return A32HostServiceDisposition::Failed;
         }
-        for (std::uint32_t i = 0; i < count; ++i) {
-            if (bytes[i] == value) {
-                regs[0] = address + i;
-                return A32HostServiceDisposition::Handled;
-            }
-        }
-        regs[0] = 0;
+        regs[0] = found_address.value_or(0U);
         return A32HostServiceDisposition::Handled;
     }
 
     case kA32LibcStrlenSvcImmediate: {
         const std::uint32_t address = regs[0];
-        for (std::uint32_t offset = 0;; ++offset) {
-            std::uint8_t byte{};
-            if (!read_byte(memory, address, offset, byte)) {
-                return A32HostServiceDisposition::Failed;
-            }
-            if (byte == 0) {
-                regs[0] = offset;
-                return A32HostServiceDisposition::Handled;
-            }
-            if (offset == options_.max_string_bytes) {
-                return A32HostServiceDisposition::Failed;
-            }
+        std::uint32_t length = 0;
+        if (!find_c_string_length(
+                memory, address, options_.max_string_bytes, length)) {
+            return A32HostServiceDisposition::Failed;
         }
+        regs[0] = length;
+        return A32HostServiceDisposition::Handled;
     }
 
     case kA32LibcStrcmpSvcImmediate: {
         const std::uint32_t lhs_address = regs[0];
         const std::uint32_t rhs_address = regs[1];
-        for (std::uint32_t offset = 0;; ++offset) {
-            std::uint8_t lhs{};
-            std::uint8_t rhs{};
-            if (!read_byte(memory, lhs_address, offset, lhs) ||
-                !read_byte(memory, rhs_address, offset, rhs)) {
-                return A32HostServiceDisposition::Failed;
-            }
-            const std::int32_t result = byte_compare(lhs, rhs);
-            if (result != 0) {
-                write_signed_result(regs, result);
-                return A32HostServiceDisposition::Handled;
-            }
-            if (lhs == 0) {
-                write_signed_result(regs, 0);
-                return A32HostServiceDisposition::Handled;
-            }
-            if (offset == options_.max_string_bytes) {
-                return A32HostServiceDisposition::Failed;
-            }
+        std::int32_t result = 0;
+        if (!compare_c_strings(
+                memory,
+                lhs_address,
+                rhs_address,
+                static_cast<std::uint64_t>(options_.max_string_bytes) + 1U,
+                result)) {
+            return A32HostServiceDisposition::Failed;
         }
+        write_signed_result(regs, result);
+        return A32HostServiceDisposition::Handled;
     }
 
     case kA32LibcStrncmpSvcImmediate: {
@@ -262,24 +358,12 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
         if (count > options_.max_string_bytes) {
             return A32HostServiceDisposition::Failed;
         }
-        for (std::uint32_t offset = 0; offset < count; ++offset) {
-            std::uint8_t lhs{};
-            std::uint8_t rhs{};
-            if (!read_byte(memory, lhs_address, offset, lhs) ||
-                !read_byte(memory, rhs_address, offset, rhs)) {
-                return A32HostServiceDisposition::Failed;
-            }
-            const std::int32_t result = byte_compare(lhs, rhs);
-            if (result != 0) {
-                write_signed_result(regs, result);
-                return A32HostServiceDisposition::Handled;
-            }
-            if (lhs == 0) {
-                write_signed_result(regs, 0);
-                return A32HostServiceDisposition::Handled;
-            }
+        std::int32_t result = 0;
+        if (!compare_c_strings(
+                memory, lhs_address, rhs_address, count, result)) {
+            return A32HostServiceDisposition::Failed;
         }
-        write_signed_result(regs, 0);
+        write_signed_result(regs, result);
         return A32HostServiceDisposition::Handled;
     }
 
@@ -366,19 +450,35 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
         // Only source bytes actually consumed before NUL need to be
         // addressable. Remaining output bytes are destination padding.
         std::vector<std::uint8_t> bytes(count, 0);
-        bool terminated = false;
-        for (std::uint32_t offset = 0; offset < count; ++offset) {
-            if (terminated) {
-                continue;
-            }
-            std::uint8_t byte{};
-            if (!read_byte(memory, source, offset, byte)) {
+        std::array<std::uint8_t, kStringScanChunkBytes> buffer{};
+        std::uint64_t offset = 0;
+        std::uint64_t remaining = count;
+        while (remaining != 0) {
+            const std::size_t chunk_size =
+                next_string_chunk_size(source, offset, remaining);
+            if (chunk_size == 0) {
                 return A32HostServiceDisposition::Failed;
             }
-            bytes[offset] = byte;
-            if (byte == 0) {
-                terminated = true;
+            const auto current_address = static_cast<std::uint32_t>(
+                static_cast<std::uint64_t>(source) + offset);
+            const ProgressiveReadResult read = read_progressive_chunk(
+                memory,
+                current_address,
+                std::span<std::uint8_t>{buffer}.first(chunk_size));
+            bool terminated = false;
+            for (std::size_t index = 0; index < read.bytes_read; ++index) {
+                bytes[static_cast<std::size_t>(offset) + index] = buffer[index];
+                if (buffer[index] == 0) {
+                    terminated = true;
+                    break;
+                }
             }
+            if (terminated) break;
+            if (!read.complete) {
+                return A32HostServiceDisposition::Failed;
+            }
+            offset += chunk_size;
+            remaining -= chunk_size;
         }
         if (!memory.write(destination, bytes)) {
             return A32HostServiceDisposition::Failed;

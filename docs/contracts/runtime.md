@@ -1,7 +1,7 @@
 # Runtime contract
 
 Status: Accepted current project contract
-Last reconciled: 2026-10-01
+Last reconciled: 2026-10-02
 
 ## L32-R001 — Game-agnostic runtime
 
@@ -17,7 +17,7 @@ Dynarmic remains behind `src/cpu/`. Higher layers depend on engine-independent c
 
 ## L32-R004 — Guest-memory seam
 
-`memory::GuestMemory` is the generic memory contract. `LinearGuestMemory` is the deterministic correctness/test backend. `MappedGuestMemory` owns mapped guest pages, permissions, and optional high-base 4 GiB fastmem backing.
+`memory::GuestMemory` is the generic memory contract. In addition to bounded read/write and instruction fetch, it defines engine-independent bulk byte operations for overlap-safe copy/move, fill, compare, and byte search. Every bulk operation has a generic callback-backed fallback; concrete backends may accelerate it internally only while preserving the same logical-address, full-range validation, permission, zero-length, and failure semantics. Backend host pointers or spans are never exposed through this seam. `LinearGuestMemory` is the deterministic correctness/test backend. `MappedGuestMemory` owns mapped guest pages, permissions, and optional high-base 4 GiB fastmem backing. Bulk writes that touch executable bytes participate in the same `code_generation()` invalidation contract as ordinary writes.
 
 ## L32-R005 — Fastmem is optional
 

@@ -82,7 +82,7 @@ direct fastmem data path. No host pointer becomes a guest-visible address.
 
 ## Guest-memory seam
 
-`src/memory/guest_memory.h` defines `memory::GuestMemory`, the engine-independent memory contract. It separates data reads/writes from instruction reads and exposes an optional internal `fastmem_base()` capability. Higher runtime layers continue to traffic only in logical 32-bit guest virtual addresses; the host reservation pointer is not a guest pointer and must not leak into loader/ABI APIs.
+`src/memory/guest_memory.h` defines `memory::GuestMemory`, the engine-independent memory contract. It separates data reads/writes from instruction reads, exposes an optional internal `fastmem_base()` capability, and provides bulk byte primitives for move/copy, fill, compare, and byte search. Those bulk operations have generic callback-backed fallbacks, while `LinearGuestMemory` and `MappedGuestMemory` override them with allocation-free direct implementations after the same logical range and permission checks. Higher runtime layers continue to traffic only in logical 32-bit guest virtual addresses; neither the host reservation pointer nor backend-local spans leak into loader/ABI APIs.
 
 Two implementations currently exist:
 
@@ -92,6 +92,8 @@ Two implementations currently exist:
 `MappedGuestMemory` owns page mapping metadata and page-aligned `map`, `protect`, and `unmap` lifecycle operations. Unmapped pages remain `PROT_NONE`. Mapped pages are made host-accessible with `mprotect`, while guest read/write/execute permission checks remain explicit in the generic memory API. Unmap discards anonymous page contents and returns the page to `PROT_NONE` without giving up the enclosing 4 GiB reservation.
 
 The first mapped backend intentionally accepts the normal ELF-like permission shapes `R`, `RW`, and `RX` (plus `None`) and rejects write-only/execute-only mappings. This keeps guest permission metadata compatible with the direct fastmem host protection used by this first implementation; broader permission emulation can be added if a real binary requires it.
+
+Bulk writes use the same executable-code invalidation contract as ordinary writes. `MappedGuestMemory` validates the entire source/destination range before a direct move or fill, advances `code_generation()` when an executable destination is changed, and retains ordinary read/write permission failure semantics. Callback-only backends remain correct through the base implementations.
 
 ## Fastmem integration
 
