@@ -1806,7 +1806,8 @@ exit cleanup. Reclaimed thread slots and stack ranges are deterministically
 reusable.
 
 When a lifecycle service borrows `A32PthreadSyncService`, pthread_exit runs
-bounded TLS destructor cleanup before publishing Exited/reclaimable state.
+bounded pthread cleanup handlers first, then bounded TLS destructor cleanup,
+before publishing Exited/reclaimable state.
 For each active key with nonzero destructor and non-null value, the value is
 cleared before executing the guest destructor on the exiting logical thread's
 live stack. The callback may repopulate TLS through the ordinary pthread TLS
@@ -2006,4 +2007,42 @@ The supplied `libemu32.so` is AArch64. Its `sem_trywait`, `sem_getvalue`, and
 this contract. No supplied ARM32 artifact currently justifies
 `sem_trywait`, `sem_getvalue`, `sem_timedwait`, `pthread_mutex_timedlock`,
 `pthread_attr_setschedparam`, or `pthread_getattr_np`.
+
+## L32-C067 — ARM32 bounded pthread cleanup handlers
+
+Supplied ARM32 VLC `libvlc.so` has eager libc imports for
+`__pthread_cleanup_push` and `__pthread_cleanup_pop`. Private SVC IDs
+`0x125` and `0x126` implement exactly those two Bionic helpers. No supplied
+ARM32 artifact imports pthread cancellation entry points, so this contract does
+not add cancellation state, cancellation points, or `pthread_cancel`.
+
+Each logical thread stores only a 32-bit guest address for the cleanup-stack
+top and a bounded depth. The cleanup records themselves remain caller-owned
+guest memory using the ARM32/Bionic three-word layout
+`{ previous, routine, argument }` (12 bytes). Push writes the caller's record,
+links it to the current top, and fails the host-service call on unreadable
+memory or when the configured finite cleanup-depth ceiling is reached. No host
+pthread/TLS pointer or host cleanup object is guest-visible.
+
+Pop requires the supplied cleanup record to be the current logical-thread top.
+It unlinks the record before optional callback execution. `execute == 0`
+returns after unlink; nonzero execute runs the guest cleanup routine with its
+argument in r0 on the current guest stack through bounded service-aware A32
+execution. Malformed nesting, unreadable records, invalid callback addresses,
+guest faults, suspension, or execution ceilings fail deterministically instead
+of fabricating a pthread error return for these void Bionic helpers.
+
+`pthread_exit` and normal start-routine return unwind all remaining cleanup
+records in strict LIFO order before pthread TLS destructor iteration. A record
+is unlinked before its callback, so partial callback failure is non-replayable
+and feeds the existing `CleanupFailed` thread state. TLS destructors then run
+under the existing four-pass Bionic ceiling, followed by the existing optional
+thread-exit hook and join/detach publication.
+
+The partial libc shim now has 79 libc-compatible public exports: the prior
+77-function surface plus the two cleanup helpers. The internal
+`__liba32android_pthread_once_complete` trampoline remains separate. The
+freestanding ARM32 pthread consumer requires 37 eager JUMP_SLOT imports and
+executes a real cleanup push/pop callback in addition to the prior lifecycle,
+synchronization, and utility coverage.
 

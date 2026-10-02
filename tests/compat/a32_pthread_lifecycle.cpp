@@ -28,6 +28,8 @@ using liba32android::compat::kA32PthreadAttrSetdetachstateSvcImmediate;
 using liba32android::compat::kA32PthreadAttrSetstacksizeSvcImmediate;
 using liba32android::compat::kA32PthreadCreateDetached;
 using liba32android::compat::kA32PthreadCreateJoinable;
+using liba32android::compat::kA32PthreadCleanupPopSvcImmediate;
+using liba32android::compat::kA32PthreadCleanupPushSvcImmediate;
 using liba32android::compat::kA32PthreadCreateSvcImmediate;
 using liba32android::compat::kA32PthreadEqualSvcImmediate;
 using liba32android::compat::kA32PthreadExitSvcImmediate;
@@ -45,6 +47,12 @@ constexpr std::uint32_t kStartRoutine = 0x1000U;
 constexpr std::uint32_t kExitStub = 0x2000U;
 constexpr std::uint32_t kAttrAddress = 0x300U;
 constexpr std::uint32_t kThreadOut = 0x400U;
+constexpr std::uint32_t kCleanupRoutineOne = 0x1100U;
+constexpr std::uint32_t kCleanupRoutineTwo = 0x1120U;
+constexpr std::uint32_t kCleanupRecordOne = 0x600U;
+constexpr std::uint32_t kCleanupRecordTwo = 0x620U;
+constexpr std::uint32_t kCleanupMarker = 0x700U;
+constexpr std::uint32_t kCleanupReturnPc = 0x1800U;
 
 int fail(const char* message) {
     std::cerr << message << '\n';
@@ -107,8 +115,20 @@ struct Fixture {
             0x0d, 0x01, 0x00, 0xef,  // svc #0x10d
             0x1e, 0xff, 0x2f, 0xe1,  // bx lr
         };
+        constexpr std::array<std::uint8_t, 12> cleanup_one_code{{
+            0x01, 0x10, 0xa0, 0xe3,  // mov r1, #1
+            0x00, 0x10, 0x80, 0xe5,  // str r1, [r0]
+            0x1e, 0xff, 0x2f, 0xe1,  // bx lr
+        }};
+        constexpr std::array<std::uint8_t, 12> cleanup_two_code{{
+            0x02, 0x10, 0xa0, 0xe3,  // mov r1, #2
+            0x00, 0x10, 0x80, 0xe5,  // str r1, [r0]
+            0x1e, 0xff, 0x2f, 0xe1,  // bx lr
+        }};
         memory.write(kStartRoutine, return_code);
         memory.write(kExitStub, exit_code);
+        memory.write(kCleanupRoutineOne, cleanup_one_code);
+        memory.write(kCleanupRoutineTwo, cleanup_two_code);
         const auto root = A32LogicalThreadId::from_raw(1U);
         if (root.has_value()) {
             service.register_initial_thread(*root);
@@ -347,6 +367,147 @@ int test_scheduler_and_name_helpers() {
     return 0;
 }
 
+
+int test_cleanup_handlers() {
+    Fixture fixture;
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t value{};
+
+    regs[0] = kCleanupRecordOne;
+    regs[1] = kCleanupRoutineOne;
+    regs[2] = kCleanupMarker;
+    if (call(fixture, kA32PthreadCleanupPushSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled ||
+        fixture.threads[0].cleanup_top != kCleanupRecordOne ||
+        fixture.threads[0].cleanup_depth != 1U ||
+        !read_u32(fixture.memory, kCleanupRecordOne, value) ||
+        value != 0U) {
+        return fail("pthread cleanup push did not publish first record");
+    }
+
+    regs = {};
+    regs[0] = kCleanupRecordTwo;
+    regs[1] = kCleanupRoutineTwo;
+    regs[2] = kCleanupMarker;
+    if (call(fixture, kA32PthreadCleanupPushSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled ||
+        fixture.threads[0].cleanup_top != kCleanupRecordTwo ||
+        fixture.threads[0].cleanup_depth != 2U ||
+        !read_u32(fixture.memory, kCleanupRecordTwo, value) ||
+        value != kCleanupRecordOne) {
+        return fail("pthread cleanup push did not link LIFO record");
+    }
+
+    regs = {};
+    regs[0] = kCleanupRecordTwo;
+    regs[1] = 1U;
+    regs[13] = 0x18000U;
+    regs[15] = kCleanupReturnPc;
+    if (call(fixture, kA32PthreadCleanupPopSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled ||
+        fixture.threads[0].cleanup_top != kCleanupRecordOne ||
+        fixture.threads[0].cleanup_depth != 1U ||
+        !read_u32(fixture.memory, kCleanupMarker, value) ||
+        value != 2U) {
+        return fail("pthread cleanup pop execute did not invoke top routine");
+    }
+
+    regs = {};
+    regs[0] = kCleanupRecordOne;
+    if (call(fixture, kA32PthreadCleanupPopSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled ||
+        fixture.threads[0].cleanup_top != 0U ||
+        fixture.threads[0].cleanup_depth != 0U) {
+        return fail("pthread cleanup pop without execute did not unlink record");
+    }
+
+    regs = {};
+    regs[0] = kCleanupRecordOne;
+    if (call(fixture, kA32PthreadCleanupPopSvcImmediate, regs) !=
+        A32HostServiceDisposition::Failed) {
+        return fail("pthread cleanup pop accepted empty stack");
+    }
+
+    Fixture exit_fixture;
+    regs = {};
+    regs[0] = kCleanupRecordOne;
+    regs[1] = kCleanupRoutineOne;
+    regs[2] = kCleanupMarker;
+    if (call(exit_fixture, kA32PthreadCleanupPushSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled) {
+        return fail("could not push first exit cleanup");
+    }
+    regs = {};
+    regs[0] = kCleanupRecordTwo;
+    regs[1] = kCleanupRoutineTwo;
+    regs[2] = kCleanupMarker;
+    if (call(exit_fixture, kA32PthreadCleanupPushSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled) {
+        return fail("could not push second exit cleanup");
+    }
+    regs = {};
+    regs[13] = 0x18000U;
+    regs[15] = kExitStub + 4U;
+    if (call(exit_fixture, kA32PthreadExitSvcImmediate, regs) !=
+            A32HostServiceDisposition::Suspended ||
+        !read_u32(exit_fixture.memory, kCleanupMarker, value) ||
+        value != 1U ||
+        exit_fixture.threads[0].cleanup_top != 0U ||
+        exit_fixture.threads[0].cleanup_depth != 0U ||
+        !exit_fixture.service.last_exit_cleanup_result().has_value() ||
+        exit_fixture.service.last_exit_cleanup_result()->
+            cleanup_callbacks_completed != 2U) {
+        return fail("pthread_exit did not unwind cleanup handlers in LIFO order");
+    }
+
+    std::array<A32PthreadAttrState, 1> attrs{};
+    std::array<A32PthreadThreadState, 1> threads{};
+    A32PthreadLifecycleService limited{
+        A32PthreadLifecycleOptions{
+            .stack_arena_base = 0x8000U,
+            .stack_arena_size = 0x2000U,
+            .page_size = 0x1000U,
+            .default_stack_size = 0x2000U,
+            .exit_trampoline = kExitStub,
+            .thread_instruction_budget = 16U,
+            .first_thread_id = 2U,
+            .max_cleanup_handlers = 1U,
+        },
+        std::span{attrs},
+        std::span{threads},
+    };
+    const auto root = A32LogicalThreadId::from_raw(1U);
+    if (!root.has_value() ||
+        !limited.register_initial_thread(*root) ||
+        !limited.set_current_thread_id(*root)) {
+        return fail("could not initialize bounded cleanup lifecycle service");
+    }
+    std::uint32_t cpsr{};
+    regs = {};
+    regs[0] = kCleanupRecordOne;
+    regs[1] = kCleanupRoutineOne;
+    regs[2] = kCleanupMarker;
+    if (limited.handle(
+            fixture.memory,
+            kA32PthreadCleanupPushSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled) {
+        return fail("bounded cleanup first push failed");
+    }
+    regs = {};
+    regs[0] = kCleanupRecordTwo;
+    regs[1] = kCleanupRoutineTwo;
+    regs[2] = kCleanupMarker;
+    if (limited.handle(
+            fixture.memory,
+            kA32PthreadCleanupPushSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("bounded cleanup depth ceiling was not enforced");
+    }
+    return 0;
+}
+
 int test_create_return_and_explicit_exit() {
     Fixture fixture;
     std::array<std::uint32_t, 16> regs{};
@@ -535,6 +696,9 @@ int main() {
         return status;
     }
     if (const int status = test_scheduler_and_name_helpers(); status != 0) {
+        return status;
+    }
+    if (const int status = test_cleanup_handlers(); status != 0) {
         return status;
     }
     if (const int status = test_create_return_and_explicit_exit(); status != 0) {

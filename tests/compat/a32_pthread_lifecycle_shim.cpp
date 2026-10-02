@@ -83,6 +83,8 @@ using liba32android::compat::kA32PthreadRwlockUnlockSvcImmediate;
 using liba32android::compat::kA32PthreadRwlockWrlockSvcImmediate;
 using liba32android::compat::kA32PthreadCreateDetached;
 using liba32android::compat::kA32PthreadCreateJoinable;
+using liba32android::compat::kA32PthreadCleanupPopSvcImmediate;
+using liba32android::compat::kA32PthreadCleanupPushSvcImmediate;
 using liba32android::compat::kA32PthreadCreateSvcImmediate;
 using liba32android::compat::kA32PthreadDetachSvcImmediate;
 using liba32android::compat::kA32PthreadEqualSvcImmediate;
@@ -353,7 +355,7 @@ int main(int argc, char** argv) {
         return fail("pthread lifecycle consumer did not bind partial libc shim");
     }
 
-    constexpr std::array<std::string_view, 35> shim_names{{
+    constexpr std::array<std::string_view, 37> shim_names{{
         "pthread_attr_init",
         "pthread_attr_destroy",
         "pthread_attr_getdetachstate",
@@ -369,6 +371,8 @@ int main(int argc, char** argv) {
         "pthread_getschedparam",
         "pthread_setschedparam",
         "pthread_setname_np",
+        "__pthread_cleanup_push",
+        "__pthread_cleanup_pop",
         "pthread_cond_init",
         "pthread_cond_destroy",
         "pthread_cond_wait",
@@ -513,7 +517,7 @@ int main(int argc, char** argv) {
         return fail("could not register initial logical pthread");
     }
 
-    const std::array<A32HostServiceRegistryEntry, 36> services{{
+    const std::array<A32HostServiceRegistryEntry, 38> services{{
         {kA32PthreadAttrInitSvcImmediate, &lifecycle},
         {kA32PthreadAttrDestroySvcImmediate, &lifecycle},
         {kA32PthreadAttrGetdetachstateSvcImmediate, &lifecycle},
@@ -529,6 +533,8 @@ int main(int argc, char** argv) {
         {kA32PthreadGetschedparamSvcImmediate, &lifecycle},
         {kA32PthreadSetschedparamSvcImmediate, &lifecycle},
         {kA32PthreadSetnameNpSvcImmediate, &lifecycle},
+        {kA32PthreadCleanupPushSvcImmediate, &lifecycle},
+        {kA32PthreadCleanupPopSvcImmediate, &lifecycle},
         {kA32PthreadCondInitSvcImmediate, &sync},
         {kA32PthreadCondDestroySvcImmediate, &sync},
         {kA32PthreadCondWaitSvcImmediate, &sync},
@@ -610,6 +616,8 @@ int main(int argc, char** argv) {
     const std::uint32_t typed_mutex_address = *data + 0x240U;
     const std::uint32_t once_address = *data + 0x260U;
     const std::uint32_t rwlock_address = *data + 0x280U;
+    const std::uint32_t cleanup_record_address = *data + 0x2a0U;
+    const std::uint32_t cleanup_marker_address = *data + 0x2c0U;
 
     result = run_wrapper(
         memory,
@@ -711,6 +719,21 @@ int main(int argc, char** argv) {
         named_root->name[4] != 'a' || named_root->name[5] != '3' ||
         named_root->name[6] != '2' || named_root->name[7] != 0U) {
         return fail("real pthread_setname_np wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_cleanup_push_pop",
+        registry,
+        stack_top,
+        *stop,
+        cleanup_record_address,
+        cleanup_marker_address);
+    if (!result || !*result || result->regs[0] != 0U ||
+        read_u32(memory, cleanup_marker_address) != 0x59c1ea59U) {
+        return fail("real pthread cleanup push/pop wrapper failed");
     }
     ++wrapper_calls;
 

@@ -15,6 +15,8 @@
 #define LIBA32ANDROID_A32_PTHREAD_GETSCHEDPARAM_SVC 0x122
 #define LIBA32ANDROID_A32_PTHREAD_SETSCHEDPARAM_SVC 0x123
 #define LIBA32ANDROID_A32_PTHREAD_SETNAME_NP_SVC 0x124
+#define LIBA32ANDROID_A32_PTHREAD_CLEANUP_PUSH_SVC 0x125
+#define LIBA32ANDROID_A32_PTHREAD_CLEANUP_POP_SVC 0x126
 
 #ifdef __cplusplus
 
@@ -61,6 +63,10 @@ inline constexpr std::uint32_t kA32PthreadSetschedparamSvcImmediate =
     LIBA32ANDROID_A32_PTHREAD_SETSCHEDPARAM_SVC;
 inline constexpr std::uint32_t kA32PthreadSetnameNpSvcImmediate =
     LIBA32ANDROID_A32_PTHREAD_SETNAME_NP_SVC;
+inline constexpr std::uint32_t kA32PthreadCleanupPushSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_CLEANUP_PUSH_SVC;
+inline constexpr std::uint32_t kA32PthreadCleanupPopSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_CLEANUP_POP_SVC;
 
 inline constexpr std::uint32_t kA32PthreadCreateJoinable = 0U;
 inline constexpr std::uint32_t kA32PthreadCreateDetached = 1U;
@@ -68,6 +74,8 @@ inline constexpr std::uint32_t kA32PthreadDefaultStackSize = 1024U * 1024U;
 inline constexpr std::uint32_t kA32PthreadDestructorIterations = 4U;
 inline constexpr std::int32_t kA32SchedOther = 0;
 inline constexpr std::size_t kA32PthreadNameBytes = 16U;
+inline constexpr std::uint32_t kA32PthreadCleanupRecordBytes = 12U;
+inline constexpr std::uint32_t kA32PthreadDefaultCleanupHandlers = 64U;
 
 struct A32PthreadAttrState {
     std::uint32_t address{};
@@ -93,6 +101,8 @@ struct A32PthreadThreadState {
     std::uint32_t return_value{};
     std::uint32_t joiner_thread_id{};
     std::uint32_t join_result_address{};
+    std::uint32_t cleanup_top{};
+    std::uint32_t cleanup_depth{};
     std::int32_t sched_policy{kA32SchedOther};
     std::int32_t sched_priority{};
     std::array<std::uint8_t, kA32PthreadNameBytes> name{};
@@ -122,6 +132,8 @@ struct A32PthreadJoinWake {
 enum class A32PthreadExitCleanupError : std::uint8_t {
     None = 0,
     InvalidStack,
+    InvalidCleanupRecord,
+    InvalidCleanupRoutine,
     InvalidDestructorAddress,
     MemoryFault,
     CpuException,
@@ -137,8 +149,10 @@ enum class A32PthreadExitCleanupError : std::uint8_t {
 struct A32PthreadExitCleanupResult {
     A32PthreadExitCleanupError error{A32PthreadExitCleanupError::None};
     std::uint32_t thread_id{};
+    std::uint32_t cleanup_callbacks_completed{};
     std::uint32_t callbacks_completed{};
     std::uint32_t iterations_completed{};
+    std::optional<std::uint32_t> failing_cleanup_record;
     std::optional<std::uint32_t> failing_key;
     std::optional<std::uint32_t> failing_svc_immediate;
 
@@ -167,6 +181,7 @@ struct A32PthreadLifecycleOptions {
     std::uint32_t exit_trampoline{};
     std::size_t thread_instruction_budget{65536U};
     std::uint32_t first_thread_id{2U};
+    std::uint32_t max_cleanup_handlers{kA32PthreadDefaultCleanupHandlers};
 
     // Required only when a TLS sync service is supplied. Destructor callbacks
     // run on the exiting guest stack and return to this normalized stop PC.
@@ -260,7 +275,8 @@ private:
     [[nodiscard]] A32PthreadExitCleanupResult run_exit_cleanup(
         memory::GuestMemory& memory,
         A32PthreadThreadState& thread,
-        std::uint32_t stack_pointer);
+        std::uint32_t stack_pointer,
+        std::uint32_t callback_return_pc);
     void reclaim_thread(std::size_t index) noexcept;
 
     A32PthreadLifecycleOptions options_;

@@ -194,3 +194,18 @@ mutex attrs, pthread_once completion, and rwlock reader/writer wake/resume;
 focused host/ARM execution tests cover TLS destructor iteration, multi-waiter
 condvar ordering, once interleaving/failure latching, and rwlock preference. None of this evidence implies host-thread behavior or
 general scheduler fairness.
+
+## Cleanup-handler evidence update — 2026-10-02
+
+The supplied VLC APK's ARM32 `lib/armeabi-v7a/libvlc.so` has direct
+`R_ARM_JUMP_SLOT` imports for the two Bionic cleanup helpers:
+
+- `0x025fb8cc __pthread_cleanup_push@LIBC`
+- `0x025fba04 __pthread_cleanup_pop@LIBC`
+
+The same complete ARM32 supplied-artifact scan found no direct imports for
+`pthread_cancel`, `pthread_setcancelstate`, `pthread_setcanceltype`, or
+`pthread_testcancel`. Cleanup push/pop are therefore accepted as explicit
+cleanup-stack / voluntary-exit behavior only; this evidence does not justify
+pthread cancellation semantics.
+
