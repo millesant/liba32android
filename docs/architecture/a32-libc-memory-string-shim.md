@@ -11,7 +11,8 @@ dependency/symbol/relocation path using one reproducible partial ARM32
 The feature is deliberately partial. The accepted base grew from memory/string
 helpers through allocator, EABI, finalization, synchronization, and TLS-key
 extensions to 45 exports. The bounded pthread lifecycle surface adds twelve
-direct guest stubs, bringing the prepared partial-libc export surface to 57.
+direct guest stubs and the condition-variable slice adds six more, bringing the
+prepared partial-libc export surface to 63.
 
 ## Guest stubs
 
@@ -159,5 +160,24 @@ new thread behavior does not broaden unrelated libc fixture assumptions.
 This remains a logical/cooperative model: no host pthread is created and the
 service does not map guest stacks. Join/detach reclamation and bounded
 four-pass TLS destructor cleanup are owned by the pthread lifecycle service;
-condition variables, rwlocks, pthread_once, cancellation, and broader Bionic
-surface remain separate work.
+rwlocks, pthread_once, cancellation, guest-visible clock APIs, and broader
+Bionic surface remain separate work.
+
+
+## Pthread condition-variable extension
+
+The partial libc shim adds six direct private-SVC exports:
+`pthread_cond_init`, `pthread_cond_destroy`, `pthread_cond_wait`,
+`pthread_cond_timedwait`, `pthread_cond_signal`, and
+`pthread_cond_broadcast`.
+
+The dedicated ARM32 pthread consumer therefore requires eighteen lifecycle /
+condition imports in total. Integration executes condition init, a real wait
+that suspends and is signaled, post-SVC waiter resume only after mutex
+reacquisition, a deterministic fake-clock timed wait returning ETIMEDOUT,
+broadcast, and destroy.
+
+The original 45-wrapper base libc fixture remains unchanged. The condvar
+extension does not add `clock_gettime`; although supplied VLC ARMv7 libraries
+import that symbol, guest-visible clock APIs remain a separate bounded utility
+surface.

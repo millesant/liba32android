@@ -89,6 +89,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_pthread_cond_test
+    tests/compat/a32_pthread_cond.cpp
+)
+
+add_test(
+    NAME a32_pthread_condition_variables
+    COMMAND compat_pthread_cond_test
+)
+
+liba32android_add_test_executable(
     compat_pthread_lifecycle_test
     tests/compat/a32_pthread_lifecycle.cpp
 )
