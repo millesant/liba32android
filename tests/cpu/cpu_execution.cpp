@@ -482,6 +482,49 @@ int run_thumb_data_fault() {
     return 0;
 }
 
+int run_persistent_session() {
+    constexpr std::array<std::uint8_t, 4> initial_code{
+        0x01, 0x00, 0xA0, 0xE3,  // mov r0,#1
+    };
+    constexpr std::array<std::uint8_t, 4> replacement_code{
+        0x2A, 0x00, 0xA0, 0xE3,  // mov r0,#42
+    };
+
+    LinearGuestMemory memory{kMemorySize};
+    if (!memory.write(0, initial_code)) {
+        std::cerr << "persistent session could not stage initial code\\n";
+        return 1;
+    }
+
+    liba32android::cpu::A32Executor executor{memory};
+    ExecutionRequest request{};
+    request.instruction_count = 1;
+
+    const auto first = executor.execute(request);
+    const auto second = executor.execute(request);
+    if (!execution_ok(first, 1) || !execution_ok(second, 1) ||
+        first.regs[0] != 1 || second.regs[0] != 1 ||
+        first.jit_instance_reused || !second.jit_instance_reused ||
+        executor.execution_count() != 2 || second.code_cache_clears != 0) {
+        std::cerr << "persistent JIT reuse regression failed\\n";
+        return 1;
+    }
+
+    if (!memory.write(0, replacement_code)) {
+        std::cerr << "persistent session could not mutate code\\n";
+        return 1;
+    }
+    const auto third = executor.execute(request);
+    if (!execution_ok(third, 1) || third.regs[0] != 42 ||
+        !third.jit_instance_reused || third.code_cache_clears != 1 ||
+        third.code_read_callbacks == 0 || executor.execution_count() != 3 ||
+        executor.code_cache_clear_count() != 1) {
+        std::cerr << "persistent JIT code invalidation failed\\n";
+        return 1;
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -489,7 +532,7 @@ int main(int argc, char** argv) {
         std::cerr
             << "usage: cpu_execution "
                "<registers|branch|call|memory|stack|thumb_branch|thumb_call|"
-               "thumb_memory|thumb_stack|thumb_svc|svc_resume|fetch_fault|thumb_data_fault>\n";
+               "thumb_memory|thumb_stack|thumb_svc|svc_resume|fetch_fault|thumb_data_fault|session>\n";
         return 2;
     }
 
@@ -532,6 +575,9 @@ int main(int argc, char** argv) {
     }
     if (mode == "thumb_data_fault") {
         return run_thumb_data_fault();
+    }
+    if (mode == "session") {
+        return run_persistent_session();
     }
 
     std::cerr << "unknown mode: " << mode << '\n';

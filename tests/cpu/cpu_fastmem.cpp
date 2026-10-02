@@ -133,6 +133,57 @@ int run_fastmem_fault_fallback() {
     return 0;
 }
 
+int run_fastmem_self_modifying_code() {
+    MappedGuestMemory memory;
+    const std::size_t page = memory.page_size();
+    const auto rwx = MemoryPermission::Read |
+                     MemoryPermission::Write |
+                     MemoryPermission::Execute;
+    if (!memory.map(0, page, rwx)) {
+        std::cerr << "failed to map RWX self-modifying page\\n";
+        return 1;
+    }
+
+    constexpr std::uint32_t target = 0x100U;
+    constexpr std::array<std::uint8_t, 8> writer{
+        0x00, 0x20, 0x81, 0xE5,  // str r2,[r1]
+        0x11, 0xFF, 0x2F, 0xE1,  // bx r1
+    };
+    constexpr std::array<std::uint8_t, 4> initial_target{
+        0x01, 0x00, 0xA0, 0xE3,  // mov r0,#1
+    };
+    if (!memory.write(0, writer) || !memory.write(target, initial_target)) {
+        std::cerr << "failed to stage self-modifying code\\n";
+        return 1;
+    }
+
+    liba32android::cpu::A32Executor executor{memory};
+    ExecutionRequest warm{};
+    warm.entry_pc = target;
+    warm.instruction_count = 1;
+    const auto first = executor.execute(warm);
+    if (first.memory_fault || first.exception_raised || first.regs[0] != 1) {
+        std::cerr << "failed to execute initial target\\n";
+        return 1;
+    }
+
+    ExecutionRequest mutate{};
+    mutate.regs[1] = target;
+    mutate.regs[2] = 0xE3A0002AU;  // mov r0,#42
+    mutate.instruction_count = 3;
+    const auto result = executor.execute(mutate);
+    std::uint32_t stored = 0;
+    if (result.memory_fault || result.exception_raised ||
+        result.instructions_executed != 3 || result.regs[0] != 42 ||
+        !result.jit_instance_reused || result.data_write_callbacks != 0 ||
+        result.code_cache_clears == 0 ||
+        !read_u32(memory, target, stored) || stored != 0xE3A0002AU) {
+        std::cerr << "fastmem self-modifying code invalidation failed\\n";
+        return 1;
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -143,6 +194,9 @@ int main() {
         return 1;
     }
     if (run_fastmem_fault_fallback() != 0) {
+        return 1;
+    }
+    if (run_fastmem_self_modifying_code() != 0) {
         return 1;
     }
     return 0;

@@ -47,6 +47,19 @@ public:
     [[nodiscard]] virtual std::optional<std::uintptr_t> fastmem_base() const noexcept {
         return std::nullopt;
     }
+
+    // Monotonic token for changes that can affect executable bytes or execute
+    // eligibility. Backends that cannot provide a token return nullopt; a
+    // persistent CPU session then falls back to conservative cache clearing.
+    [[nodiscard]] virtual std::optional<std::uint64_t> code_generation() const noexcept {
+        return std::nullopt;
+    }
+
+    // True when guest writes can reach executable bytes without passing through
+    // write(), for example fastmem writes to a writable+executable mapping.
+    [[nodiscard]] virtual bool direct_executable_writes_possible() const noexcept {
+        return false;
+    }
 };
 
 // Minimal contiguous guest-address-space implementation used for correctness
@@ -58,6 +71,7 @@ public:
 
     [[nodiscard]] bool read(std::uint32_t address, std::span<std::uint8_t> output) const override;
     [[nodiscard]] bool write(std::uint32_t address, std::span<const std::uint8_t> input) override;
+    [[nodiscard]] std::optional<std::uint64_t> code_generation() const noexcept override;
 
     [[nodiscard]] std::uint32_t base() const noexcept;
     [[nodiscard]] std::size_t size() const noexcept;
@@ -67,6 +81,7 @@ private:
 
     std::uint32_t base_{};
     std::vector<std::uint8_t> bytes_;
+    std::uint64_t code_generation_{};
 };
 
 // Sparse 32-bit guest address space backed by one contiguous 4 GiB host
@@ -94,6 +109,8 @@ public:
     [[nodiscard]] bool read_code(std::uint32_t address, std::span<std::uint8_t> output) const override;
     [[nodiscard]] bool write(std::uint32_t address, std::span<const std::uint8_t> input) override;
     [[nodiscard]] std::optional<std::uintptr_t> fastmem_base() const noexcept override;
+    [[nodiscard]] std::optional<std::uint64_t> code_generation() const noexcept override;
+    [[nodiscard]] bool direct_executable_writes_possible() const noexcept override;
 
     [[nodiscard]] std::size_t page_size() const noexcept;
     [[nodiscard]] bool is_mapped(std::uint32_t address) const noexcept;
@@ -103,6 +120,7 @@ private:
     [[nodiscard]] bool valid_page_range(std::uint32_t address, std::size_t length) const noexcept;
     [[nodiscard]] bool valid_access(std::uint32_t address, std::size_t length,
                                     MemoryPermission required) const noexcept;
+    [[nodiscard]] bool range_has_execute(std::uint32_t address, std::size_t length) const noexcept;
     [[nodiscard]] bool valid_permissions(MemoryPermission permissions) const noexcept;
     [[nodiscard]] int host_protection(MemoryPermission permissions) const noexcept;
     [[nodiscard]] std::size_t page_index(std::uint32_t address) const noexcept;
@@ -111,6 +129,8 @@ private:
     void* reservation_{};
     std::size_t page_size_{};
     std::vector<std::uint8_t> page_state_;
+    std::uint64_t code_generation_{};
+    std::size_t writable_executable_pages_{};
 };
 
 }  // namespace liba32android::memory

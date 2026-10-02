@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 
 namespace liba32android::memory {
@@ -47,10 +48,38 @@ struct ExecutionResult {
     std::size_t code_read_callbacks{};
     std::size_t data_read_callbacks{};
     std::size_t data_write_callbacks{};
+    bool jit_instance_reused{};
+    std::size_t code_cache_clears{};
+    std::size_t code_cache_invalidations{};
 };
 
-// Generic A32 execution seam. Dynarmic is an implementation detail in the
-// corresponding .cpp and must not leak into callers or the memory subsystem.
+// Reusable engine-independent A32 execution session. Dynarmic remains hidden
+// behind the implementation; callers may keep this object alive across bounded
+// execution slices to retain translated code without owning engine types.
+class A32Executor final {
+public:
+    explicit A32Executor(memory::GuestMemory& memory);
+    ~A32Executor();
+
+    A32Executor(const A32Executor&) = delete;
+    A32Executor& operator=(const A32Executor&) = delete;
+    A32Executor(A32Executor&&) = delete;
+    A32Executor& operator=(A32Executor&&) = delete;
+
+    [[nodiscard]] ExecutionResult execute(const ExecutionRequest& request);
+    [[nodiscard]] memory::GuestMemory& memory() noexcept;
+    [[nodiscard]] const memory::GuestMemory& memory() const noexcept;
+    [[nodiscard]] std::size_t execution_count() const noexcept;
+    [[nodiscard]] std::size_t code_cache_clear_count() const noexcept;
+    [[nodiscard]] std::size_t code_cache_invalidation_count() const noexcept;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+// One-shot compatibility seam. Prefer A32Executor when multiple slices share a
+// guest address space so translated code can be retained safely.
 ExecutionResult execute(memory::GuestMemory& memory, const ExecutionRequest& request);
 
 }  // namespace liba32android::cpu
