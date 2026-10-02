@@ -11,8 +11,9 @@ dependency/symbol/relocation path using one reproducible partial ARM32
 The feature is deliberately partial. The accepted base grew from memory/string
 helpers through allocator, EABI, finalization, synchronization, and TLS-key
 extensions to 45 exports. The bounded pthread lifecycle surface adds twelve
-direct guest stubs and the condition-variable slice adds six more, bringing the
-prepared partial-libc export surface to 63.
+direct guest stubs, condition variables add six, and common synchronization
+adds eleven more libc-compatible stubs, bringing the prepared partial-libc
+export surface to 74.
 
 ## Guest stubs
 
@@ -181,3 +182,26 @@ The original 45-wrapper base libc fixture remains unchanged. The condvar
 extension does not add `clock_gettime`; although supplied VLC ARMv7 libraries
 import that symbol, guest-visible clock APIs remain a separate bounded utility
 surface.
+
+
+## Pthread common-synchronization extension
+
+The partial libc shim adds eleven public compatibility stubs for
+`pthread_mutexattr_init/destroy/settype`, `pthread_once`, and
+`pthread_rwlock_init/destroy/rdlock/tryrdlock/wrlock/trywrlock/unlock`.
+
+An additional exported internal symbol,
+`__liba32android_pthread_once_complete`, is a runtime trampoline rather than a
+libc compatibility API. Its first instruction traps private once-completion
+SVC 0x11A so the synchronization service can publish Done and restore the
+original pthread_once continuation.
+
+The dedicated ARM32 pthread consumer now requires 32 eager JUMP_SLOT imports:
+the prior 18 lifecycle/condition symbols plus the evidenced mutex-attribute,
+mutex operation, once, and rwlock symbols. The real integration executes a
+recursive mutex through attributes, verifies pthread_once completes only once,
+and exercises concurrent readers followed by a suspended/resumed writer.
+
+The try-rwlock stubs are retained as bounded coherent companions required by
+the accepted issue contract, but supplied-binary evidence is not claimed for
+those two symbols.
