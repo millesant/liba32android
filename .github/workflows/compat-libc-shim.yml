@@ -63,7 +63,7 @@ jobs:
           done
 
           grep -F 'Shared library: [libc.so]' build-fixtures/libc-ms-pthread-consumer-dynamic.txt
-          for symbol in pthread_attr_init pthread_attr_destroy pthread_attr_getdetachstate pthread_attr_setdetachstate pthread_attr_getstacksize pthread_attr_setstacksize pthread_create pthread_self pthread_equal pthread_exit; do
+          for symbol in pthread_attr_init pthread_attr_destroy pthread_attr_getdetachstate pthread_attr_setdetachstate pthread_attr_getstacksize pthread_attr_setstacksize pthread_create pthread_self pthread_equal pthread_exit pthread_join pthread_detach; do
             grep -F "$symbol" build-fixtures/libc-ms-shim-symbols.txt
             grep -F 'R_ARM_JUMP_SLOT' build-fixtures/libc-ms-pthread-consumer-relocations.txt |
               grep -F "$symbol"
@@ -98,8 +98,8 @@ jobs:
           build/compat_pthread_lifecycle_shim_integration_test             build-fixtures/libc-ms/liba32android_pthread_lifecycle_consumer.so             build-fixtures/libc-ms/libc.so |
             tee build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
           grep -F 'fixture.pthread_lifecycle.object_count=2' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
-          grep -F 'fixture.pthread_lifecycle.required_jump_slots=10' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
-          grep -F 'fixture.pthread_lifecycle.wrapper_calls=11' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+          grep -F 'fixture.pthread_lifecycle.required_jump_slots=12' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+          grep -F 'fixture.pthread_lifecycle.wrapper_calls=14' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
           grep -F 'fixture.pthread_lifecycle.thread_exits=2' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
           grep -F 'fixture.pthread_lifecycle.status=PASS' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
 

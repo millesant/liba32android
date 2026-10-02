@@ -27,6 +27,10 @@ __attribute__((visibility("default")))
 int pthread_equal(fixture_pthread_t one, fixture_pthread_t two);
 __attribute__((visibility("default")))
 void pthread_exit(void* value);
+__attribute__((visibility("default")))
+int pthread_join(fixture_pthread_t thread, void** value);
+__attribute__((visibility("default")))
+int pthread_detach(fixture_pthread_t thread);
 
 __attribute__((visibility("default"), noinline))
 int fixture_pthread_attr_init(void* attr) {
@@ -71,6 +75,14 @@ int fixture_pthread_equal(fixture_pthread_t one, fixture_pthread_t two) {
 __attribute__((visibility("default"), noinline))
 void fixture_pthread_exit(void* value) {
     pthread_exit(value);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_join(fixture_pthread_t thread, void** value) {
+    return pthread_join(thread, value);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_detach(fixture_pthread_t thread) {
+    return pthread_detach(thread);
 }
 
 __attribute__((visibility("default"), noinline))

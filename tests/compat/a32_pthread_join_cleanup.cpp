@@ -2,6 +2,7 @@
 #include <bit>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <span>
 
 #include "compat/a32_pthread_lifecycle.h"
@@ -403,6 +404,94 @@ int test_tls_destructor_iteration_and_join_after_exit() {
     return 0;
 }
 
+int test_cleanup_failure_latches_without_replay() {
+    Fixture fixture;
+    auto target = fixture.create(0x4444U);
+    if (!target.has_value() ||
+        !fixture.lifecycle.set_current_thread_context(target->context) ||
+        !fixture.sync.set_current_thread_context(target->context)) {
+        return fail("could not create/select cleanup failure target");
+    }
+
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t cpsr{};
+    regs[0] = kKeyOut;
+    regs[1] = 0xffffffffU;
+    if (fixture.sync.handle(
+            fixture.memory,
+            kA32PthreadKeyCreateSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("could not create invalid-destructor TLS key");
+    }
+    std::uint32_t key{};
+    if (!read_u32(fixture.memory, kKeyOut, key)) {
+        return fail("could not read invalid-destructor TLS key");
+    }
+
+    regs = {};
+    regs[0] = key;
+    regs[1] = 0x7777U;
+    if (fixture.sync.handle(
+            fixture.memory,
+            kA32PthreadSetspecificSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("could not seed cleanup failure TLS value");
+    }
+
+    const auto failed = execute_a32_with_services(
+        fixture.memory,
+        target->context.request,
+        fixture.lifecycle,
+        1U);
+    if (failed ||
+        failed.error !=
+            liba32android::runtime::A32ServiceDispatchError::ServiceFailed) {
+        return fail("invalid TLS destructor did not fail pthread_exit");
+    }
+    const auto& cleanup = fixture.lifecycle.last_exit_cleanup_result();
+    if (!cleanup.has_value() ||
+        cleanup->error !=
+            A32PthreadExitCleanupError::InvalidDestructorAddress ||
+        cleanup->callbacks_completed != 0U) {
+        return fail("cleanup failure diagnostics were incorrect");
+    }
+
+    bool found_failed = false;
+    for (const auto& thread : fixture.threads) {
+        if (thread.pthread_id == target->pthread_id) {
+            found_failed =
+                thread.phase == A32PthreadThreadPhase::CleanupFailed;
+        }
+    }
+    if (!found_failed) {
+        return fail("cleanup failure did not latch thread state");
+    }
+
+    regs = {};
+    regs[0] = 0x9999U;
+    if (fixture.lifecycle.handle(
+            fixture.memory,
+            kA32PthreadExitSvcImmediate,
+            regs,
+            cpsr) != A32HostServiceDisposition::Failed) {
+        return fail("failed exit cleanup was replayed");
+    }
+    const auto& after_retry =
+        fixture.lifecycle.last_exit_cleanup_result();
+    if (!after_retry.has_value() ||
+        after_retry->error !=
+            A32PthreadExitCleanupError::InvalidDestructorAddress ||
+        after_retry->callbacks_completed != 0U) {
+        return fail("retry mutated latched cleanup failure");
+    }
+
+    return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -415,6 +504,11 @@ int main() {
     }
     if (const int status =
             test_tls_destructor_iteration_and_join_after_exit();
+        status != 0) {
+        return status;
+    }
+    if (const int status =
+            test_cleanup_failure_latches_without_replay();
         status != 0) {
         return status;
     }

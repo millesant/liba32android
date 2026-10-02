@@ -45,9 +45,12 @@ using liba32android::compat::kA32PthreadAttrInitSvcImmediate;
 using liba32android::compat::kA32PthreadAttrSetdetachstateSvcImmediate;
 using liba32android::compat::kA32PthreadAttrSetstacksizeSvcImmediate;
 using liba32android::compat::kA32PthreadCreateDetached;
+using liba32android::compat::kA32PthreadCreateJoinable;
 using liba32android::compat::kA32PthreadCreateSvcImmediate;
+using liba32android::compat::kA32PthreadDetachSvcImmediate;
 using liba32android::compat::kA32PthreadEqualSvcImmediate;
 using liba32android::compat::kA32PthreadExitSvcImmediate;
+using liba32android::compat::kA32PthreadJoinSvcImmediate;
 using liba32android::compat::kA32PthreadSelfSvcImmediate;
 using liba32android::compat::make_a32_libc_memory_string_shim_catalog_entry;
 using liba32android::cpu::ExecutionRequest;
@@ -73,6 +76,7 @@ using liba32android::runtime::A32HostServiceRegistryEntry;
 using liba32android::runtime::A32LogicalThreadId;
 using liba32android::runtime::A32ServiceDispatchResult;
 using liba32android::runtime::execute_a32_with_services;
+using liba32android::runtime::make_a32_service_resume_context;
 
 constexpr std::uint32_t kMaxFixtureNameBytes = 128U;
 constexpr std::uint64_t kMaxFixtureImageBytes = 4U << 20U;
@@ -275,7 +279,7 @@ int main(int argc, char** argv) {
         return fail("pthread lifecycle consumer did not bind partial libc shim");
     }
 
-    constexpr std::array<std::string_view, 10> shim_names{{
+    constexpr std::array<std::string_view, 12> shim_names{{
         "pthread_attr_init",
         "pthread_attr_destroy",
         "pthread_attr_getdetachstate",
@@ -286,6 +290,8 @@ int main(int argc, char** argv) {
         "pthread_self",
         "pthread_equal",
         "pthread_exit",
+        "pthread_join",
+        "pthread_detach",
     }};
     std::array<std::uint32_t, shim_names.size()> targets{};
     for (std::size_t i = 0; i < shim_names.size(); ++i) {
@@ -374,7 +380,7 @@ int main(int argc, char** argv) {
         return fail("could not register initial logical pthread");
     }
 
-    const std::array<A32HostServiceRegistryEntry, 10> services{{
+    const std::array<A32HostServiceRegistryEntry, 12> services{{
         {kA32PthreadAttrInitSvcImmediate, &lifecycle},
         {kA32PthreadAttrDestroySvcImmediate, &lifecycle},
         {kA32PthreadAttrGetdetachstateSvcImmediate, &lifecycle},
@@ -385,6 +391,8 @@ int main(int argc, char** argv) {
         {kA32PthreadSelfSvcImmediate, &lifecycle},
         {kA32PthreadEqualSvcImmediate, &lifecycle},
         {kA32PthreadExitSvcImmediate, &lifecycle},
+        {kA32PthreadJoinSvcImmediate, &lifecycle},
+        {kA32PthreadDetachSvcImmediate, &lifecycle},
     }};
     A32HostServiceRegistry registry{std::span{services}};
 
@@ -434,6 +442,7 @@ int main(int argc, char** argv) {
     const std::uint32_t detach_out = *data + 0x140U;
     const std::uint32_t stack_size_out = *data + 0x144U;
     const std::uint32_t thread_out = *data + 0x180U;
+    const std::uint32_t join_result_out = *data + 0x188U;
 
     result = run_wrapper(
         memory,
@@ -508,6 +517,20 @@ int main(int argc, char** argv) {
     }
     ++wrapper_calls;
 
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_attr_setdetachstate",
+        registry,
+        stack_top,
+        *stop,
+        attr_address,
+        kA32PthreadCreateJoinable);
+    if (!result || !*result || result->regs[0] != 0U) {
+        return fail("real pthread_attr_setdetachstate joinable restore failed");
+    }
+    ++wrapper_calls;
+
     const auto start_return =
         root_function(memory, graph_result.graph, "fixture_pthread_start_return");
     const auto start_exit =
@@ -536,9 +559,29 @@ int main(int argc, char** argv) {
     auto created = lifecycle.pop_created_thread();
     if (!created.has_value() ||
         created->pthread_id != first_id ||
-        !created->detached ||
-        !lifecycle.set_current_thread_context(created->context)) {
+        created->detached) {
         return fail("created returning thread context was incorrect");
+    }
+
+    auto join_wait = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_join",
+        registry,
+        stack_top,
+        *stop,
+        first_id,
+        join_result_out);
+    if (!join_wait.has_value() ||
+        !join_wait->service_suspended ||
+        !join_wait->suspended_svc_immediate.has_value() ||
+        *join_wait->suspended_svc_immediate != kA32PthreadJoinSvcImmediate) {
+        return fail("real pthread_join did not suspend on live target");
+    }
+    ++wrapper_calls;
+
+    if (!lifecycle.set_current_thread_context(created->context)) {
+        return fail("could not select joined target context");
     }
     const auto returned = execute_a32_with_services(
         memory,
@@ -551,10 +594,37 @@ int main(int argc, char** argv) {
         *returned.suspended_svc_immediate != kA32PthreadExitSvcImmediate ||
         first_state == nullptr ||
         first_state->phase != A32PthreadThreadPhase::Exited ||
-        first_state->return_value != kReturnValue) {
-        return fail("returning ARM32 start routine did not become pthread_exit");
+        first_state->return_value != kReturnValue ||
+        read_u32(memory, join_result_out) != kReturnValue) {
+        return fail("returning ARM32 start routine did not complete blocked join");
     }
     ++thread_exits;
+
+    const auto wake = lifecycle.pop_ready_join();
+    if (!wake.has_value() ||
+        wake->thread_id != 1U ||
+        wake->target_thread_id != first_id ||
+        find_thread(std::span{threads}, first_id) != nullptr) {
+        return fail("real pthread_join wake/reclamation was incorrect");
+    }
+    const auto root_joiner = A32LogicalThreadId::from_raw(wake->thread_id);
+    const auto join_resume = root_joiner.has_value()
+        ? make_a32_service_resume_context(
+              *root_joiner, *join_wait, kInstructionBudget, *stop)
+        : std::nullopt;
+    if (!join_resume.has_value() ||
+        !lifecycle.set_current_thread_context(*join_resume)) {
+        return fail("could not build real pthread_join continuation");
+    }
+    const auto join_complete = execute_a32_with_services(
+        memory,
+        join_resume->request,
+        registry,
+        1U);
+    if (!join_complete || !join_complete.stop_pc_reached ||
+        join_complete.regs[0] != 0U) {
+        return fail("real pthread_join continuation did not return normally");
+    }
 
     lifecycle.set_current_thread_id(1U);
     constexpr std::uint32_t kExplicitExitValue = 0xcafebabeU;
@@ -576,21 +646,34 @@ int main(int argc, char** argv) {
     const std::uint32_t second_id = read_u32(memory, thread_out + 4U);
     created = lifecycle.pop_created_thread();
     if (!created.has_value() ||
-        created->pthread_id != second_id ||
-        !lifecycle.set_current_thread_context(created->context)) {
+        created->pthread_id != second_id) {
         return fail("created explicit-exit context was incorrect");
+    }
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_detach",
+        registry,
+        stack_top,
+        *stop,
+        second_id);
+    if (!result || !*result || result->regs[0] != 0U) {
+        return fail("real pthread_detach wrapper failed");
+    }
+    ++wrapper_calls;
+
+    if (!lifecycle.set_current_thread_context(created->context)) {
+        return fail("could not select detached explicit-exit context");
     }
     const auto exited = execute_a32_with_services(
         memory,
         created->context.request,
         registry,
         2U);
-    const auto* second_state = find_thread(std::span{threads}, second_id);
     if (!exited || !exited.service_suspended ||
-        second_state == nullptr ||
-        second_state->phase != A32PthreadThreadPhase::Exited ||
-        second_state->return_value != kExplicitExitValue) {
-        return fail("explicit ARM32 pthread_exit path failed");
+        find_thread(std::span{threads}, second_id) != nullptr) {
+        return fail("detached explicit pthread_exit did not reclaim target");
     }
     ++thread_exits;
 
