@@ -34,6 +34,18 @@ using runtime::A32HostServiceDisposition;
     case kA32PthreadCondTimedwaitSvcImmediate:
     case kA32PthreadCondSignalSvcImmediate:
     case kA32PthreadCondBroadcastSvcImmediate:
+    case kA32PthreadMutexattrInitSvcImmediate:
+    case kA32PthreadMutexattrDestroySvcImmediate:
+    case kA32PthreadMutexattrSettypeSvcImmediate:
+    case kA32PthreadOnceSvcImmediate:
+    case kA32PthreadOnceCompleteSvcImmediate:
+    case kA32PthreadRwlockInitSvcImmediate:
+    case kA32PthreadRwlockDestroySvcImmediate:
+    case kA32PthreadRwlockRdlockSvcImmediate:
+    case kA32PthreadRwlockTryrdlockSvcImmediate:
+    case kA32PthreadRwlockWrlockSvcImmediate:
+    case kA32PthreadRwlockTrywrlockSvcImmediate:
+    case kA32PthreadRwlockUnlockSvcImmediate:
         return true;
     default:
         return false;
@@ -61,18 +73,29 @@ A32PthreadSyncService::A32PthreadSyncService(
     std::span<A32PthreadWaiter> waiters,
     std::span<A32PthreadKeyState> keys,
     std::span<A32PthreadTlsValue> tls_values,
-    A32PthreadClock* clock) noexcept
+    A32PthreadClock* clock,
+    std::span<A32PthreadMutexAttrState> mutex_attrs,
+    std::span<A32PthreadRwlockState> rwlocks,
+    std::span<A32PthreadOnceState> once_controls,
+    A32PthreadSyncOptions options) noexcept
     : mutexes_(mutexes),
       semaphores_(semaphores),
       waiters_(waiters),
       keys_(keys),
       tls_values_(tls_values),
-      clock_(clock) {
+      clock_(clock),
+      mutex_attrs_(mutex_attrs),
+      rwlocks_(rwlocks),
+      once_controls_(once_controls),
+      options_(options) {
     for (auto& mutex : mutexes_) mutex = {};
     for (auto& semaphore : semaphores_) semaphore = {};
     for (auto& waiter : waiters_) waiter = {};
     for (auto& key : keys_) key = {};
     for (auto& value : tls_values_) value = {};
+    for (auto& attr : mutex_attrs_) attr = {};
+    for (auto& rwlock : rwlocks_) rwlock = {};
+    for (auto& once : once_controls_) once = {};
 }
 
 bool A32PthreadSyncService::sync_configuration_valid() const noexcept {
@@ -199,11 +222,153 @@ std::size_t A32PthreadSyncService::ensure_mutex(
     if (existing < mutexes_.size()) return existing;
     for (std::size_t index = 0; index < mutexes_.size(); ++index) {
         if (mutexes_[index].address == 0U) {
-            mutexes_[index] = A32PthreadMutexState{.address = address};
+            mutexes_[index] = A32PthreadMutexState{
+                .address = address,
+                .type = kA32PthreadMutexNormal,
+            };
             return index;
         }
     }
     return mutexes_.size();
+}
+
+
+std::size_t A32PthreadSyncService::find_mutex_attr(
+    std::uint32_t address) const noexcept {
+    for (std::size_t index = 0; index < mutex_attrs_.size(); ++index) {
+        if (mutex_attrs_[index].active &&
+            mutex_attrs_[index].address == address) {
+            return index;
+        }
+    }
+    return mutex_attrs_.size();
+}
+
+std::size_t A32PthreadSyncService::ensure_mutex_attr(
+    std::uint32_t address) noexcept {
+    const std::size_t existing = find_mutex_attr(address);
+    if (existing < mutex_attrs_.size()) return existing;
+    for (std::size_t index = 0; index < mutex_attrs_.size(); ++index) {
+        if (!mutex_attrs_[index].active) return index;
+    }
+    return mutex_attrs_.size();
+}
+
+std::size_t A32PthreadSyncService::find_rwlock(
+    std::uint32_t address) const noexcept {
+    for (std::size_t index = 0; index < rwlocks_.size(); ++index) {
+        if (rwlocks_[index].address == address) return index;
+    }
+    return rwlocks_.size();
+}
+
+std::size_t A32PthreadSyncService::ensure_rwlock(
+    std::uint32_t address) noexcept {
+    const std::size_t existing = find_rwlock(address);
+    if (existing < rwlocks_.size()) return existing;
+    for (std::size_t index = 0; index < rwlocks_.size(); ++index) {
+        if (rwlocks_[index].address == 0U) {
+            rwlocks_[index] = A32PthreadRwlockState{.address = address};
+            return index;
+        }
+    }
+    return rwlocks_.size();
+}
+
+std::size_t A32PthreadSyncService::find_once(
+    std::uint32_t address) const noexcept {
+    for (std::size_t index = 0; index < once_controls_.size(); ++index) {
+        if (once_controls_[index].address == address) return index;
+    }
+    return once_controls_.size();
+}
+
+std::size_t A32PthreadSyncService::ensure_once(
+    std::uint32_t address) noexcept {
+    const std::size_t existing = find_once(address);
+    if (existing < once_controls_.size()) return existing;
+    for (std::size_t index = 0; index < once_controls_.size(); ++index) {
+        if (once_controls_[index].address == 0U) {
+            once_controls_[index] = A32PthreadOnceState{
+                .address = address,
+                .phase = A32PthreadOncePhase::Uninitialized,
+            };
+            return index;
+        }
+    }
+    return once_controls_.size();
+}
+
+std::optional<std::size_t>
+A32PthreadSyncService::current_once_owner() const noexcept {
+    std::optional<std::size_t> best;
+    std::uint64_t best_sequence = 0U;
+    for (std::size_t index = 0; index < once_controls_.size(); ++index) {
+        const auto& once = once_controls_[index];
+        if (once.phase == A32PthreadOncePhase::Initializing &&
+            once.owner_thread_id == current_thread_id_.value() &&
+            (!best.has_value() || once.sequence > best_sequence)) {
+            best = index;
+            best_sequence = once.sequence;
+        }
+    }
+    return best;
+}
+
+bool A32PthreadSyncService::fail_once_initialization(
+    std::uint32_t thread_id) noexcept {
+    if (thread_id == 0U) return false;
+    bool changed = false;
+    for (auto& once : once_controls_) {
+        if (once.phase == A32PthreadOncePhase::Initializing &&
+            once.owner_thread_id == thread_id) {
+            once.owner_thread_id = 0U;
+            once.phase = A32PthreadOncePhase::Failed;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+void A32PthreadSyncService::wake_once_waiters(
+    std::uint32_t once_address) noexcept {
+    for (auto& waiter : waiters_) {
+        if (waiter.kind == A32PthreadWaitKind::Once &&
+            waiter.object_address == once_address &&
+            !waiter.ready) {
+            waiter.ready = true;
+        }
+    }
+}
+
+void A32PthreadSyncService::grant_rwlock_waiters(
+    std::size_t rwlock_index) noexcept {
+    if (rwlock_index >= rwlocks_.size()) return;
+    auto& rwlock = rwlocks_[rwlock_index];
+    if (rwlock.writer_thread_id != 0U || rwlock.reader_count != 0U) {
+        return;
+    }
+
+    const auto writer = oldest_waiter(
+        A32PthreadWaitKind::RwWrite, rwlock.address, false);
+    if (writer.has_value()) {
+        rwlock.writer_thread_id = waiters_[*writer].thread_id;
+        waiters_[*writer].ready = true;
+        return;
+    }
+
+    for (auto& waiter : waiters_) {
+        if (waiter.kind == A32PthreadWaitKind::RwRead &&
+            waiter.object_address == rwlock.address &&
+            !waiter.ready) {
+            if (rwlock.reader_count ==
+                std::numeric_limits<std::uint32_t>::max()) {
+                return;
+            }
+            ++rwlock.reader_count;
+            waiter.ready = true;
+        }
+    }
 }
 
 std::size_t A32PthreadSyncService::find_semaphore(
@@ -356,9 +521,11 @@ bool A32PthreadSyncService::release_mutex(
         return false;
     }
 
+    mutexes_[index].recursion_depth = 0U;
     const auto waiter = oldest_mutex_waiter(mutex_address);
     if (waiter.has_value()) {
         mutexes_[index].owner_thread_id = waiters_[*waiter].thread_id;
+        mutexes_[index].recursion_depth = 1U;
         waiters_[*waiter].ready = true;
     } else {
         mutexes_[index].owner_thread_id = 0U;
@@ -588,6 +755,269 @@ runtime::A32HostServiceDisposition A32PthreadSyncService::handle(
     }
 
 
+
+    const bool mutex_attr_service =
+        svc_immediate == kA32PthreadMutexattrInitSvcImmediate ||
+        svc_immediate == kA32PthreadMutexattrDestroySvcImmediate ||
+        svc_immediate == kA32PthreadMutexattrSettypeSvcImmediate;
+    if (mutex_attr_service) {
+        const std::uint32_t attr_address = regs[0];
+        if (!current_thread_id_.valid() || attr_address == 0U ||
+            mutex_attrs_.empty()) {
+            return A32HostServiceDisposition::Failed;
+        }
+
+        if (svc_immediate == kA32PthreadMutexattrInitSvcImmediate) {
+            const std::size_t index = ensure_mutex_attr(attr_address);
+            if (index >= mutex_attrs_.size()) {
+                regs[0] = static_cast<std::uint32_t>(kA32AndroidEnomem);
+                return A32HostServiceDisposition::Handled;
+            }
+            mutex_attrs_[index] = A32PthreadMutexAttrState{
+                .address = attr_address,
+                .type = kA32PthreadMutexNormal,
+                .active = true,
+            };
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+
+        const std::size_t index = find_mutex_attr(attr_address);
+        if (index >= mutex_attrs_.size()) {
+            regs[0] = static_cast<std::uint32_t>(kA32AndroidEinval);
+            return A32HostServiceDisposition::Handled;
+        }
+
+        if (svc_immediate == kA32PthreadMutexattrDestroySvcImmediate) {
+            mutex_attrs_[index] = {};
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+
+        const std::uint32_t type = regs[1];
+        if (type != kA32PthreadMutexNormal &&
+            type != kA32PthreadMutexRecursive &&
+            type != kA32PthreadMutexErrorcheck) {
+            regs[0] = static_cast<std::uint32_t>(kA32AndroidEinval);
+            return A32HostServiceDisposition::Handled;
+        }
+        mutex_attrs_[index].type = type;
+        regs[0] = 0U;
+        return A32HostServiceDisposition::Handled;
+    }
+
+    if (svc_immediate == kA32PthreadOnceCompleteSvcImmediate) {
+        if (!current_thread_id_.valid()) {
+            return A32HostServiceDisposition::Failed;
+        }
+        const auto index = current_once_owner();
+        if (!index.has_value()) {
+            return A32HostServiceDisposition::Failed;
+        }
+
+        auto once = once_controls_[*index];
+        once_controls_[*index].owner_thread_id = 0U;
+        once_controls_[*index].phase = A32PthreadOncePhase::Done;
+        wake_once_waiters(once.address);
+
+        regs[0] = 0U;
+        regs[14] = once.saved_lr;
+        regs[15] = once.saved_post_svc_pc;
+        cpsr = once.saved_cpsr;
+        return A32HostServiceDisposition::Handled;
+    }
+
+    if (svc_immediate == kA32PthreadOnceSvcImmediate) {
+        if (!current_thread_id_.valid() ||
+            regs[0] == 0U || regs[1] == 0U ||
+            once_controls_.empty() || waiters_.empty() ||
+            options_.once_completion_trampoline == 0U ||
+            regs[13] == 0U) {
+            return A32HostServiceDisposition::Failed;
+        }
+
+        const std::uint32_t once_address = regs[0];
+        const std::uint32_t init_routine = regs[1];
+        const std::size_t index = ensure_once(once_address);
+        if (index >= once_controls_.size()) {
+            return A32HostServiceDisposition::Failed;
+        }
+
+        auto& once = once_controls_[index];
+        if (once.phase == A32PthreadOncePhase::Done) {
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+        if (once.phase == A32PthreadOncePhase::Failed) {
+            return A32HostServiceDisposition::Failed;
+        }
+        if (once.phase == A32PthreadOncePhase::Initializing) {
+            if (!enqueue_waiter(A32PthreadWaitKind::Once, once_address)) {
+                return A32HostServiceDisposition::Failed;
+            }
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Suspended;
+        }
+
+        once.owner_thread_id = current_thread_id_.value();
+        once.saved_post_svc_pc = regs[15];
+        once.saved_lr = regs[14];
+        once.saved_cpsr = cpsr;
+        once.sequence = next_once_sequence_;
+        once.phase = A32PthreadOncePhase::Initializing;
+        if (next_once_sequence_ !=
+            std::numeric_limits<std::uint64_t>::max()) {
+            ++next_once_sequence_;
+        }
+
+        const bool init_thumb = (init_routine & 1U) != 0U;
+        regs[15] = init_routine & ~1U;
+        regs[14] = options_.once_completion_trampoline;
+        if (init_thumb) {
+            cpsr |= 0x20U;
+        } else {
+            cpsr &= ~0x20U;
+        }
+        return A32HostServiceDisposition::Handled;
+    }
+
+    const bool rwlock_service =
+        svc_immediate == kA32PthreadRwlockInitSvcImmediate ||
+        svc_immediate == kA32PthreadRwlockDestroySvcImmediate ||
+        svc_immediate == kA32PthreadRwlockRdlockSvcImmediate ||
+        svc_immediate == kA32PthreadRwlockTryrdlockSvcImmediate ||
+        svc_immediate == kA32PthreadRwlockWrlockSvcImmediate ||
+        svc_immediate == kA32PthreadRwlockTrywrlockSvcImmediate ||
+        svc_immediate == kA32PthreadRwlockUnlockSvcImmediate;
+    if (rwlock_service) {
+        if (!current_thread_id_.valid() || regs[0] == 0U ||
+            rwlocks_.empty() || waiters_.empty()) {
+            return A32HostServiceDisposition::Failed;
+        }
+        const std::uint32_t address = regs[0];
+
+        if (svc_immediate == kA32PthreadRwlockInitSvcImmediate) {
+            if (regs[1] != 0U) {
+                regs[0] = static_cast<std::uint32_t>(kA32AndroidEinval);
+                return A32HostServiceDisposition::Handled;
+            }
+            const std::size_t existing = find_rwlock(address);
+            if (existing < rwlocks_.size() &&
+                (rwlocks_[existing].writer_thread_id != 0U ||
+                 rwlocks_[existing].reader_count != 0U ||
+                 has_waiter(A32PthreadWaitKind::RwRead, address) ||
+                 has_waiter(A32PthreadWaitKind::RwWrite, address))) {
+                regs[0] = static_cast<std::uint32_t>(kA32AndroidEbusy);
+                return A32HostServiceDisposition::Handled;
+            }
+            const std::size_t index = ensure_rwlock(address);
+            if (index >= rwlocks_.size()) {
+                return A32HostServiceDisposition::Failed;
+            }
+            rwlocks_[index] = A32PthreadRwlockState{.address = address};
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+
+        const std::size_t index = ensure_rwlock(address);
+        if (index >= rwlocks_.size()) {
+            return A32HostServiceDisposition::Failed;
+        }
+        auto& rwlock = rwlocks_[index];
+
+        if (svc_immediate == kA32PthreadRwlockDestroySvcImmediate) {
+            if (rwlock.writer_thread_id != 0U ||
+                rwlock.reader_count != 0U ||
+                has_waiter(A32PthreadWaitKind::RwRead, address) ||
+                has_waiter(A32PthreadWaitKind::RwWrite, address)) {
+                regs[0] = static_cast<std::uint32_t>(kA32AndroidEbusy);
+                return A32HostServiceDisposition::Handled;
+            }
+            rwlock = {};
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+
+        const bool read =
+            svc_immediate == kA32PthreadRwlockRdlockSvcImmediate ||
+            svc_immediate == kA32PthreadRwlockTryrdlockSvcImmediate;
+        const bool try_only =
+            svc_immediate == kA32PthreadRwlockTryrdlockSvcImmediate ||
+            svc_immediate == kA32PthreadRwlockTrywrlockSvcImmediate;
+
+        if (read) {
+            if (rwlock.writer_thread_id == current_thread_id_.value()) {
+                regs[0] = static_cast<std::uint32_t>(
+                    try_only ? kA32AndroidEbusy : kA32AndroidEdeadlk);
+                return A32HostServiceDisposition::Handled;
+            }
+            if (rwlock.writer_thread_id == 0U) {
+                if (rwlock.reader_count ==
+                    std::numeric_limits<std::uint32_t>::max()) {
+                    regs[0] = static_cast<std::uint32_t>(kA32AndroidEagain);
+                    return A32HostServiceDisposition::Handled;
+                }
+                ++rwlock.reader_count;
+                regs[0] = 0U;
+                return A32HostServiceDisposition::Handled;
+            }
+            if (try_only) {
+                regs[0] = static_cast<std::uint32_t>(kA32AndroidEbusy);
+                return A32HostServiceDisposition::Handled;
+            }
+            if (!enqueue_waiter(A32PthreadWaitKind::RwRead, address)) {
+                return A32HostServiceDisposition::Failed;
+            }
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Suspended;
+        }
+
+        if (svc_immediate == kA32PthreadRwlockWrlockSvcImmediate ||
+            svc_immediate == kA32PthreadRwlockTrywrlockSvcImmediate) {
+            if (rwlock.writer_thread_id == current_thread_id_.value()) {
+                regs[0] = static_cast<std::uint32_t>(
+                    try_only ? kA32AndroidEbusy : kA32AndroidEdeadlk);
+                return A32HostServiceDisposition::Handled;
+            }
+            if (rwlock.writer_thread_id == 0U &&
+                rwlock.reader_count == 0U) {
+                rwlock.writer_thread_id = current_thread_id_.value();
+                regs[0] = 0U;
+                return A32HostServiceDisposition::Handled;
+            }
+            if (try_only) {
+                regs[0] = static_cast<std::uint32_t>(kA32AndroidEbusy);
+                return A32HostServiceDisposition::Handled;
+            }
+            if (!enqueue_waiter(A32PthreadWaitKind::RwWrite, address)) {
+                return A32HostServiceDisposition::Failed;
+            }
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Suspended;
+        }
+
+        if (rwlock.writer_thread_id != 0U) {
+            if (rwlock.writer_thread_id != current_thread_id_.value()) {
+                regs[0] = static_cast<std::uint32_t>(kA32AndroidEperm);
+                return A32HostServiceDisposition::Handled;
+            }
+            rwlock.writer_thread_id = 0U;
+            grant_rwlock_waiters(index);
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+        if (rwlock.reader_count != 0U) {
+            --rwlock.reader_count;
+            if (rwlock.reader_count == 0U) {
+                grant_rwlock_waiters(index);
+            }
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
+        }
+        regs[0] = static_cast<std::uint32_t>(kA32AndroidEperm);
+        return A32HostServiceDisposition::Handled;
+    }
+
     const bool condition_service =
         svc_immediate == kA32PthreadCondInitSvcImmediate ||
         svc_immediate == kA32PthreadCondDestroySvcImmediate ||
@@ -646,7 +1076,9 @@ runtime::A32HostServiceDisposition A32PthreadSyncService::handle(
         if (mutex_address == 0U ||
             mutex_index >= mutexes_.size() ||
             mutexes_[mutex_index].owner_thread_id !=
-                current_thread_id_.value()) {
+                current_thread_id_.value() ||
+            (mutexes_[mutex_index].type == kA32PthreadMutexRecursive &&
+             mutexes_[mutex_index].recursion_depth != 1U)) {
             return A32HostServiceDisposition::Failed;
         }
 
@@ -732,12 +1164,23 @@ runtime::A32HostServiceDisposition A32PthreadSyncService::handle(
     const std::uint32_t object_address = regs[0];
 
     if (svc_immediate == kA32PthreadMutexInitSvcImmediate) {
-        if (regs[1] != 0U || find_mutex(object_address) < mutexes_.size()) {
+        if (find_mutex(object_address) < mutexes_.size()) {
             return A32HostServiceDisposition::Failed;
         }
-        if (ensure_mutex(object_address) >= mutexes_.size()) {
+        std::uint32_t type = kA32PthreadMutexNormal;
+        if (regs[1] != 0U) {
+            const std::size_t attr = find_mutex_attr(regs[1]);
+            if (attr >= mutex_attrs_.size()) {
+                regs[0] = static_cast<std::uint32_t>(kA32AndroidEinval);
+                return A32HostServiceDisposition::Handled;
+            }
+            type = mutex_attrs_[attr].type;
+        }
+        const std::size_t index = ensure_mutex(object_address);
+        if (index >= mutexes_.size()) {
             return A32HostServiceDisposition::Failed;
         }
+        mutexes_[index].type = type;
         regs[0] = 0U;
         return A32HostServiceDisposition::Handled;
     }
@@ -765,8 +1208,28 @@ runtime::A32HostServiceDisposition A32PthreadSyncService::handle(
         }
         if (mutexes_[index].owner_thread_id == 0U) {
             mutexes_[index].owner_thread_id = current_thread_id_.value();
+            mutexes_[index].recursion_depth = 1U;
             regs[0] = 0U;
             return A32HostServiceDisposition::Handled;
+        }
+        if (mutexes_[index].owner_thread_id == current_thread_id_.value()) {
+            if (mutexes_[index].type == kA32PthreadMutexRecursive) {
+                if (mutexes_[index].recursion_depth >=
+                    kA32PthreadRecursiveDepthMax) {
+                    regs[0] = static_cast<std::uint32_t>(kA32AndroidEagain);
+                    return A32HostServiceDisposition::Handled;
+                }
+                ++mutexes_[index].recursion_depth;
+                regs[0] = 0U;
+                return A32HostServiceDisposition::Handled;
+            }
+            if (mutexes_[index].type == kA32PthreadMutexErrorcheck) {
+                regs[0] = static_cast<std::uint32_t>(
+                    svc_immediate == kA32PthreadMutexTrylockSvcImmediate
+                        ? kA32AndroidEbusy
+                        : kA32AndroidEdeadlk);
+                return A32HostServiceDisposition::Handled;
+            }
         }
         if (svc_immediate == kA32PthreadMutexTrylockSvcImmediate) {
             regs[0] = static_cast<std::uint32_t>(kA32AndroidEbusy);
@@ -781,9 +1244,22 @@ runtime::A32HostServiceDisposition A32PthreadSyncService::handle(
 
     if (svc_immediate == kA32PthreadMutexUnlockSvcImmediate) {
         const std::size_t index = find_mutex(object_address);
-        if (index >= mutexes_.size() ||
-            mutexes_[index].owner_thread_id != current_thread_id_.value()) {
+        if (index >= mutexes_.size()) {
             return A32HostServiceDisposition::Failed;
+        }
+        if (mutexes_[index].owner_thread_id != current_thread_id_.value()) {
+            if (mutexes_[index].type == kA32PthreadMutexRecursive ||
+                mutexes_[index].type == kA32PthreadMutexErrorcheck) {
+                regs[0] = static_cast<std::uint32_t>(kA32AndroidEperm);
+                return A32HostServiceDisposition::Handled;
+            }
+            return A32HostServiceDisposition::Failed;
+        }
+        if (mutexes_[index].type == kA32PthreadMutexRecursive &&
+            mutexes_[index].recursion_depth > 1U) {
+            --mutexes_[index].recursion_depth;
+            regs[0] = 0U;
+            return A32HostServiceDisposition::Handled;
         }
         if (!release_mutex(
                 object_address,
