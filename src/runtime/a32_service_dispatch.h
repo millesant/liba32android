@@ -63,6 +63,14 @@ struct A32ServiceDispatchResult {
 // immediately after the trapped SVC so an external scheduler can resume later.
 // Handler/register/memory side effects are never rolled back.
 [[nodiscard]] A32ServiceDispatchResult execute_a32_with_services(
+    cpu::A32Executor& executor,
+    cpu::ExecutionRequest request,
+    A32HostServiceHandler& handler,
+    std::size_t max_service_calls);
+
+// One-shot compatibility overload. A caller that owns a long-lived execution
+// context should keep one A32Executor and use the overload above.
+[[nodiscard]] A32ServiceDispatchResult execute_a32_with_services(
     memory::GuestMemory& memory,
     cpu::ExecutionRequest request,
     A32HostServiceHandler& handler,

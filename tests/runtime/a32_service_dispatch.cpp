@@ -413,6 +413,46 @@ int test_service_suspension_and_resume() {
     return 0;
 }
 
+int test_reusable_executor_across_suspend_resume() {
+    // svc #0x66; add r0,r0,#2; bx lr
+    constexpr std::array<std::uint8_t, 12> code{
+        0x66, 0x00, 0x00, 0xEF,
+        0x02, 0x00, 0x80, 0xE2,
+        0x1E, 0xFF, 0x2F, 0xE1,
+    };
+    LinearGuestMemory memory{kMemorySize};
+    if (!memory.write(0, code)) {
+        return fail("could not stage reusable-executor service code");
+    }
+
+    liba32android::cpu::A32Executor executor{memory};
+    RecordingHandler handler;
+    handler.disposition = A32HostServiceDisposition::Suspended;
+    handler.replacement_r0 = 40U;
+
+    ExecutionRequest request{};
+    request.regs[14] = kStopPc;
+    request.instruction_count = 3;
+    request.stop_pc = kStopPc;
+    const auto suspended = execute_a32_with_services(
+        executor, request, handler, 1U);
+    const auto resumed_request = make_a32_service_resume_request(
+        suspended, 2U, kStopPc);
+    if (!suspended || !suspended.service_suspended ||
+        !resumed_request.has_value() || executor.execution_count() != 1U) {
+        return fail("reusable executor did not suspend with one CPU slice");
+    }
+
+    RecordingHandler resumed_handler;
+    const auto completed = execute_a32_with_services(
+        executor, *resumed_request, resumed_handler, 1U);
+    if (!completed || !completed.stop_pc_reached ||
+        completed.regs[0] != 42U || executor.execution_count() != 2U) {
+        return fail("reusable executor was not retained across resume");
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -432,6 +472,10 @@ int main() {
         return status;
     }
     if (const int status = test_service_suspension_and_resume();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_reusable_executor_across_suspend_resume();
         status != 0) {
         return status;
     }

@@ -60,7 +60,14 @@ bool LinearGuestMemory::write(std::uint32_t address, std::span<const std::uint8_
     }
 
     std::copy(input.begin(), input.end(), bytes_.begin() + static_cast<std::ptrdiff_t>(offset));
+    if (!input.empty()) {
+        ++code_generation_;
+    }
     return true;
+}
+
+std::optional<std::uint64_t> LinearGuestMemory::code_generation() const noexcept {
+    return code_generation_;
 }
 
 std::uint32_t LinearGuestMemory::base() const noexcept {
@@ -145,6 +152,13 @@ bool MappedGuestMemory::map(std::uint32_t address, std::size_t length, MemoryPer
     const std::uint8_t state = encode_page_state(permissions_value);
     std::fill_n(page_state_.begin() + static_cast<std::ptrdiff_t>(first),
                 static_cast<std::ptrdiff_t>(count), state);
+    if (has_permission(permissions_value, MemoryPermission::Write) &&
+        has_permission(permissions_value, MemoryPermission::Execute)) {
+        writable_executable_pages_ += count;
+    }
+    if (has_permission(permissions_value, MemoryPermission::Execute)) {
+        ++code_generation_;
+    }
     return true;
 }
 
@@ -156,9 +170,19 @@ bool MappedGuestMemory::protect(std::uint32_t address, std::size_t length,
 
     const std::size_t first = page_index(address);
     const std::size_t count = length / page_size_;
+    std::size_t old_writable_executable = 0;
+    bool affects_code = has_permission(permissions_value, MemoryPermission::Execute);
     for (std::size_t index = 0; index < count; ++index) {
-        if (!page_is_mapped(page_state_[first + index])) {
+        const std::uint8_t old_state = page_state_[first + index];
+        if (!page_is_mapped(old_state)) {
             return false;
+        }
+        const MemoryPermission old_permissions = decode_permissions(old_state);
+        affects_code = affects_code ||
+                       has_permission(old_permissions, MemoryPermission::Execute);
+        if (has_permission(old_permissions, MemoryPermission::Write) &&
+            has_permission(old_permissions, MemoryPermission::Execute)) {
+            ++old_writable_executable;
         }
     }
 
@@ -169,6 +193,14 @@ bool MappedGuestMemory::protect(std::uint32_t address, std::size_t length,
     const std::uint8_t state = encode_page_state(permissions_value);
     std::fill_n(page_state_.begin() + static_cast<std::ptrdiff_t>(first),
                 static_cast<std::ptrdiff_t>(count), state);
+    writable_executable_pages_ -= old_writable_executable;
+    if (has_permission(permissions_value, MemoryPermission::Write) &&
+        has_permission(permissions_value, MemoryPermission::Execute)) {
+        writable_executable_pages_ += count;
+    }
+    if (affects_code) {
+        ++code_generation_;
+    }
     return true;
 }
 
@@ -179,9 +211,19 @@ bool MappedGuestMemory::unmap(std::uint32_t address, std::size_t length) {
 
     const std::size_t first = page_index(address);
     const std::size_t count = length / page_size_;
+    std::size_t old_writable_executable = 0;
+    bool affects_code = false;
     for (std::size_t index = 0; index < count; ++index) {
-        if (!page_is_mapped(page_state_[first + index])) {
+        const std::uint8_t old_state = page_state_[first + index];
+        if (!page_is_mapped(old_state)) {
             return false;
+        }
+        const MemoryPermission old_permissions = decode_permissions(old_state);
+        affects_code = affects_code ||
+                       has_permission(old_permissions, MemoryPermission::Execute);
+        if (has_permission(old_permissions, MemoryPermission::Write) &&
+            has_permission(old_permissions, MemoryPermission::Execute)) {
+            ++old_writable_executable;
         }
     }
 
@@ -197,6 +239,10 @@ bool MappedGuestMemory::unmap(std::uint32_t address, std::size_t length) {
 
     std::fill_n(page_state_.begin() + static_cast<std::ptrdiff_t>(first),
                 static_cast<std::ptrdiff_t>(count), 0);
+    writable_executable_pages_ -= old_writable_executable;
+    if (affects_code) {
+        ++code_generation_;
+    }
     return true;
 }
 
@@ -224,8 +270,13 @@ bool MappedGuestMemory::write(std::uint32_t address, std::span<const std::uint8_
     if (!valid_access(address, input.size(), MemoryPermission::Write)) {
         return false;
     }
+    const bool affects_code =
+        !input.empty() && range_has_execute(address, input.size());
     if (!input.empty()) {
         std::memcpy(host_address(address), input.data(), input.size());
+    }
+    if (affects_code) {
+        ++code_generation_;
     }
     return true;
 }
@@ -235,6 +286,14 @@ std::optional<std::uintptr_t> MappedGuestMemory::fastmem_base() const noexcept {
         return std::nullopt;
     }
     return reinterpret_cast<std::uintptr_t>(reservation_);
+}
+
+std::optional<std::uint64_t> MappedGuestMemory::code_generation() const noexcept {
+    return code_generation_;
+}
+
+bool MappedGuestMemory::direct_executable_writes_possible() const noexcept {
+    return writable_executable_pages_ != 0;
 }
 
 std::size_t MappedGuestMemory::page_size() const noexcept {
@@ -283,6 +342,29 @@ bool MappedGuestMemory::valid_access(std::uint32_t address, std::size_t length,
         }
     }
     return true;
+}
+
+bool MappedGuestMemory::range_has_execute(
+    std::uint32_t address,
+    std::size_t length) const noexcept {
+    if (length == 0) {
+        return false;
+    }
+    const std::uint64_t end =
+        static_cast<std::uint64_t>(address) + static_cast<std::uint64_t>(length);
+    if (end > kAddressSpaceSize) {
+        return false;
+    }
+    const std::size_t first = page_index(address);
+    const std::size_t last = static_cast<std::size_t>((end - 1) / page_size_);
+    for (std::size_t index = first; index <= last; ++index) {
+        const std::uint8_t state = page_state_[index];
+        if (page_is_mapped(state) &&
+            has_permission(decode_permissions(state), MemoryPermission::Execute)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool MappedGuestMemory::valid_permissions(MemoryPermission permissions_value) const noexcept {

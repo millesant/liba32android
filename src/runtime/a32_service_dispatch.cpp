@@ -20,10 +20,11 @@ namespace {
 }  // namespace
 
 A32ServiceDispatchResult execute_a32_with_services(
-    memory::GuestMemory& memory,
+    cpu::A32Executor& executor,
     cpu::ExecutionRequest request,
     A32HostServiceHandler& handler,
     std::size_t max_service_calls) {
+    memory::GuestMemory& memory = executor.memory();
     A32ServiceDispatchResult result;
     result.regs = request.regs;
     result.regs[15] = request.entry_pc;
@@ -37,7 +38,7 @@ A32ServiceDispatchResult execute_a32_with_services(
 
     while (true) {
         request.instruction_count = remaining_instructions;
-        const cpu::ExecutionResult cpu_result = cpu::execute(memory, request);
+        const cpu::ExecutionResult cpu_result = executor.execute(request);
 
         if (cpu_result.instructions_executed > remaining_instructions) {
             return failure(result, A32ServiceDispatchError::CpuException);
@@ -115,6 +116,16 @@ A32ServiceDispatchResult execute_a32_with_services(
         }
         return result;
     }
+}
+
+A32ServiceDispatchResult execute_a32_with_services(
+    memory::GuestMemory& memory,
+    cpu::ExecutionRequest request,
+    A32HostServiceHandler& handler,
+    std::size_t max_service_calls) {
+    cpu::A32Executor executor{memory};
+    return execute_a32_with_services(
+        executor, request, handler, max_service_calls);
 }
 
 std::optional<cpu::ExecutionRequest> make_a32_service_resume_request(

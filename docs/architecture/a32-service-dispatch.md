@@ -37,6 +37,20 @@ to the handler. With no stop target, that is a successful fixed-budget
 completion. With a requested stop target that has not been reached, the result
 is instruction-limit exhaustion.
 
+
+## CPU-session lifetime
+
+The dispatcher has two engine-independent entry points. The
+`memory::GuestMemory&` overload constructs one `cpu::A32Executor` for the
+entire dispatch call, so multiple synchronous SVC/resume slices share one
+translated-code cache instead of recreating a JIT after every service trap.
+
+A second overload accepts a caller-owned `cpu::A32Executor&`. Embeddings that
+suspend a service and resume it later may retain that executor across separate
+dispatch calls, preserving translated code across the external scheduling
+handoff. The executor exposes no Dynarmic types, and the handler still receives
+the same `GuestMemory`, registers, CPSR, and SVC immediate.
+
 ## Failure semantics
 
 The runtime result distinguishes:

@@ -1,6 +1,6 @@
 # CPU engine architecture
 
-Status: current through feature 023 resumable SVC state; exact-head implementation CI PASSed
+Status: current CPU/memory execution architecture
 
 ## Boundary
 
@@ -44,6 +44,41 @@ The selection is based on directly observed upstream properties:
 `src/cpu/dynarmic_cpu.cpp` owns the Dynarmic-specific `UserCallbacks` implementation. Dynarmic types do not appear in the generic CPU or memory APIs.
 
 The execution result currently also carries internal diagnostics (`fastmem_enabled` and callback counters) used by regression/device-smoke tests to prove which memory path actually ran. These fields are not a public runtime ABI.
+
+
+## Persistent execution sessions
+
+`cpu::A32Executor` is the reusable engine-independent CPU session. It owns one
+Dynarmic JIT internally and may survive across bounded execution slices and
+host-service traps so translated code can remain cached. The legacy free
+`cpu::execute(GuestMemory&, ...)` function remains a one-shot convenience
+wrapper and constructs a temporary executor.
+
+A reused executor restores caller-supplied core registers/CPSR for every slice,
+zeros the same extended-register state as the previous one-shot path, and clears
+Dynarmic's exclusive-monitor state between slices. Translation-cache lifetime
+therefore changes without letting per-core exclusive state leak between logical
+execution contexts.
+
+Exact guest-instruction budgets remain authoritative. The pinned Dynarmic
+`Jit::Run()` contract may retire more instructions than a requested tick
+budget, so bounded execution continues to use exact `Jit::Step()` retirement.
+Persistent JIT lifetime is an independent optimization and does not weaken the
+instruction-count or stop-PC contract.
+
+`GuestMemory::code_generation()` is the engine-independent invalidation token
+for changes that can affect executable bytes or execute eligibility. A backend
+that cannot provide a token returns `nullopt`, which makes a persistent CPU
+session conservatively clear its translation cache between execution calls.
+`LinearGuestMemory` advances its token on every non-empty write.
+`MappedGuestMemory` advances it when executable mappings/permissions change
+or an ordinary guest-memory write touches executable pages.
+
+Fastmem writes bypass `GuestMemory::write()`. For writable+executable mapped
+pages, `MappedGuestMemory::direct_executable_writes_possible()` therefore
+forces conservative cache clearing between exact instruction steps. Normal
+ELF-like RX code plus RW data retains the persistent translation cache and the
+direct fastmem data path. No host pointer becomes a guest-visible address.
 
 ## Guest-memory seam
 
