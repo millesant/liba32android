@@ -334,6 +334,7 @@ int test_timedwait_deadline_validation_and_race() {
         return fail("could not prepare timeout/signal race");
     }
     fixture.clock.realtime_ns = 19'000'000'000LL;
+    std::array<std::uint32_t, 16> regs{};
     regs = {};
     regs[0] = kCond;
     regs[1] = kMutex;

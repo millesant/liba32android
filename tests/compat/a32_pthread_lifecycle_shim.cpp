@@ -87,6 +87,7 @@ using liba32android::elf::load_elf32_dependency_graph;
 using liba32android::elf::lookup_elf32_graph_symbol;
 using liba32android::memory::MappedGuestMemory;
 using liba32android::memory::MemoryPermission;
+using liba32android::runtime::A32HostServiceDisposition;
 using liba32android::runtime::A32HostServiceRegistry;
 using liba32android::runtime::A32HostServiceRegistryEntry;
 using liba32android::runtime::A32LogicalThreadId;
