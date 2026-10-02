@@ -8,7 +8,6 @@
 #include <limits>
 #include <optional>
 #include <span>
-#include <vector>
 
 #include "memory/guest_memory.h"
 
@@ -73,16 +72,15 @@ struct ProgressiveReadResult {
     return {output.size(), true};
 }
 
-[[nodiscard]] bool read_c_string_with_nul(
+[[nodiscard]] bool find_zero_within(
     const memory::GuestMemory& memory,
     std::uint32_t address,
-    std::uint32_t max_payload_bytes,
-    std::vector<std::uint8_t>& output) {
-    output.clear();
+    std::uint64_t max_bytes,
+    std::optional<std::uint32_t>& zero_offset) {
+    zero_offset.reset();
     std::array<std::uint8_t, kStringScanChunkBytes> buffer{};
     std::uint64_t offset = 0;
-    std::uint64_t remaining =
-        static_cast<std::uint64_t>(max_payload_bytes) + 1U;
+    std::uint64_t remaining = max_bytes;
 
     while (remaining != 0) {
         const std::size_t chunk_size =
@@ -95,14 +93,17 @@ struct ProgressiveReadResult {
             current_address,
             std::span<std::uint8_t>{buffer}.first(chunk_size));
         for (std::size_t index = 0; index < read.bytes_read; ++index) {
-            output.push_back(buffer[index]);
-            if (buffer[index] == 0) return true;
+            if (buffer[index] == 0) {
+                zero_offset = static_cast<std::uint32_t>(
+                    offset + static_cast<std::uint64_t>(index));
+                return true;
+            }
         }
         if (!read.complete) return false;
         offset += chunk_size;
         remaining -= chunk_size;
     }
-    return false;
+    return true;
 }
 
 void write_signed_result(
@@ -128,33 +129,17 @@ void write_signed_result(
     std::uint32_t address,
     std::uint32_t max_payload_bytes,
     std::uint32_t& length) {
-    std::array<std::uint8_t, kStringScanChunkBytes> buffer{};
-    std::uint64_t offset = 0;
-    std::uint64_t remaining =
-        static_cast<std::uint64_t>(max_payload_bytes) + 1U;
-
-    while (remaining != 0) {
-        const std::size_t chunk_size =
-            next_string_chunk_size(address, offset, remaining);
-        if (chunk_size == 0) return false;
-        const auto current_address = static_cast<std::uint32_t>(
-            static_cast<std::uint64_t>(address) + offset);
-        const ProgressiveReadResult read = read_progressive_chunk(
+    std::optional<std::uint32_t> zero_offset;
+    if (!find_zero_within(
             memory,
-            current_address,
-            std::span<std::uint8_t>{buffer}.first(chunk_size));
-        for (std::size_t index = 0; index < read.bytes_read; ++index) {
-            if (buffer[index] == 0) {
-                length = static_cast<std::uint32_t>(
-                    offset + static_cast<std::uint64_t>(index));
-                return true;
-            }
-        }
-        if (!read.complete) return false;
-        offset += chunk_size;
-        remaining -= chunk_size;
+            address,
+            static_cast<std::uint64_t>(max_payload_bytes) + 1U,
+            zero_offset) ||
+        !zero_offset.has_value()) {
+        return false;
     }
-    return false;
+    length = *zero_offset;
+    return true;
 }
 
 [[nodiscard]] bool compare_c_strings(
@@ -393,24 +378,56 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
             return A32HostServiceDisposition::Failed;
         }
 
-        std::vector<std::uint8_t> haystack(haystack_size);
-        std::vector<std::uint8_t> needle(needle_size);
-        if (!memory.read(haystack_address, haystack) ||
-            !memory.read(needle_address, needle)) {
+        // Preserve the old whole-range readability requirement without
+        // materializing either byte range in host vectors.
+        std::int32_t readable = 0;
+        if (!memory.compare_bytes(
+                haystack_address, haystack_address, haystack_size, readable) ||
+            !memory.compare_bytes(
+                needle_address, needle_address, needle_size, readable)) {
             return A32HostServiceDisposition::Failed;
         }
 
-        const auto found = std::search(
-            haystack.begin(), haystack.end(),
-            needle.begin(), needle.end());
-        if (found == haystack.end()) {
-            regs[0] = 0;
-            return A32HostServiceDisposition::Handled;
+        std::array<std::uint8_t, 1> first_needle{};
+        if (!memory.read(needle_address, first_needle)) {
+            return A32HostServiceDisposition::Failed;
         }
 
-        regs[0] = haystack_address +
-            static_cast<std::uint32_t>(
-                std::distance(haystack.begin(), found));
+        const std::uint32_t candidate_count =
+            haystack_size - needle_size + 1U;
+        std::uint32_t searched = 0;
+        while (searched < candidate_count) {
+            std::optional<std::uint32_t> candidate;
+            if (!memory.find_byte(
+                    haystack_address + searched,
+                    first_needle[0],
+                    candidate_count - searched,
+                    candidate)) {
+                return A32HostServiceDisposition::Failed;
+            }
+            if (!candidate.has_value()) {
+                regs[0] = 0;
+                return A32HostServiceDisposition::Handled;
+            }
+
+            std::int32_t comparison = 0;
+            if (!memory.compare_bytes(
+                    *candidate,
+                    needle_address,
+                    needle_size,
+                    comparison)) {
+                return A32HostServiceDisposition::Failed;
+            }
+            if (comparison == 0) {
+                regs[0] = *candidate;
+                return A32HostServiceDisposition::Handled;
+            }
+
+            searched =
+                static_cast<std::uint32_t>(*candidate - haystack_address) + 1U;
+        }
+
+        regs[0] = 0;
         return A32HostServiceDisposition::Handled;
     }
 
@@ -418,18 +435,24 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
         const std::uint32_t destination = regs[0];
         const std::uint32_t source = regs[1];
 
-        std::vector<std::uint8_t> bytes;
-        if (!read_c_string_with_nul(
-                memory, source, options_.max_string_bytes, bytes) ||
-            bytes.size() > std::numeric_limits<std::uint32_t>::max()) {
+        std::optional<std::uint32_t> zero_offset;
+        if (!find_zero_within(
+                memory,
+                source,
+                static_cast<std::uint64_t>(options_.max_string_bytes) + 1U,
+                zero_offset) ||
+            !zero_offset.has_value()) {
             return A32HostServiceDisposition::Failed;
         }
-        const auto size = static_cast<std::uint32_t>(bytes.size());
-        if (size > options_.max_transfer_bytes ||
-            !range_fits_u32(destination, size)) {
+        const std::uint64_t size64 =
+            static_cast<std::uint64_t>(*zero_offset) + 1U;
+        if (size64 > options_.max_transfer_bytes ||
+            size64 > std::numeric_limits<std::uint32_t>::max()) {
             return A32HostServiceDisposition::Failed;
         }
-        if (!memory.write(destination, bytes)) {
+        const auto size = static_cast<std::uint32_t>(size64);
+        if (!range_fits_u32(destination, size) ||
+            !memory.copy_bytes(destination, source, size)) {
             return A32HostServiceDisposition::Failed;
         }
         regs[0] = destination;
@@ -448,42 +471,32 @@ runtime::A32HostServiceDisposition A32LibcMemoryStringService::handle(
             return A32HostServiceDisposition::Handled;
         }
 
-        // Only source bytes actually consumed before NUL need to be
-        // addressable. Remaining output bytes are destination padding.
-        std::vector<std::uint8_t> bytes(count, 0);
-        std::array<std::uint8_t, kStringScanChunkBytes> buffer{};
-        std::uint64_t offset = 0;
-        std::uint64_t remaining = count;
-        while (remaining != 0) {
-            const std::size_t chunk_size =
-                next_string_chunk_size(source, offset, remaining);
-            if (chunk_size == 0) {
-                return A32HostServiceDisposition::Failed;
-            }
-            const auto current_address = static_cast<std::uint32_t>(
-                static_cast<std::uint64_t>(source) + offset);
-            const ProgressiveReadResult read = read_progressive_chunk(
-                memory,
-                current_address,
-                std::span<std::uint8_t>{buffer}.first(chunk_size));
-            bool terminated = false;
-            for (std::size_t index = 0; index < read.bytes_read; ++index) {
-                bytes[static_cast<std::size_t>(offset) + index] = buffer[index];
-                if (buffer[index] == 0) {
-                    terminated = true;
-                    break;
-                }
-            }
-            if (terminated) break;
-            if (!read.complete) {
-                return A32HostServiceDisposition::Failed;
-            }
-            offset += chunk_size;
-            remaining -= chunk_size;
-        }
-        if (!memory.write(destination, bytes)) {
+        // Scan before modifying the destination so source faults retain the
+        // existing no-destination-mutation behavior. Bytes after an observed
+        // NUL are not read.
+        std::optional<std::uint32_t> zero_offset;
+        if (!find_zero_within(memory, source, count, zero_offset)) {
             return A32HostServiceDisposition::Failed;
         }
+
+        if (!zero_offset.has_value()) {
+            if (!memory.copy_bytes(destination, source, count)) {
+                return A32HostServiceDisposition::Failed;
+            }
+        } else {
+            // strncpy overlap is undefined by libc. Fill the complete
+            // destination first so the backend validates the whole writable
+            // range before publishing the non-NUL source prefix.
+            if (!memory.fill_bytes(destination, 0, count)) {
+                return A32HostServiceDisposition::Failed;
+            }
+            if (*zero_offset != 0U &&
+                !memory.copy_bytes(
+                    destination, source, *zero_offset)) {
+                return A32HostServiceDisposition::Failed;
+            }
+        }
+
         regs[0] = destination;
         return A32HostServiceDisposition::Handled;
     }
