@@ -205,3 +205,21 @@ and exercises concurrent readers followed by a suspended/resumed writer.
 The try-rwlock stubs are retained as bounded coherent companions required by
 the accepted issue contract, but supplied-binary evidence is not claimed for
 those two symbols.
+
+## Pthread utility extension
+
+The partial libc shim additionally exports three direct private-SVC wrappers:
+`pthread_getschedparam`, `pthread_setschedparam`, and `pthread_setname_np`.
+These are the only new utility symbols directly evidenced by the supplied
+ARM32 libraries after scanning every `armeabi-v7a` object in the VLC APK.
+
+The dedicated ARM32 pthread consumer now requires 35 eager JUMP_SLOT imports
+and executes the three wrappers against bounded logical lifecycle state. The
+scheduler surface is deliberately synthetic: SCHED_OTHER/0 is queryable and
+settable, while broader host scheduler policy is not exposed. Thread names are
+bounded logical metadata and are not forwarded to host pthreads.
+
+The supplied `libemu32.so` is AArch64, so its semaphore and pthread-attribute
+utility imports are not used to broaden this AArch32 shim. The original
+45-wrapper base libc consumer remains backward compatible.
+

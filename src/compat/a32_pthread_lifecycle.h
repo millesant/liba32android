@@ -12,6 +12,9 @@
 #define LIBA32ANDROID_A32_PTHREAD_EXIT_SVC 0x10D
 #define LIBA32ANDROID_A32_PTHREAD_JOIN_SVC 0x10E
 #define LIBA32ANDROID_A32_PTHREAD_DETACH_SVC 0x10F
+#define LIBA32ANDROID_A32_PTHREAD_GETSCHEDPARAM_SVC 0x122
+#define LIBA32ANDROID_A32_PTHREAD_SETSCHEDPARAM_SVC 0x123
+#define LIBA32ANDROID_A32_PTHREAD_SETNAME_NP_SVC 0x124
 
 #ifdef __cplusplus
 
@@ -52,11 +55,19 @@ inline constexpr std::uint32_t kA32PthreadJoinSvcImmediate =
     LIBA32ANDROID_A32_PTHREAD_JOIN_SVC;
 inline constexpr std::uint32_t kA32PthreadDetachSvcImmediate =
     LIBA32ANDROID_A32_PTHREAD_DETACH_SVC;
+inline constexpr std::uint32_t kA32PthreadGetschedparamSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_GETSCHEDPARAM_SVC;
+inline constexpr std::uint32_t kA32PthreadSetschedparamSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_SETSCHEDPARAM_SVC;
+inline constexpr std::uint32_t kA32PthreadSetnameNpSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_SETNAME_NP_SVC;
 
 inline constexpr std::uint32_t kA32PthreadCreateJoinable = 0U;
 inline constexpr std::uint32_t kA32PthreadCreateDetached = 1U;
 inline constexpr std::uint32_t kA32PthreadDefaultStackSize = 1024U * 1024U;
 inline constexpr std::uint32_t kA32PthreadDestructorIterations = 4U;
+inline constexpr std::int32_t kA32SchedOther = 0;
+inline constexpr std::size_t kA32PthreadNameBytes = 16U;
 
 struct A32PthreadAttrState {
     std::uint32_t address{};
@@ -82,6 +93,9 @@ struct A32PthreadThreadState {
     std::uint32_t return_value{};
     std::uint32_t joiner_thread_id{};
     std::uint32_t join_result_address{};
+    std::int32_t sched_policy{kA32SchedOther};
+    std::int32_t sched_priority{};
+    std::array<std::uint8_t, kA32PthreadNameBytes> name{};
     bool detached{};
     bool owns_stack{};
     bool initial_thread{};

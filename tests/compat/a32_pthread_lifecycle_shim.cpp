@@ -87,6 +87,9 @@ using liba32android::compat::kA32PthreadCreateSvcImmediate;
 using liba32android::compat::kA32PthreadDetachSvcImmediate;
 using liba32android::compat::kA32PthreadEqualSvcImmediate;
 using liba32android::compat::kA32PthreadExitSvcImmediate;
+using liba32android::compat::kA32PthreadGetschedparamSvcImmediate;
+using liba32android::compat::kA32PthreadSetschedparamSvcImmediate;
+using liba32android::compat::kA32PthreadSetnameNpSvcImmediate;
 using liba32android::compat::kA32PthreadJoinSvcImmediate;
 using liba32android::compat::kA32PthreadSelfSvcImmediate;
 using liba32android::compat::make_a32_libc_memory_string_shim_catalog_entry;
@@ -350,7 +353,7 @@ int main(int argc, char** argv) {
         return fail("pthread lifecycle consumer did not bind partial libc shim");
     }
 
-    constexpr std::array<std::string_view, 32> shim_names{{
+    constexpr std::array<std::string_view, 35> shim_names{{
         "pthread_attr_init",
         "pthread_attr_destroy",
         "pthread_attr_getdetachstate",
@@ -363,6 +366,9 @@ int main(int argc, char** argv) {
         "pthread_exit",
         "pthread_join",
         "pthread_detach",
+        "pthread_getschedparam",
+        "pthread_setschedparam",
+        "pthread_setname_np",
         "pthread_cond_init",
         "pthread_cond_destroy",
         "pthread_cond_wait",
@@ -507,7 +513,7 @@ int main(int argc, char** argv) {
         return fail("could not register initial logical pthread");
     }
 
-    const std::array<A32HostServiceRegistryEntry, 33> services{{
+    const std::array<A32HostServiceRegistryEntry, 36> services{{
         {kA32PthreadAttrInitSvcImmediate, &lifecycle},
         {kA32PthreadAttrDestroySvcImmediate, &lifecycle},
         {kA32PthreadAttrGetdetachstateSvcImmediate, &lifecycle},
@@ -520,6 +526,9 @@ int main(int argc, char** argv) {
         {kA32PthreadExitSvcImmediate, &lifecycle},
         {kA32PthreadJoinSvcImmediate, &lifecycle},
         {kA32PthreadDetachSvcImmediate, &lifecycle},
+        {kA32PthreadGetschedparamSvcImmediate, &lifecycle},
+        {kA32PthreadSetschedparamSvcImmediate, &lifecycle},
+        {kA32PthreadSetnameNpSvcImmediate, &lifecycle},
         {kA32PthreadCondInitSvcImmediate, &sync},
         {kA32PthreadCondDestroySvcImmediate, &sync},
         {kA32PthreadCondWaitSvcImmediate, &sync},
@@ -589,6 +598,9 @@ int main(int argc, char** argv) {
     const std::uint32_t attr_address = *data + 0x100U;
     const std::uint32_t detach_out = *data + 0x140U;
     const std::uint32_t stack_size_out = *data + 0x144U;
+    const std::uint32_t sched_policy_out = *data + 0x148U;
+    const std::uint32_t sched_param_address = *data + 0x14cU;
+    const std::uint32_t thread_name_address = *data + 0x150U;
     const std::uint32_t thread_out = *data + 0x180U;
     const std::uint32_t join_result_out = *data + 0x188U;
     const std::uint32_t cond_address = *data + 0x1a0U;
@@ -638,6 +650,67 @@ int main(int argc, char** argv) {
     if (!result || !*result || result->regs[0] != 0U ||
         read_u32(memory, detach_out) != kA32PthreadCreateDetached) {
         return fail("real pthread_attr_getdetachstate wrapper failed");
+    }
+    ++wrapper_calls;
+
+    constexpr std::array<std::uint8_t, 4> default_sched_param{{0,0,0,0}};
+    constexpr std::array<std::uint8_t, 8> logical_thread_name{{
+        'v','l','c','-','a','3','2',0,
+    }};
+    if (!memory.write(sched_param_address, default_sched_param) ||
+        !memory.write(thread_name_address, logical_thread_name)) {
+        return fail("could not stage pthread utility inputs");
+    }
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_getschedparam",
+        registry,
+        stack_top,
+        *stop,
+        1U,
+        sched_policy_out,
+        sched_param_address);
+    if (!result || !*result || result->regs[0] != 0U ||
+        read_u32(memory, sched_policy_out) != 0U ||
+        read_u32(memory, sched_param_address) != 0U) {
+        return fail("real pthread_getschedparam wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_setschedparam",
+        registry,
+        stack_top,
+        *stop,
+        1U,
+        0U,
+        sched_param_address);
+    if (!result || !*result || result->regs[0] != 0U) {
+        return fail("real pthread_setschedparam wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_pthread_setname_np",
+        registry,
+        stack_top,
+        *stop,
+        1U,
+        thread_name_address);
+    const auto* named_root = find_thread(std::span{threads}, 1U);
+    if (!result || !*result || result->regs[0] != 0U ||
+        named_root == nullptr ||
+        named_root->name[0] != 'v' || named_root->name[1] != 'l' ||
+        named_root->name[2] != 'c' || named_root->name[3] != '-' ||
+        named_root->name[4] != 'a' || named_root->name[5] != '3' ||
+        named_root->name[6] != '2' || named_root->name[7] != 0U) {
+        return fail("real pthread_setname_np wrapper failed");
     }
     ++wrapper_calls;
 

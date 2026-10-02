@@ -97,12 +97,15 @@ The VLC libraries were extracted from the supplied
 - `0x025fbd88 pthread_attr_getstacksize@LIBC`
 - `0x025fbd8c pthread_attr_setstacksize@LIBC`
 - `0x025fbd90 pthread_self@LIBC`
+- `0x025fbd94 pthread_setname_np@LIBC`
 - `0x025fbec4 pthread_rwlock_init@LIBC`
 - `0x025fbec8 pthread_rwlock_wrlock@LIBC`
 - `0x025fbecc pthread_rwlock_unlock@LIBC`
 - `0x025fbed0 pthread_rwlock_destroy@LIBC`
+- `0x025fbedc pthread_setschedparam@LIBC`
 - `0x025fbee0 pthread_cond_timedwait@LIBC`
 - `0x025fbf34 pthread_rwlock_rdlock@LIBC`
+- `0x025fbf48 pthread_getschedparam@LIBC`
 - `0x025fbf4c pthread_equal@LIBC`
 
 ### VLC libvlcjni
@@ -129,6 +132,9 @@ The supplied ARM32 artifacts directly require:
 - `pthread_exit`
 - `pthread_join`
 - `pthread_detach`
+- `pthread_getschedparam`
+- `pthread_setschedparam`
+- `pthread_setname_np`
 - `pthread_cond_init`
 - `pthread_cond_destroy`
 - `pthread_cond_wait`
@@ -160,16 +166,26 @@ The bounded compatibility surface additionally includes
 `pthread_attr_getdetachstate` as the read side of the accepted detach-state
 attribute pair. `pthread_join` is directly imported by multiple supplied VLC
 ARMv7 libraries; `pthread_detach` is directly imported by the shipped ARMv7
-`libc++_shared.so`. Unrelated scheduling attributes, explicit-stack attrs, cancellation, cond
-attributes, rwlock attrs, timed rwlocks, and the try-rwlock entry points remain
-outside the direct supplied-binary evidence. The accepted #42 implementation
-still provides bounded tryrdlock/trywrlock as coherent nonblocking companions
-covered by focused tests.
+`libc++_shared.so`. A complete scan of every `lib/armeabi-v7a/*.so` in the supplied VLC APK
+found the new utility imports only in ARM32 `libvlc.so`. That file has sha256
+`f92266dbe28b4e4e2477225cf6bbb56291c2e1ca7a72a4573013ebf9d52517d4`.
+The supplied APK has sha256
+`10da537a545d5c9aa111571bbab3d1aae4204d2c4a0d4a4cdc22efab6d71cbe5`.
 
-A supplied AArch64 `libemu32.so`
-(`sha256:a467c34bc1543a2a193191ad42c4ac3a8e4a00181e83fa223abf7d42bc421119`)
-also imports `pthread_attr_getdetachstate`, which is supporting evidence only;
-the primary acceptance evidence for this slice remains the ARM32 FMOD/VLC set.
+Explicit-stack attrs, cancellation, cond attributes, rwlock attrs, timed
+rwlocks, and pthread attribute scheduling functions remain outside the direct
+supplied ARM32 evidence. The accepted #42 implementation still provides
+bounded tryrdlock/trywrlock as coherent nonblocking companions covered by
+focused tests.
+
+The separately supplied `libemu32.so` is AArch64, not AArch32
+(`sha256:a467c34bc1543a2a193191ad42c4ac3a8e4a00181e83fa223abf7d42bc421119`).
+Its imports include `sem_trywait`, `sem_getvalue`,
+`pthread_attr_getdetachstate`, `pthread_attr_setschedparam`, and
+`pthread_setname_np`; those are architecture-specific supporting observations
+only and do not justify new AArch32 exports. The supplied ARM32 FMOD library
+(`sha256:982e994c46a7f797fbd6e10df31a98d544c2bf117fe33c2292f4d6cc454a6544`)
+adds no new utility imports beyond the already accepted lifecycle/mutex set.
 
 Static imports prove required symbol resolution and ABI reachability. The
 repository's generated ARM32 lifecycle fixture separately exercises blocked

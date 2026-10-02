@@ -248,10 +248,40 @@ Timed rwlocks and rwlock attrs are not imported by the supplied ARM32 evidence
 and remain outside this slice despite the clock seam already existing for
 condition variables.
 
+## Thread scheduling and naming utilities
+
+A full scan of the supplied VLC APK's ARMv7 libraries finds three additional
+pthread utility imports in `libvlc.so`: `pthread_getschedparam`,
+`pthread_setschedparam`, and `pthread_setname_np`. They are implemented by
+the existing bounded lifecycle service through private SVCs `0x122` through
+`0x124`; they do not create or address host pthreads.
+
+Each logical thread stores synthetic scheduler metadata. New logical threads
+begin at `SCHED_OTHER` with priority zero. `pthread_getschedparam` reports that
+logical state. `pthread_setschedparam` accepts the evidenced safe operation
+`SCHED_OTHER/0`; a nonzero SCHED_OTHER priority returns EINVAL, while policy
+changes outside the accepted logical surface return EPERM rather than mutating
+an unrelated host scheduler. Unknown logical pthread identities return ESRCH.
+
+`pthread_setname_np` stores a bounded logical name in the thread record. The
+accepted Android/Bionic limit is 16 bytes including the terminating NUL, so a
+name without a NUL in the first 16 guest bytes returns ERANGE. Guest-address
+faults remain host-service failures rather than being converted into invented
+pthread errors. The logical name is metadata only and is never forwarded to a
+host thread.
+
+The supplied `libemu32.so` is AArch64 rather than AArch32. Its semaphore and
+attribute-scheduling imports therefore do not justify expanding this AArch32
+compatibility surface. No supplied ARM32 artifact currently imports
+`sem_trywait`, `sem_getvalue`, `sem_timedwait`, `pthread_mutex_timedlock`,
+`pthread_attr_setschedparam`, or `pthread_getattr_np`.
+
 ## Scope limits
 
 Process-shared synchronization, cond/rwlock attributes, mutex protocol/
 pshared attributes, timed rwlocks, signals/futex internals, cancellation,
-robust mutex recovery, priority inheritance/protection, and scheduler policy
-remain outside this bounded synchronization/TLS service. Join/detach ownership and thread-exit destructor
-iteration are handled by the separate pthread lifecycle service.
+robust mutex recovery, and priority inheritance/protection remain outside this
+bounded synchronization/TLS service. The lifecycle service exposes only the
+accepted logical SCHED_OTHER/0 query/set behavior above; broader scheduling
+policy remains outside the compatibility contract. Join/detach ownership and
+thread-exit destructor iteration are also handled by that lifecycle service.
