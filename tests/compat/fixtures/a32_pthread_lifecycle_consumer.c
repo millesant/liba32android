@@ -10,6 +10,15 @@ typedef struct fixture_pthread_cleanup {
     void (*routine)(void*);
     void* argument;
 } fixture_pthread_cleanup;
+typedef unsigned int fixture_sigset_t;
+typedef struct fixture_sigaction_state {
+    void (*handler)(int);
+    fixture_sigset_t mask;
+    int flags;
+    void (*restorer)(void);
+} fixture_sigaction_t;
+_Static_assert(sizeof(fixture_sigset_t) == 4U, "ARM32 sigset_t ABI must be 4 bytes");
+_Static_assert(sizeof(fixture_sigaction_t) == 16U, "ARM32 sigaction ABI must be 16 bytes");
 
 __attribute__((visibility("default")))
 int pthread_attr_init(void* attr);
@@ -58,6 +67,16 @@ void __pthread_cleanup_push(
     void* argument);
 __attribute__((visibility("default")))
 void __pthread_cleanup_pop(fixture_pthread_cleanup* cleanup, int execute);
+__attribute__((visibility("default")))
+int raise(int signal);
+__attribute__((visibility("default")))
+int sigaction(int signal, const fixture_sigaction_t* action, fixture_sigaction_t* old_action);
+__attribute__((visibility("default")))
+int sigpending(fixture_sigset_t* set);
+__attribute__((visibility("default")))
+int pthread_sigmask(int how, const fixture_sigset_t* set, fixture_sigset_t* old_set);
+__attribute__((visibility("default")))
+int sigwait(const fixture_sigset_t* set, int* signal);
 __attribute__((visibility("default")))
 int pthread_cond_init(void* cond, const void* attr);
 __attribute__((visibility("default")))
@@ -183,6 +202,33 @@ int fixture_pthread_cleanup_push_pop(
     __pthread_cleanup_push(cleanup, fixture_cleanup_marker, (void*)marker);
     __pthread_cleanup_pop(cleanup, 1);
     return *marker == 0x59c1ea59U ? 0 : 1;
+}
+
+__attribute__((visibility("default"), noinline))
+int fixture_sigaction(
+    int signal,
+    const fixture_sigaction_t* action,
+    fixture_sigaction_t* old_action) {
+    return sigaction(signal, action, old_action);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_sigmask(
+    int how,
+    const fixture_sigset_t* set,
+    fixture_sigset_t* old_set) {
+    return pthread_sigmask(how, set, old_set);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_raise(int signal) {
+    return raise(signal);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_sigpending(fixture_sigset_t* set) {
+    return sigpending(set);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_sigwait(const fixture_sigset_t* set, int* signal) {
+    return sigwait(set, signal);
 }
 __attribute__((visibility("default"), noinline))
 int fixture_pthread_cond_init(void* cond, const void* attr) {

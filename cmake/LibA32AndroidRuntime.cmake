@@ -12,6 +12,7 @@ add_library(liba32android SHARED
     src/compat/a32_libc_heap.cpp
     src/compat/a32_pthread_sync.cpp
     src/compat/a32_pthread_lifecycle.cpp
+    src/compat/a32_signal.cpp
     src/compat/a32_libdl.cpp
     src/compat/a32_libdl_close_transaction.cpp
     src/compat/a32_libdl_open_transaction.cpp

@@ -1183,6 +1183,7 @@ runtime::A32HostServiceDisposition A32PthreadLifecycleService::handle(
         .argument = argument,
         .stack_base = *stack_base,
         .stack_size = allocated_stack_size,
+        .signal_mask = threads_[current].signal_mask,
         .detached = detached,
         .owns_stack = true,
         .initial_thread = false,

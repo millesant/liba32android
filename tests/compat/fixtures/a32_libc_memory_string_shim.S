@@ -3,6 +3,7 @@
 #include "compat/a32_libc_heap.h"
 #include "compat/a32_pthread_sync.h"
 #include "compat/a32_pthread_lifecycle.h"
+#include "compat/a32_signal.h"
 #include "compat/a32_aeabi_atexit.h"
 
 .syntax unified
@@ -69,6 +70,11 @@ LIBA32_STUB pthread_setschedparam,    LIBA32ANDROID_A32_PTHREAD_SETSCHEDPARAM_SV
 LIBA32_STUB pthread_setname_np,       LIBA32ANDROID_A32_PTHREAD_SETNAME_NP_SVC
 LIBA32_STUB __pthread_cleanup_push,    LIBA32ANDROID_A32_PTHREAD_CLEANUP_PUSH_SVC
 LIBA32_STUB __pthread_cleanup_pop,     LIBA32ANDROID_A32_PTHREAD_CLEANUP_POP_SVC
+LIBA32_STUB raise,                     LIBA32ANDROID_A32_RAISE_SVC
+LIBA32_STUB sigaction,                 LIBA32ANDROID_A32_SIGACTION_SVC
+LIBA32_STUB sigpending,                LIBA32ANDROID_A32_SIGPENDING_SVC
+LIBA32_STUB pthread_sigmask,           LIBA32ANDROID_A32_PTHREAD_SIGMASK_SVC
+LIBA32_STUB sigwait,                   LIBA32ANDROID_A32_SIGWAIT_SVC
 LIBA32_STUB pthread_cond_init,        LIBA32ANDROID_A32_PTHREAD_COND_INIT_SVC
 LIBA32_STUB pthread_cond_destroy,     LIBA32ANDROID_A32_PTHREAD_COND_DESTROY_SVC
 LIBA32_STUB pthread_cond_wait,        LIBA32ANDROID_A32_PTHREAD_COND_WAIT_SVC

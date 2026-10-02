@@ -239,3 +239,20 @@ The dedicated ARM32 pthread consumer therefore requires 37 eager JUMP_SLOT
 imports and performs 43 wrapper calls. The original 45-wrapper base libc
 consumer remains unchanged. No pthread cancellation symbol is added.
 
+## Signal compatibility extension
+
+The partial libc shim adds direct private-SVC wrappers for `raise`,
+`sigaction`, `sigpending`, `pthread_sigmask`, and `sigwait`, matching
+the supplied ARM32 FMOD/VLC import evidence.
+
+The dedicated ARM32 pthread consumer requires 42 eager JUMP_SLOT imports.
+Its real integration queries the default SIGPIPE action, blocks SIGPIPE,
+generates it through `raise`, verifies `sigpending`, consumes it through
+`sigwait`, and restores the original mask. The harness now performs 49
+host-side wrapper calls.
+
+Signal state is logical and bounded: masks/pending bits are attached to logical
+pthread state, while dispositions and waiters remain inside the compat signal
+service. No host signal or host thread identity is exposed. The original
+45-wrapper base libc consumer remains unchanged.
+

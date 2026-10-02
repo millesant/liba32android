@@ -2046,3 +2046,46 @@ freestanding ARM32 pthread consumer requires 37 eager JUMP_SLOT imports and
 executes a real cleanup push/pop callback in addition to the prior lifecycle,
 synchronization, and utility coverage.
 
+## L32-C068 — ARM32 bounded signal compatibility subset
+
+Supplied ARM32 FMOD/VLC binaries require `raise`; VLC `libvlc.so` also
+requires `sigaction`, `sigpending`, `pthread_sigmask`, and `sigwait`.
+Private SVCs `0x127` through `0x12b` implement exactly this evidence-backed
+surface.
+
+ARM32 `sigset_t` is one 32-bit word. The accepted public model represents
+signals 1 through 31; signal 32 is reserved rather than presented as general
+realtime-signal support. `SIGKILL` and `SIGSTOP` cannot be blocked. ARM32
+`struct sigaction` is the 16-byte layout
+`{handler:u32, mask:u32, flags:u32, restorer:u32}`.
+
+Signal masks and thread-pending bits live on the existing bounded
+`A32PthreadThreadState`. A created logical pthread inherits its creator's
+signal mask and starts with no pending signal. Process dispositions, a
+process-pending bitset, and finite `sigwait` records live in
+`A32SignalService`; no host pthread/TID or host signal object enters guest
+state.
+
+The directly evidenced VLC SIGPIPE flow is supported end to end:
+`pthread_sigmask(SIG_BLOCK)` -> masked `raise(SIGPIPE)` -> `sigpending`
+-> `sigwait` consumption -> mask restore. An empty `sigwait` suspends
+cooperatively and wakes through bounded logical waiter state rather than host
+blocking.
+
+`raise` targets the current logical thread. Default-ignored / `SIG_IGN`
+signals are discarded; masked signals become pending. Unblocked default-fatal,
+default-stop/default-continue, and custom-handler cases cross an explicit
+runtime failure boundary rather than pretending asynchronous delivery
+succeeded. This includes the supplied VLC `raise(SIGFPE)` fatal paths.
+
+`sigaction`, `sigpending`, and `raise` publish libc-style `errno`
+through the existing guest errno sink. `pthread_sigmask` and `sigwait`
+return error numbers directly. Invalid arguments use Android `EINVAL=22`;
+invalid guest pointers use Android `EFAULT=14`.
+
+The partial libc shim now exposes 84 libc-compatible public exports: the prior
+79-function surface plus these five signal functions. The dedicated ARM32
+pthread consumer requires 42 eager JUMP_SLOT imports and executes 49 host-side
+wrapper calls. `pthread_kill`, signal frames, realtime signals, host-signal
+passthrough, and general asynchronous handler execution remain out of scope.
+
