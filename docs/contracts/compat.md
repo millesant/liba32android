@@ -2089,3 +2089,39 @@ pthread consumer requires 42 eager JUMP_SLOT imports and executes 49 host-side
 wrapper calls. `pthread_kill`, signal frames, realtime signals, host-signal
 passthrough, and general asynchronous handler execution remain out of scope.
 
+## L32-C069 — ARM32 scheduler/priority compatibility
+
+Supplied ARM32 FMOD/VLC binaries require `setpriority`,
+`sched_get_priority_max`, `sched_get_priority_min`, `sched_getaffinity`,
+`sched_setscheduler`, and `sched_yield`. Private SVCs `0x12c` through
+`0x131` implement exactly this evidence-backed surface without translating
+guest identities into host PIDs/TIDs or invoking host scheduler APIs.
+
+Priority-limit queries expose Linux/Bionic values: `SCHED_OTHER`,
+`SCHED_BATCH`, and `SCHED_IDLE` use priority 0; `SCHED_FIFO` and
+`SCHED_RR` use 1..99. Invalid policy values fail with guest `EINVAL`.
+
+`sched_setscheduler` accepts only pid 0 plus `SCHED_OTHER/0`, sharing the
+same logical policy/priority fields used by pthread scheduling helpers.
+Realtime and otherwise unsupported policy mutations fail with `EPERM`;
+nonzero task IDs fail with `ESRCH`.
+
+ARM32 Bionic's LP32 `cpu_set_t` is one 32-bit word. The default runtime
+reports one synthetic logical CPU with mask bit 0 for
+`sched_getaffinity(0, 4, ...)`; this is explicit logical topology, not host
+CPU discovery or pinning.
+
+`setpriority(PRIO_PROCESS, 0, prio)` maintains a logical per-thread nice
+value inherited by pthread creation. Values are clamped to -20..19. Numeric
+increases are accepted as logical lower-priority state; attempts to improve
+priority return guest `EACCES`, matching the unprivileged Linux boundary.
+
+`sched_yield` is a real cooperative scheduling boundary: it returns success
+in guest r0 and yields through the generic Suspended service disposition until
+the embedding resumes the post-SVC continuation.
+
+The partial libc shim now exposes 90 libc-compatible public exports. The
+dedicated ARM32 pthread consumer requires 48 eager JUMP_SLOT imports and
+performs 55 wrapper calls. Host scheduler mutation, host affinity, cgroups,
+realtime execution, and Linux task-ID emulation remain out of scope.
+

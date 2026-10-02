@@ -18,6 +18,7 @@
 #include "compat/a32_libc_integer.h"
 #include "compat/a32_pthread_lifecycle.h"
 #include "compat/a32_signal.h"
+#include "compat/a32_scheduler.h"
 #include "cpu/a32_cpu.h"
 #include "elf/elf32_dependency_graph.h"
 #include "elf/elf32_dependency_loader.h"
@@ -52,6 +53,8 @@ using liba32android::compat::A32SemaphoreState;
 using liba32android::compat::A32SignalActionState;
 using liba32android::compat::A32SignalService;
 using liba32android::compat::A32SignalWaiter;
+using liba32android::compat::A32SchedulerOptions;
+using liba32android::compat::A32SchedulerService;
 using liba32android::compat::A32PthreadLifecycleOptions;
 using liba32android::compat::A32PthreadLifecycleService;
 using liba32android::compat::A32PthreadThreadPhase;
@@ -110,6 +113,16 @@ using liba32android::compat::kA32SigSetmask;
 using liba32android::compat::kA32SigPipe;
 using liba32android::compat::kA32SignalSetBits;
 using liba32android::compat::a32_signal_bit;
+using liba32android::compat::kA32CpuSetBytes;
+using liba32android::compat::kA32PrioProcess;
+using liba32android::compat::kA32SchedOther;
+using liba32android::compat::kA32SchedRr;
+using liba32android::compat::kA32SetprioritySvcImmediate;
+using liba32android::compat::kA32SchedGetPriorityMaxSvcImmediate;
+using liba32android::compat::kA32SchedGetPriorityMinSvcImmediate;
+using liba32android::compat::kA32SchedGetaffinitySvcImmediate;
+using liba32android::compat::kA32SchedSetschedulerSvcImmediate;
+using liba32android::compat::kA32SchedYieldSvcImmediate;
 using liba32android::compat::make_a32_libc_memory_string_shim_catalog_entry;
 using liba32android::cpu::ExecutionRequest;
 using liba32android::cpu::InstructionSet;
@@ -136,6 +149,7 @@ using liba32android::runtime::A32LogicalThreadId;
 using liba32android::runtime::A32ServiceDispatchResult;
 using liba32android::runtime::execute_a32_with_services;
 using liba32android::runtime::make_a32_service_resume_context;
+using liba32android::runtime::make_a32_service_resume_request;
 
 constexpr std::uint32_t kMaxFixtureNameBytes = 128U;
 constexpr std::uint64_t kMaxFixtureImageBytes = 4U << 20U;
@@ -371,7 +385,7 @@ int main(int argc, char** argv) {
         return fail("pthread lifecycle consumer did not bind partial libc shim");
     }
 
-    constexpr std::array<std::string_view, 42> shim_names{{
+    constexpr std::array<std::string_view, 48> shim_names{{
         "pthread_attr_init",
         "pthread_attr_destroy",
         "pthread_attr_getdetachstate",
@@ -394,6 +408,12 @@ int main(int argc, char** argv) {
         "sigpending",
         "pthread_sigmask",
         "sigwait",
+        "setpriority",
+        "sched_get_priority_max",
+        "sched_get_priority_min",
+        "sched_getaffinity",
+        "sched_setscheduler",
+        "sched_yield",
         "pthread_cond_init",
         "pthread_cond_destroy",
         "pthread_cond_wait",
@@ -524,6 +544,11 @@ int main(int argc, char** argv) {
         std::span{signal_waiters},
         signal_errno,
     };
+    A32SchedulerService scheduler{
+        std::span{threads},
+        signal_errno,
+        A32SchedulerOptions{.logical_cpu_count = 1U},
+    };
     A32PthreadLifecycleService lifecycle{
         A32PthreadLifecycleOptions{
             .stack_arena_base = *thread_stacks,
@@ -544,11 +569,12 @@ int main(int argc, char** argv) {
         !lifecycle.register_initial_thread(*root) ||
         !lifecycle.set_current_thread_id(*root) ||
         !sync.set_current_thread_id(*root) ||
-        !signals.set_current_thread_id(*root)) {
+        !signals.set_current_thread_id(*root) ||
+        !scheduler.set_current_thread_id(*root)) {
         return fail("could not register initial logical pthread");
     }
 
-    const std::array<A32HostServiceRegistryEntry, 43> services{{
+    const std::array<A32HostServiceRegistryEntry, 49> services{{
         {kA32PthreadAttrInitSvcImmediate, &lifecycle},
         {kA32PthreadAttrDestroySvcImmediate, &lifecycle},
         {kA32PthreadAttrGetdetachstateSvcImmediate, &lifecycle},
@@ -571,6 +597,12 @@ int main(int argc, char** argv) {
         {kA32SigpendingSvcImmediate, &signals},
         {kA32PthreadSigmaskSvcImmediate, &signals},
         {kA32SigwaitSvcImmediate, &signals},
+        {kA32SetprioritySvcImmediate, &scheduler},
+        {kA32SchedGetPriorityMaxSvcImmediate, &scheduler},
+        {kA32SchedGetPriorityMinSvcImmediate, &scheduler},
+        {kA32SchedGetaffinitySvcImmediate, &scheduler},
+        {kA32SchedSetschedulerSvcImmediate, &scheduler},
+        {kA32SchedYieldSvcImmediate, &scheduler},
         {kA32PthreadCondInitSvcImmediate, &sync},
         {kA32PthreadCondDestroySvcImmediate, &sync},
         {kA32PthreadCondWaitSvcImmediate, &sync},
@@ -660,6 +692,7 @@ int main(int argc, char** argv) {
     const std::uint32_t signal_old_mask_address = *data + 0x344U;
     const std::uint32_t signal_pending_address = *data + 0x348U;
     const std::uint32_t signal_out_address = *data + 0x34cU;
+    const std::uint32_t scheduler_affinity_address = *data + 0x350U;
 
     result = run_wrapper(
         memory,
@@ -878,6 +911,110 @@ int main(int argc, char** argv) {
     if (!result || !*result || result->regs[0] != 0U ||
         threads[0].signal_mask != 0U) {
         return fail("real pthread_sigmask restore wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_sched_get_priority_max",
+        registry,
+        stack_top,
+        *stop,
+        static_cast<std::uint32_t>(kA32SchedRr));
+    if (!result || !*result ||
+        static_cast<std::int32_t>(result->regs[0]) != 99) {
+        return fail("real sched_get_priority_max wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_sched_get_priority_min",
+        registry,
+        stack_top,
+        *stop,
+        static_cast<std::uint32_t>(kA32SchedRr));
+    if (!result || !*result ||
+        static_cast<std::int32_t>(result->regs[0]) != 1) {
+        return fail("real sched_get_priority_min wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_sched_getaffinity",
+        registry,
+        stack_top,
+        *stop,
+        0U,
+        kA32CpuSetBytes,
+        scheduler_affinity_address);
+    if (!result || !*result || result->regs[0] != 0U ||
+        read_u32(memory, scheduler_affinity_address) != 1U) {
+        return fail("real sched_getaffinity wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_sched_setscheduler",
+        registry,
+        stack_top,
+        *stop,
+        0U,
+        static_cast<std::uint32_t>(kA32SchedOther),
+        sched_param_address);
+    if (!result || !*result || result->regs[0] != 0U ||
+        threads[0].sched_policy != kA32SchedOther ||
+        threads[0].sched_priority != 0) {
+        return fail("real sched_setscheduler SCHED_OTHER/0 wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_setpriority",
+        registry,
+        stack_top,
+        *stop,
+        static_cast<std::uint32_t>(kA32PrioProcess),
+        0U,
+        10U);
+    if (!result || !*result || result->regs[0] != 0U ||
+        threads[0].nice_value != 10) {
+        return fail("real setpriority logical nice wrapper failed");
+    }
+    ++wrapper_calls;
+
+    result = run_wrapper(
+        memory,
+        graph_result.graph,
+        "fixture_sched_yield",
+        registry,
+        stack_top,
+        *stop);
+    if (!result || !*result || !result->service_suspended ||
+        result->regs[0] != 0U) {
+        return fail("real sched_yield wrapper did not suspend");
+    }
+    const auto yield_resume = make_a32_service_resume_request(
+        *result,
+        kInstructionBudget,
+        *stop);
+    if (!yield_resume.has_value()) {
+        return fail("could not build sched_yield continuation");
+    }
+    const auto yield_resumed =
+        execute_a32_with_services(memory, *yield_resume, registry, 4U);
+    if (!yield_resumed || yield_resumed.service_suspended ||
+        !yield_resumed.stop_pc_reached ||
+        yield_resumed.regs[0] != 0U) {
+        return fail("real sched_yield continuation failed");
     }
     ++wrapper_calls;
 

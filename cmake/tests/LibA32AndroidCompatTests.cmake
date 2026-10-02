@@ -139,6 +139,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_scheduler_test
+    tests/compat/a32_scheduler.cpp
+)
+
+add_test(
+    NAME a32_scheduler_priority_affinity
+    COMMAND compat_scheduler_test
+)
+
+liba32android_add_test_executable(
     compat_aeabi_atexit_test
     tests/compat/a32_aeabi_atexit.cpp
 )

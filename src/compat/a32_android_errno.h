@@ -10,6 +10,7 @@ namespace liba32android::compat {
 inline constexpr std::int32_t kA32AndroidEperm = 1;
 inline constexpr std::int32_t kA32AndroidEsrch = 3;
 inline constexpr std::int32_t kA32AndroidEagain = 11;
+inline constexpr std::int32_t kA32AndroidEacces = 13;
 inline constexpr std::int32_t kA32AndroidEnomem = 12;
 inline constexpr std::int32_t kA32AndroidEfault = 14;
 inline constexpr std::int32_t kA32AndroidEbusy = 16;

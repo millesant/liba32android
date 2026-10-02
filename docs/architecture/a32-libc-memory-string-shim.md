@@ -256,3 +256,18 @@ pthread state, while dispositions and waiters remain inside the compat signal
 service. No host signal or host thread identity is exposed. The original
 45-wrapper base libc consumer remains unchanged.
 
+## Scheduler/affinity compatibility extension
+
+The partial libc shim adds direct private-SVC wrappers for `setpriority`,
+`sched_get_priority_max`, `sched_get_priority_min`, `sched_getaffinity`,
+`sched_setscheduler`, and `sched_yield`.
+
+The dedicated ARM32 pthread consumer now requires 48 eager JUMP_SLOT imports
+and performs 55 host-side wrapper calls. Integration checks realtime priority
+query bounds, one-CPU synthetic ARM32 affinity, the accepted
+`SCHED_OTHER/0` mutation, logical current-thread nice state, and a real
+`sched_yield` suspension followed by post-SVC continuation.
+
+No wrapper calls the host scheduler or affinity APIs. The original 45-wrapper
+base libc consumer remains unchanged.
+
