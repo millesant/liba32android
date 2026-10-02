@@ -1,7 +1,7 @@
 # Runtime contract
 
 Status: Accepted current project contract
-Last reconciled: 2026-09-27
+Last reconciled: 2026-10-02
 
 ## L32-R001 — Game-agnostic runtime
 
@@ -17,7 +17,7 @@ Dynarmic remains behind `src/cpu/`. Higher layers depend on engine-independent c
 
 ## L32-R004 — Guest-memory seam
 
-`memory::GuestMemory` is the generic memory contract. `LinearGuestMemory` is the deterministic correctness/test backend. `MappedGuestMemory` owns mapped guest pages, permissions, and optional high-base 4 GiB fastmem backing.
+`memory::GuestMemory` is the generic memory contract. In addition to bounded read/write and instruction fetch, it defines engine-independent bulk byte operations for overlap-safe copy/move, fill, compare, and byte search. Every bulk operation has a generic callback-backed fallback; concrete backends may accelerate it internally only while preserving the same logical-address, full-range validation, permission, zero-length, and failure semantics. Backend host pointers or spans are never exposed through this seam. `LinearGuestMemory` is the deterministic correctness/test backend. `MappedGuestMemory` owns mapped guest pages, permissions, and optional high-base 4 GiB fastmem backing. Bulk writes that touch executable bytes participate in the same `code_generation()` invalidation contract as ordinary writes.
 
 ## L32-R005 — Fastmem is optional
 
@@ -129,3 +129,31 @@ This first stable embedding surface deliberately does not expose ELF loading,
 dependency providers, compatibility-service registration, pthread scheduling,
 Android filesystem/APK I/O, dynamic dlopen transactions, or device/UI policy.
 Those remain composable internal contracts until separately promoted.
+
+## L32-R014 — Reusable CPU sessions and executable-code invalidation
+
+The engine-independent CPU layer may retain one internal execution session
+across bounded requests so Dynarmic translated code can be reused. Dynarmic
+types remain confined to `src/cpu/`. Reuse must not weaken the exact
+guest-instruction budget, stop-PC behavior, memory-fault reporting, SVC state,
+or caller-owned register/CPSR semantics. Engine-local exclusive-monitor state
+must not leak between independently bounded execution slices.
+
+Persistent translated code requires an engine-independent invalidation
+contract. `memory::GuestMemory::code_generation()` may expose a monotonic
+token for changes that can affect executable bytes or execute eligibility.
+Backends without a reliable token must cause conservative cache clearing across
+execution calls. Callback-mediated writes that may change executable bytes must
+invalidate affected translated ranges before the next guest instruction can use
+them.
+
+Fastmem remains optional and may bypass ordinary memory callbacks. A backend
+that permits direct writes to executable mappings must report that condition so
+the CPU layer can conservatively prevent stale translated code. The accepted
+mapped-memory backend preserves the normal RX-code/RW-data fast path and uses
+the conservative path only while writable+executable mappings exist.
+
+The one-shot `cpu::execute` API remains valid. Runtime/service layers that
+perform repeated slices may instead retain `cpu::A32Executor` without exposing
+that private C++ type through the stable public C ABI.
+

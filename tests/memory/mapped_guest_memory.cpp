@@ -1,6 +1,7 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 
 #include "memory/guest_memory.h"
 
@@ -102,6 +103,79 @@ int main() {
     }
     if (memory.map(0x20000, page, MemoryPermission::Execute)) {
         return fail("execute-only fastmem mapping unexpectedly accepted");
+    }
+
+    constexpr std::uint32_t bulk_base = 0x30000;
+    if (!memory.map(bulk_base, page * 4, rw)) {
+        return fail("bulk-operation page range map failed");
+    }
+    const auto source = bulk_base + static_cast<std::uint32_t>(page) - 32U;
+    const auto destination =
+        bulk_base + static_cast<std::uint32_t>(page * 3) - 32U;
+    std::array<std::uint8_t, 64> pattern{};
+    for (std::size_t index = 0; index < pattern.size(); ++index) {
+        pattern[index] = static_cast<std::uint8_t>(index);
+    }
+    if (!memory.write(source, pattern) ||
+        !memory.copy_bytes(destination, source, pattern.size())) {
+        return fail("cross-page mapped bulk copy failed");
+    }
+    std::array<std::uint8_t, 64> copied{};
+    if (!memory.read(destination, copied) || copied != pattern) {
+        return fail("cross-page mapped bulk copy produced wrong bytes");
+    }
+
+    std::int32_t compare = 1;
+    if (!memory.compare_bytes(
+            source, destination, pattern.size(), compare) ||
+        compare != 0) {
+        return fail("cross-page mapped bulk compare failed");
+    }
+    if (!memory.fill_bytes(destination + 10U, 0xAA, 4U)) {
+        return fail("mapped bulk fill failed");
+    }
+    std::optional<std::uint32_t> found;
+    if (!memory.find_byte(
+            destination, 0xAA, pattern.size(), found) ||
+        found != std::optional<std::uint32_t>{destination + 10U}) {
+        return fail("mapped bulk find returned wrong address");
+    }
+
+    if (!memory.protect(
+            bulk_base + static_cast<std::uint32_t>(page * 2),
+            page * 2,
+            MemoryPermission::Read)) {
+        return fail("bulk destination read-only protect failed");
+    }
+    if (memory.copy_bytes(destination, source, pattern.size()) ||
+        memory.fill_bytes(destination, 0, pattern.size())) {
+        return fail("mapped bulk write bypassed guest write permission");
+    }
+
+    if (!memory.unmap(
+            bulk_base + static_cast<std::uint32_t>(page), page)) {
+        return fail("bulk source page unmap failed");
+    }
+    if (memory.compare_bytes(
+            source, destination, pattern.size(), compare) ||
+        memory.find_byte(source, 0, pattern.size(), found)) {
+        return fail("mapped bulk read ignored an unmapped page");
+    }
+
+    constexpr std::uint32_t rwx_base = 0x80000;
+    const auto rwx = MemoryPermission::Read |
+                     MemoryPermission::Write |
+                     MemoryPermission::Execute;
+    if (!memory.map(rwx_base, page, rwx)) {
+        return fail("RWX bulk-generation page map failed");
+    }
+    const auto generation_before_bulk_write = memory.code_generation();
+    if (!generation_before_bulk_write.has_value() ||
+        !memory.fill_bytes(rwx_base, 0xCC, 16U) ||
+        !memory.code_generation().has_value() ||
+        *memory.code_generation() <= *generation_before_bulk_write ||
+        !memory.direct_executable_writes_possible()) {
+        return fail("bulk executable write did not advance generation");
     }
 
     return 0;

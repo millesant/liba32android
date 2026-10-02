@@ -1,5 +1,8 @@
+#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <span>
 #include <iostream>
 #include <optional>
 #include <string_view>
@@ -28,6 +31,7 @@ using liba32android::elf::build_elf32_symbol_index;
 using liba32android::elf::lookup_elf32_graph_symbol;
 using liba32android::elf::lookup_elf32_graph_symbol_for_reference;
 using liba32android::elf::lookup_elf32_symbol;
+using liba32android::memory::GuestMemory;
 using liba32android::memory::LinearGuestMemory;
 
 constexpr std::uint32_t kMemoryBase = 0x1000;
@@ -40,6 +44,56 @@ int fail(const char* message) {
     std::cerr << message << '\n';
     return 1;
 }
+
+class RecordingGuestMemory final : public GuestMemory {
+public:
+    struct ReadEvent {
+        std::uint32_t address{};
+        std::size_t size{};
+    };
+
+    RecordingGuestMemory(std::size_t size, std::uint32_t base)
+        : backing_{size, base} {}
+
+    bool read(
+        std::uint32_t address,
+        std::span<std::uint8_t> output) const override {
+        reads_.push_back(ReadEvent{
+            .address = address,
+            .size = output.size(),
+        });
+        return backing_.read(address, output);
+    }
+
+    bool write(
+        std::uint32_t address,
+        std::span<const std::uint8_t> input) override {
+        return backing_.write(address, input);
+    }
+
+    [[nodiscard]] LinearGuestMemory& backing() noexcept {
+        return backing_;
+    }
+
+    void reset_reads() const {
+        reads_.clear();
+    }
+
+    [[nodiscard]] std::size_t count_reads(
+        std::uint32_t address,
+        std::size_t size) const {
+        return static_cast<std::size_t>(std::count_if(
+            reads_.begin(),
+            reads_.end(),
+            [&](const ReadEvent& event) {
+                return event.address == address && event.size == size;
+            }));
+    }
+
+private:
+    LinearGuestMemory backing_;
+    mutable std::vector<ReadEvent> reads_;
+};
 
 Elf32SymbolLookupOptions options() {
     return Elf32SymbolLookupOptions{
@@ -544,6 +598,61 @@ bool stage_gnu_lookup(LinearGuestMemory& memory,
         }
     }
     return true;
+}
+
+int test_hash_headers_and_symbol_candidates_avoid_tiny_duplicate_reads() {
+    RecordingGuestMemory sysv_memory{0x6000, kMemoryBase};
+    if (!write_string(sysv_memory.backing(), 1, "target") ||
+        !write_symbol(
+            sysv_memory.backing(), 1, 1, 0x100, 4, 1, 2, 0, 1) ||
+        !stage_sysv_lookup(sysv_memory.backing(), 1, {0, 0})) {
+        return fail("could not stage SysV read-shape fixture");
+    }
+
+    sysv_memory.reset_reads();
+    const auto sysv_index = build_elf32_symbol_index(
+        sysv_memory, metadata(true, false), options());
+    if (!sysv_index ||
+        sysv_memory.count_reads(kSysvHash, 8U) != 1U ||
+        sysv_memory.count_reads(kSysvHash, 4U) != 0U ||
+        sysv_memory.count_reads(kSysvHash + 4U, 4U) != 0U) {
+        return fail("SysV hash header was not read as one bounded block");
+    }
+
+    sysv_memory.reset_reads();
+    const auto found = lookup_elf32_symbol(
+        sysv_memory,
+        0x4000,
+        metadata(true, false),
+        sysv_index.index,
+        "target",
+        options());
+    if (!found ||
+        sysv_memory.count_reads(kSymbolTable + 16U, 16U) != 1U) {
+        return fail("symbol candidate entry was read more than once");
+    }
+
+    RecordingGuestMemory gnu_memory{0x6000, kMemoryBase};
+    const std::uint32_t hash = test_gnu_hash("target");
+    if (!write_string(gnu_memory.backing(), 1, "target") ||
+        !write_symbol(
+            gnu_memory.backing(), 1, 1, 0x100, 4, 1, 2, 0, 1) ||
+        !stage_gnu_lookup(gnu_memory.backing(), {hash | 1U})) {
+        return fail("could not stage GNU read-shape fixture");
+    }
+
+    gnu_memory.reset_reads();
+    const auto gnu_index = build_elf32_symbol_index(
+        gnu_memory, metadata(false, true), options());
+    if (!gnu_index ||
+        gnu_memory.count_reads(kGnuHash, 16U) != 1U ||
+        gnu_memory.count_reads(kGnuHash, 4U) != 0U ||
+        gnu_memory.count_reads(kGnuHash + 4U, 4U) != 0U ||
+        gnu_memory.count_reads(kGnuHash + 8U, 4U) != 0U ||
+        gnu_memory.count_reads(kGnuHash + 12U, 4U) != 0U) {
+        return fail("GNU hash header was not read as one bounded block");
+    }
+    return 0;
 }
 
 int test_indexing_is_read_only() {
@@ -1227,6 +1336,9 @@ int main() {
     if (const int status = test_gnu_failures(); status != 0) return status;
     if (const int status = test_dual_hash_consistency(); status != 0) return status;
     if (const int status = test_read_failures_and_symbol_range(); status != 0) return status;
+    if (const int status =
+            test_hash_headers_and_symbol_candidates_avoid_tiny_duplicate_reads();
+        status != 0) return status;
     if (const int status = test_indexing_is_read_only(); status != 0) return status;
     if (const int status = test_sysv_exact_lookup_and_collision(); status != 0) return status;
     if (const int status = test_gnu_exact_lookup(); status != 0) return status;

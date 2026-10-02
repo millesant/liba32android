@@ -1,6 +1,6 @@
 # CPU engine architecture
 
-Status: current through feature 023 resumable SVC state; exact-head implementation CI PASSed
+Status: current CPU/memory execution architecture
 
 ## Boundary
 
@@ -45,9 +45,44 @@ The selection is based on directly observed upstream properties:
 
 The execution result currently also carries internal diagnostics (`fastmem_enabled` and callback counters) used by regression/device-smoke tests to prove which memory path actually ran. These fields are not a public runtime ABI.
 
+
+## Persistent execution sessions
+
+`cpu::A32Executor` is the reusable engine-independent CPU session. It owns one
+Dynarmic JIT internally and may survive across bounded execution slices and
+host-service traps so translated code can remain cached. The legacy free
+`cpu::execute(GuestMemory&, ...)` function remains a one-shot convenience
+wrapper and constructs a temporary executor.
+
+A reused executor restores caller-supplied core registers/CPSR for every slice,
+zeros the same extended-register state as the previous one-shot path, and clears
+Dynarmic's exclusive-monitor state between slices. Translation-cache lifetime
+therefore changes without letting per-core exclusive state leak between logical
+execution contexts.
+
+Exact guest-instruction budgets remain authoritative. The pinned Dynarmic
+`Jit::Run()` contract may retire more instructions than a requested tick
+budget, so bounded execution continues to use exact `Jit::Step()` retirement.
+Persistent JIT lifetime is an independent optimization and does not weaken the
+instruction-count or stop-PC contract.
+
+`GuestMemory::code_generation()` is the engine-independent invalidation token
+for changes that can affect executable bytes or execute eligibility. A backend
+that cannot provide a token returns `nullopt`, which makes a persistent CPU
+session conservatively clear its translation cache between execution calls.
+`LinearGuestMemory` advances its token on every non-empty write.
+`MappedGuestMemory` advances it when executable mappings/permissions change
+or an ordinary guest-memory write touches executable pages.
+
+Fastmem writes bypass `GuestMemory::write()`. For writable+executable mapped
+pages, `MappedGuestMemory::direct_executable_writes_possible()` therefore
+forces conservative cache clearing between exact instruction steps. Normal
+ELF-like RX code plus RW data retains the persistent translation cache and the
+direct fastmem data path. No host pointer becomes a guest-visible address.
+
 ## Guest-memory seam
 
-`src/memory/guest_memory.h` defines `memory::GuestMemory`, the engine-independent memory contract. It separates data reads/writes from instruction reads and exposes an optional internal `fastmem_base()` capability. Higher runtime layers continue to traffic only in logical 32-bit guest virtual addresses; the host reservation pointer is not a guest pointer and must not leak into loader/ABI APIs.
+`src/memory/guest_memory.h` defines `memory::GuestMemory`, the engine-independent memory contract. It separates data reads/writes from instruction reads, exposes an optional internal `fastmem_base()` capability, and provides bulk byte primitives for move/copy, fill, compare, and byte search. Those bulk operations have generic callback-backed fallbacks, while `LinearGuestMemory` and `MappedGuestMemory` override them with allocation-free direct implementations after the same logical range and permission checks. Higher runtime layers continue to traffic only in logical 32-bit guest virtual addresses; neither the host reservation pointer nor backend-local spans leak into loader/ABI APIs.
 
 Two implementations currently exist:
 
@@ -57,6 +92,8 @@ Two implementations currently exist:
 `MappedGuestMemory` owns page mapping metadata and page-aligned `map`, `protect`, and `unmap` lifecycle operations. Unmapped pages remain `PROT_NONE`. Mapped pages are made host-accessible with `mprotect`, while guest read/write/execute permission checks remain explicit in the generic memory API. Unmap discards anonymous page contents and returns the page to `PROT_NONE` without giving up the enclosing 4 GiB reservation.
 
 The first mapped backend intentionally accepts the normal ELF-like permission shapes `R`, `RW`, and `RX` (plus `None`) and rejects write-only/execute-only mappings. This keeps guest permission metadata compatible with the direct fastmem host protection used by this first implementation; broader permission emulation can be added if a real binary requires it.
+
+Bulk writes use the same executable-code invalidation contract as ordinary writes. `MappedGuestMemory` validates the entire source/destination range before a direct move or fill, advances `code_generation()` when an executable destination is changed, and retains ordinary read/write permission failure semantics. Callback-only backends remain correct through the base implementations.
 
 ## Fastmem integration
 

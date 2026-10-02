@@ -17,6 +17,9 @@
 
 struct liba32android_runtime {
     liba32android::memory::MappedGuestMemory memory;
+    liba32android::cpu::A32Executor cpu;
+
+    liba32android_runtime() : memory{}, cpu{memory} {}
 };
 
 namespace {
@@ -549,8 +552,7 @@ liba32android_status liba32android_runtime_execute(
     }
 
     try {
-        const auto execution =
-            liba32android::cpu::execute(runtime->memory, internal);
+        const auto execution = runtime->cpu.execute(internal);
         fill_execution_result(execution, result);
 
         if (execution.memory_fault) {

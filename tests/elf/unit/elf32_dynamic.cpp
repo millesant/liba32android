@@ -1,4 +1,5 @@
 #include <bit>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <span>
@@ -12,12 +13,55 @@ namespace {
 using liba32android::elf::Elf32DynamicError;
 using liba32android::elf::Elf32DynamicSegment;
 using liba32android::elf::parse_elf32_dynamic;
+using liba32android::memory::GuestMemory;
 using liba32android::memory::LinearGuestMemory;
 
 int fail(const char* message) {
     std::cerr << message << '\n';
     return 1;
 }
+
+class CountingGuestMemory final : public GuestMemory {
+public:
+    CountingGuestMemory(std::size_t size, std::uint32_t base)
+        : backing_{size, base},
+          readable_end_{static_cast<std::uint64_t>(base) + size} {}
+
+    bool read(
+        std::uint32_t address,
+        std::span<std::uint8_t> output) const override {
+        ++read_calls_;
+        const std::uint64_t end =
+            static_cast<std::uint64_t>(address) + output.size();
+        if (end > readable_end_) {
+            return false;
+        }
+        return backing_.read(address, output);
+    }
+
+    bool write(
+        std::uint32_t address,
+        std::span<const std::uint8_t> input) override {
+        return backing_.write(address, input);
+    }
+
+    void reset_read_calls() noexcept {
+        read_calls_ = 0;
+    }
+
+    void set_readable_end(std::uint64_t readable_end) noexcept {
+        readable_end_ = readable_end;
+    }
+
+    [[nodiscard]] std::size_t read_calls() const noexcept {
+        return read_calls_;
+    }
+
+private:
+    LinearGuestMemory backing_;
+    std::uint64_t readable_end_{};
+    mutable std::size_t read_calls_{};
+};
 
 void append_u32(std::vector<std::uint8_t>& bytes, std::uint32_t value) {
     bytes.push_back(static_cast<std::uint8_t>(value & 0xffU));
@@ -62,6 +106,53 @@ int test_valid_and_unknown_tags() {
     }
     if (result.entries[2].tag != 0 || result.entries[2].value != 0) {
         return fail("DT_NULL terminator was not preserved as the final logical entry");
+    }
+    return 0;
+}
+
+int test_batched_reads_and_early_terminator_fallback() {
+    CountingGuestMemory memory{0x1000, 0x5000};
+    std::vector<std::uint8_t> bytes;
+    for (std::uint32_t index = 0; index < 40; ++index) {
+        append_entry(bytes, 5U, index);
+    }
+    append_entry(bytes, 0U, 0U);
+    if (!memory.write(0x5000, bytes)) {
+        return fail("could not stage batched dynamic fixture");
+    }
+
+    const Elf32DynamicSegment segment{
+        .guest_address = 0x5000,
+        .file_size = static_cast<std::uint32_t>(bytes.size()),
+        .memory_size = static_cast<std::uint32_t>(bytes.size()),
+    };
+    memory.reset_read_calls();
+    const auto result = parse_elf32_dynamic(memory, segment);
+    if (!result || result.entries.size() != 41U ||
+        memory.read_calls() != 2U) {
+        return fail("dynamic parsing did not batch readable entries");
+    }
+
+    CountingGuestMemory boundary{0x200, 0x7000};
+    std::vector<std::uint8_t> padded;
+    append_entry(padded, 5U, 1U);
+    append_entry(padded, 0U, 0U);
+    padded.resize(256U, 0xAAU);
+    if (!boundary.write(0x7000, padded)) {
+        return fail("could not stage terminator-before-fault fixture");
+    }
+    boundary.set_readable_end(0x7010U);
+    const Elf32DynamicSegment boundary_segment{
+        .guest_address = 0x7000,
+        .file_size = 256U,
+        .memory_size = 256U,
+    };
+    boundary.reset_read_calls();
+    const auto boundary_result =
+        parse_elf32_dynamic(boundary, boundary_segment);
+    if (!boundary_result || boundary_result.entries.size() != 2U ||
+        boundary.read_calls() != 3U) {
+        return fail("dynamic batch fallback changed early-DT_NULL semantics");
     }
     return 0;
 }
@@ -125,6 +216,8 @@ int test_invalid_range_and_read_failure() {
 
 int main() {
     if (const int status = test_valid_and_unknown_tags(); status != 0) return status;
+    if (const int status = test_batched_reads_and_early_terminator_fallback();
+        status != 0) return status;
     if (const int status = test_truncated_entry(); status != 0) return status;
     if (const int status = test_unterminated_array(); status != 0) return status;
     if (const int status = test_invalid_range_and_read_failure(); status != 0) return status;

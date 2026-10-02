@@ -1,6 +1,8 @@
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -30,6 +32,7 @@ using liba32android::elf::kRArmGlobDat;
 using liba32android::elf::kRArmJumpSlot;
 using liba32android::elf::kRArmNone;
 using liba32android::elf::kRArmRelative;
+using liba32android::memory::GuestMemory;
 using liba32android::memory::LinearGuestMemory;
 
 constexpr std::uint32_t kMemoryBase = 0x1000;
@@ -40,6 +43,52 @@ int fail(const char* message) {
     std::cerr << message << '\n';
     return 1;
 }
+
+class CountingGuestMemory final : public GuestMemory {
+public:
+    CountingGuestMemory(std::size_t size, std::uint32_t base)
+        : backing_{size, base},
+          readable_end_{static_cast<std::uint64_t>(base) + size} {}
+
+    bool read(
+        std::uint32_t address,
+        std::span<std::uint8_t> output) const override {
+        ++read_calls_;
+        const std::uint64_t end =
+            static_cast<std::uint64_t>(address) + output.size();
+        if (end > readable_end_) {
+            return false;
+        }
+        return backing_.read(address, output);
+    }
+
+    bool write(
+        std::uint32_t address,
+        std::span<const std::uint8_t> input) override {
+        return backing_.write(address, input);
+    }
+
+    [[nodiscard]] LinearGuestMemory& backing() noexcept {
+        return backing_;
+    }
+
+    void reset_read_calls() noexcept {
+        read_calls_ = 0;
+    }
+
+    void set_readable_end(std::uint64_t readable_end) noexcept {
+        readable_end_ = readable_end;
+    }
+
+    [[nodiscard]] std::size_t read_calls() const noexcept {
+        return read_calls_;
+    }
+
+private:
+    LinearGuestMemory backing_;
+    std::uint64_t readable_end_{};
+    mutable std::size_t read_calls_{};
+};
 
 bool write_u32(LinearGuestMemory& memory,
                std::uint32_t address,
@@ -267,6 +316,64 @@ int test_empty_and_exact_decode() {
         return fail("read-only REL planning mutated guest target words");
     }
 
+    return 0;
+}
+
+int test_relocation_table_reads_are_batched_and_preserve_error_order() {
+    CountingGuestMemory memory{0x8000, kMemoryBase};
+    constexpr std::uint32_t kEntryCount = 64U;
+    auto graph = graph_with_rel(
+        0x1000, kRelTable, kEntryCount * 8U);
+    for (std::uint32_t index = 0; index < kEntryCount; ++index) {
+        if (!write_rel_at(
+                memory.backing(),
+                kRelTable,
+                index,
+                0x7000U + index * 4U,
+                index,
+                kRArmNone)) {
+            return fail("could not stage batched REL table");
+        }
+    }
+
+    memory.reset_read_calls();
+    const auto result =
+        build_elf32_rel_relocation_plan(
+            memory, graph, 0, options(kEntryCount));
+    if (!result || result.plan.entries.size() != kEntryCount ||
+        memory.read_calls() != 2U) {
+        return fail("REL planning did not batch readable table entries");
+    }
+
+    CountingGuestMemory ordered{0x4000, kMemoryBase};
+    auto ordered_graph = graph_with_rel(0x1000, kRelTable, 16U);
+    if (!write_rel_at(
+            ordered.backing(),
+            kRelTable,
+            0,
+            0x1000U,
+            1U,
+            kRArmJumpSlot) ||
+        !write_rel_at(
+            ordered.backing(),
+            kRelTable,
+            1,
+            0x1004U,
+            0U,
+            kRArmNone)) {
+        return fail("could not stage REL error-order fixture");
+    }
+    ordered.set_readable_end(
+        static_cast<std::uint64_t>(kRelTable) + 8U);
+    ordered.reset_read_calls();
+    const auto ordered_result =
+        build_elf32_rel_relocation_plan(
+            ordered, ordered_graph, 0, options());
+    if (ordered_result.error !=
+            Elf32RelocationPlanError::UnsupportedRelocationType ||
+        ordered.read_calls() != 2U) {
+        return fail("REL batch fallback changed first-error ordering");
+    }
     return 0;
 }
 
@@ -1062,6 +1169,9 @@ int test_plt_reference_resolution() {
 
 int main() {
     if (const int status = test_empty_and_exact_decode(); status != 0) return status;
+    if (const int status =
+            test_relocation_table_reads_are_batched_and_preserve_error_order();
+        status != 0) return status;
     if (const int status = test_limits_and_graph_inputs(); status != 0) return status;
     if (const int status = test_read_place_and_type_failures(); status != 0) return status;
     if (const int status = test_reference_resolution_and_weak_behavior(); status != 0) return status;

@@ -94,6 +94,22 @@ int test_memmem() {
         A32HostServiceDisposition::Failed) {
         return fail("memmem logical range wrap did not fail");
     }
+
+    constexpr std::array<std::uint8_t, 4> partial_match{
+        'b','c','d','x',
+    };
+    if (!memory.write(0x1fcU, partial_match)) {
+        return fail("could not stage partial unreadable memmem range");
+    }
+    regs = {};
+    regs[0] = 0x1fcU;
+    regs[1] = 8U;
+    regs[2] = 0x140U;
+    regs[3] = 3U;
+    if (service.handle(memory, kA32LibcMemmemSvcImmediate, regs, cpsr) !=
+        A32HostServiceDisposition::Failed) {
+        return fail("memmem stopped validating after an early match");
+    }
     return 0;
 }
 
@@ -201,6 +217,26 @@ int test_strncpy() {
             A32HostServiceDisposition::Handled ||
         regs[0] != 0xffffffffU) {
         return fail("zero-count strncpy accessed guest memory");
+    }
+
+    constexpr std::array<std::uint8_t, 4> destination_sentinel{9,9,9,9};
+    constexpr std::array<std::uint8_t, 2> unterminated_tail{'q','r'};
+    if (!memory.write(0x1a0U, destination_sentinel) ||
+        !memory.write(0x1feU, unterminated_tail)) {
+        return fail("could not stage strncpy source-fault fixture");
+    }
+    regs = {};
+    regs[0] = 0x1a0U;
+    regs[1] = 0x1feU;
+    regs[2] = 4U;
+    if (service.handle(memory, kA32LibcStrncpySvcImmediate, regs, cpsr) !=
+        A32HostServiceDisposition::Failed) {
+        return fail("strncpy unreadable source did not fail");
+    }
+    std::array<std::uint8_t, 4> destination_after{};
+    if (!memory.read(0x1a0U, destination_after) ||
+        destination_after != destination_sentinel) {
+        return fail("strncpy source failure mutated destination");
     }
     return 0;
 }

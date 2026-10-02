@@ -1,6 +1,8 @@
 #include <array>
 #include <bit>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <iostream>
 #include <span>
 
@@ -23,6 +25,7 @@ using liba32android::compat::kA32LibcStrcmpSvcImmediate;
 using liba32android::compat::kA32LibcStrlenSvcImmediate;
 using liba32android::compat::kA32LibcStrncmpSvcImmediate;
 using liba32android::cpu::ExecutionRequest;
+using liba32android::memory::GuestMemory;
 using liba32android::memory::LinearGuestMemory;
 using liba32android::runtime::A32HostServiceDisposition;
 using liba32android::runtime::A32HostServiceRegistry;
@@ -40,6 +43,83 @@ int fail(const char* message) {
 std::int32_t signed_r0(std::uint32_t value) {
     return std::bit_cast<std::int32_t>(value);
 }
+
+class CountingGuestMemory final : public GuestMemory {
+public:
+    explicit CountingGuestMemory(std::size_t size) : backing_{size} {}
+
+    bool read(
+        std::uint32_t address,
+        std::span<std::uint8_t> output) const override {
+        ++read_calls;
+        return backing_.read(address, output);
+    }
+
+    bool write(
+        std::uint32_t address,
+        std::span<const std::uint8_t> input) override {
+        ++write_calls;
+        return backing_.write(address, input);
+    }
+
+    bool copy_bytes(
+        std::uint32_t destination,
+        std::uint32_t source,
+        std::size_t length) override {
+        ++copy_calls;
+        return backing_.copy_bytes(destination, source, length);
+    }
+
+    bool fill_bytes(
+        std::uint32_t address,
+        std::uint8_t value,
+        std::size_t length) override {
+        ++fill_calls;
+        return backing_.fill_bytes(address, value, length);
+    }
+
+    bool compare_bytes(
+        std::uint32_t lhs_address,
+        std::uint32_t rhs_address,
+        std::size_t length,
+        std::int32_t& result) const override {
+        ++compare_calls;
+        return backing_.compare_bytes(
+            lhs_address, rhs_address, length, result);
+    }
+
+    bool find_byte(
+        std::uint32_t address,
+        std::uint8_t value,
+        std::size_t length,
+        std::optional<std::uint32_t>& found_address) const override {
+        ++find_calls;
+        return backing_.find_byte(address, value, length, found_address);
+    }
+
+    std::optional<std::uint64_t> code_generation() const noexcept override {
+        return backing_.code_generation();
+    }
+
+    void reset_counts() noexcept {
+        read_calls = 0;
+        write_calls = 0;
+        copy_calls = 0;
+        fill_calls = 0;
+        compare_calls = 0;
+        find_calls = 0;
+    }
+
+    mutable std::size_t read_calls{};
+    std::size_t write_calls{};
+    std::size_t copy_calls{};
+    std::size_t fill_calls{};
+    mutable std::size_t compare_calls{};
+    mutable std::size_t find_calls{};
+
+private:
+    LinearGuestMemory backing_;
+};
 
 int test_memory_primitives() {
     LinearGuestMemory memory{kMemorySize};
@@ -268,8 +348,12 @@ int test_bounds_and_failures() {
     constexpr std::array<std::uint8_t, 5> too_long{
         'a','b','c','d',0,
     };
+    constexpr std::array<std::uint8_t, 2> boundary_string{
+        'z',0,
+    };
     if (!memory.write(0x100U, destination) ||
-        !memory.write(0x120U, too_long)) {
+        !memory.write(0x120U, too_long) ||
+        !memory.write(0x1feU, boundary_string)) {
         return fail("could not stage bounds inputs");
     }
 
@@ -307,6 +391,14 @@ int test_bounds_and_failures() {
     }
 
     regs = {};
+    regs[0] = 0x1feU;
+    if (service.handle(memory, kA32LibcStrlenSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 1U) {
+        return fail("strlen did not preserve NUL-before-fault semantics");
+    }
+
+    regs = {};
     regs[0] = 0xfffffffeU;
     regs[1] = 1U;
     regs[2] = 3U;
@@ -319,6 +411,93 @@ int test_bounds_and_failures() {
     if (service.handle(memory, 0xAFU, regs, cpsr) !=
         A32HostServiceDisposition::Unhandled) {
         return fail("unknown libc service ID was not unhandled");
+    }
+    return 0;
+}
+
+int test_bulk_paths_and_chunked_string_reads() {
+    CountingGuestMemory memory{8192};
+    std::array<std::uint8_t, 1024> block{};
+    for (std::size_t index = 0; index < block.size(); ++index) {
+        block[index] = static_cast<std::uint8_t>(index);
+    }
+    std::array<std::uint8_t, 1025> text{};
+    text.fill(static_cast<std::uint8_t>('x'));
+    text.back() = 0;
+    if (!memory.write(0x100U, block) ||
+        !memory.write(0x1800U, text)) {
+        return fail("could not stage bulk-path fixtures");
+    }
+
+    A32LibcMemoryStringService service{
+        A32LibcMemoryStringOptions{2048U, 1024U}};
+    std::array<std::uint32_t, 16> regs{};
+    std::uint32_t cpsr = 0x10U;
+
+    memory.reset_counts();
+    regs[0] = 0x800U;
+    regs[1] = 0x100U;
+    regs[2] = static_cast<std::uint32_t>(block.size());
+    if (service.handle(memory, kA32LibcMemcpySvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        memory.copy_calls != 1U || memory.read_calls != 0U ||
+        memory.write_calls != 0U) {
+        return fail("memcpy did not use the bulk guest-memory path");
+    }
+
+    memory.reset_counts();
+    regs = {};
+    regs[0] = 0x100U;
+    regs[1] = 0x800U;
+    regs[2] = static_cast<std::uint32_t>(block.size());
+    if (service.handle(memory, kA32LibcMemcmpSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        signed_r0(regs[0]) != 0 || memory.compare_calls != 1U ||
+        memory.read_calls != 0U) {
+        return fail("memcmp did not use the bulk guest-memory path");
+    }
+
+    memory.reset_counts();
+    regs = {};
+    regs[0] = 0x801U;
+    regs[1] = 0x800U;
+    regs[2] = 1023U;
+    if (service.handle(memory, kA32LibcMemmoveSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        memory.copy_calls != 1U) {
+        return fail("memmove did not use the bulk guest-memory path");
+    }
+
+    memory.reset_counts();
+    regs = {};
+    regs[0] = 0x1000U;
+    regs[1] = 0x5AU;
+    regs[2] = 512U;
+    if (service.handle(memory, kA32LibcMemsetSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        memory.fill_calls != 1U) {
+        return fail("memset did not use the bulk guest-memory path");
+    }
+
+    memory.reset_counts();
+    regs = {};
+    regs[0] = 0x1000U;
+    regs[1] = 0x5AU;
+    regs[2] = 512U;
+    if (service.handle(memory, kA32LibcMemchrSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0x1000U || memory.find_calls != 1U) {
+        return fail("memchr did not use the bulk guest-memory path");
+    }
+
+    memory.reset_counts();
+    regs = {};
+    regs[0] = 0x1800U;
+    if (service.handle(memory, kA32LibcStrlenSvcImmediate, regs, cpsr) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 1024U || memory.read_calls == 0U ||
+        memory.read_calls > 8U) {
+        return fail("strlen did not batch guest-memory reads");
     }
     return 0;
 }
@@ -377,6 +556,10 @@ int main() {
         return status;
     }
     if (const int status = test_bounds_and_failures(); status != 0) {
+        return status;
+    }
+    if (const int status = test_bulk_paths_and_chunked_string_reads();
+        status != 0) {
         return status;
     }
     if (const int status = test_arm_registry_integration(); status != 0) {
