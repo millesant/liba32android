@@ -1897,3 +1897,76 @@ libc clock API is not part of this condition-variable contract and remains
 separate evidence-backed utility work. Process-shared condvars, cond attrs,
 cancellation points, rwlocks, pthread_once, and host futex/condvar passthrough
 remain out of scope.
+
+
+## L32-C065 — ARM32 pthread once, rwlocks, and typed mutexes
+
+Supplied ARM32 FMOD/VLC/libc++ binaries directly import
+`pthread_mutexattr_init/settype/destroy`, `pthread_once`, the existing
+mutex init/destroy/lock/trylock/unlock family, and VLC's
+`pthread_rwlock_init/destroy/rdlock/wrlock/unlock`.
+
+Private SVCs `0x116` through `0x121` extend the bounded pthread
+synchronization service. `0x11A` is reserved for an internal pthread_once
+completion trampoline and is not a guest libc API.
+
+Mutex attributes are finite opaque metadata keyed by guest attr address. This
+contract accepts NORMAL/DEFAULT=0, RECURSIVE=1, and ERRORCHECK=2 only.
+pthread_mutex_init copies the selected type into finite logical mutex metadata.
+Unknown mutex addresses locked without explicit init remain NORMAL lazy static
+initializers.
+
+Recursive mutexes track logical owner and bounded acquisition depth. Owner
+relock/trylock succeeds and increments depth until the accepted 65536-acquisition
+ceiling; the next acquisition returns EAGAIN. Final unlock alone transfers
+ownership. Error-check owner relock returns EDEADLK and owner trylock returns
+EBUSY. Non-owner unlock of RECURSIVE or ERRORCHECK mutexes returns EPERM.
+No mutexattr getter, pshared, protocol, priority inheritance/protection, robust
+state, or host pthread object is introduced.
+
+pthread_once state is finite metadata keyed by guest once-control address.
+The first caller transitions Uninitialized -> Initializing and becomes logical
+owner. The service saves the post-SVC continuation and redirects guest
+execution into the initializer. The initializer returns through a configured
+internal guest trampoline that traps SVC 0x11A; completion marks Done, wakes
+all once waiters, restores the saved continuation, and returns pthread_once
+success without rerunning the initializer.
+
+A concurrent caller during Initializing suspends cooperatively in the existing
+bounded waiter table. Calls after Done return immediately. Nested once controls
+owned by one logical thread complete in last-started order.
+
+If initializer guest execution faults or terminates before the completion
+trampoline, the embedding calls `fail_once_initialization(thread_id)`.
+Owned Initializing controls latch Failed and are not replayed. Subsequent calls
+fail host-service execution; already suspended once waiters remain suspended
+because the owning guest execution has failed. The compatibility layer does not
+fabricate a POSIX pthread_once error result.
+
+Rwlocks use finite opaque metadata with one logical writer owner, bounded
+reader count, and the shared waiter table. No host rwlock/futex identity is
+stored. The accepted default follows current Bionic behavior: while readers
+hold the lock, additional readers may acquire despite a pending writer. Once
+the rwlock becomes fully unlocked, pending writers are preferred; one writer
+is granted before readers, otherwise all pending readers are granted together.
+This defines deterministic wake eligibility only and does not claim global
+fairness or starvation freedom.
+
+Blocking read/write acquisition by the current writer returns EDEADLK; the
+corresponding try calls return EBUSY. A non-owner writer unlock returns EPERM.
+Destroy of an owned or waited-on rwlock returns EBUSY. Write-after-read remains
+a potential cooperative deadlock because read ownership is aggregate, matching
+the relevant Bionic behavior rather than inventing per-reader identity.
+
+The issue contract also accepts bounded pthread_rwlock_tryrdlock and
+pthread_rwlock_trywrlock, although the supplied ARM32 artifacts do not directly
+import those two functions. Timed rwlocks, rwlock attrs, process-shared locks,
+priority policy, cancellation, and robust recovery remain out of scope.
+
+The prepared partial libc shim now contains 74 libc-compatible exports: the
+original 45 base wrappers, twelve lifecycle functions, six condition-variable
+functions, and eleven common synchronization functions. It additionally
+exports one internal once-completion trampoline. The dedicated ARM32 pthread
+consumer requires 32 eager JUMP_SLOT imports and executes recursive typed mutex,
+pthread_once, concurrent rwlock readers, blocked writer wake, and post-SVC
+writer resume end to end.

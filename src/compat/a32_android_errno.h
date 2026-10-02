@@ -7,6 +7,7 @@
 namespace liba32android::compat {
 
 // Android/Linux guest errno numbers shared by compatibility services.
+inline constexpr std::int32_t kA32AndroidEperm = 1;
 inline constexpr std::int32_t kA32AndroidEsrch = 3;
 inline constexpr std::int32_t kA32AndroidEagain = 11;
 inline constexpr std::int32_t kA32AndroidEnomem = 12;

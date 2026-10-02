@@ -46,6 +46,21 @@ Private condition-variable SVC IDs extend the same synchronization service:
 - 0x114 pthread_cond_signal
 - 0x115 pthread_cond_broadcast
 
+Private common-synchronization SVC IDs continue from that range:
+
+- 0x116 pthread_mutexattr_init
+- 0x117 pthread_mutexattr_destroy
+- 0x118 pthread_mutexattr_settype
+- 0x119 pthread_once
+- 0x11A internal pthread_once completion trampoline
+- 0x11B pthread_rwlock_init
+- 0x11C pthread_rwlock_destroy
+- 0x11D pthread_rwlock_rdlock
+- 0x11E pthread_rwlock_tryrdlock
+- 0x11F pthread_rwlock_wrlock
+- 0x120 pthread_rwlock_trywrlock
+- 0x121 pthread_rwlock_unlock
+
 Guest synchronization pointers and TLS keys are logical 32-bit identities. The
 service does not read or publish bionic pthread object layouts and never exposes
 host mutex, semaphore, pthread, or TLS pointers.
@@ -152,10 +167,91 @@ export is intentionally not implemented by this condvar slice. The internal
 clock seam is sufficient to specify/test pthread timed-wait behavior while the
 guest-visible clock API remains separate evidence-backed utility work.
 
+## Mutex attributes and typed ownership
+
+The supplied ARM32 FMOD/VLC/libc++ artifacts import
+`pthread_mutexattr_init`, `pthread_mutexattr_settype`, and
+`pthread_mutexattr_destroy`. The compatibility service therefore stores
+finite opaque attribute metadata keyed by guest attr addresses and accepts
+Android/Bionic type values NORMAL/DEFAULT=0, RECURSIVE=1, and ERRORCHECK=2.
+
+`pthread_mutex_init` consumes the selected type when a bounded attr address
+is supplied. Unknown mutex addresses used directly by lock/trylock retain the
+accepted NORMAL static-initializer behavior.
+
+Recursive mutexes track logical owner ID plus bounded acquisition depth. Owner
+relock and trylock increment depth until the bounded Bionic-compatible ceiling;
+overflow returns EAGAIN. Unlock decrements depth and only publishes a waiter
+when the final acquisition is released.
+
+Error-check mutex owner relock returns EDEADLK; owner trylock returns EBUSY.
+For RECURSIVE and ERRORCHECK mutexes a non-owner unlock returns EPERM. NORMAL
+mutex misuse remains application-undefined and preserves the pre-existing
+compatibility behavior rather than inventing a new public error contract.
+
+The supplied binaries do not import mutexattr getters, pshared, or protocol
+operations, so those remain outside this slice.
+
+## pthread_once execution and failure boundary
+
+`pthread_once` state is finite metadata keyed by the opaque guest once-control
+address. States are Uninitialized, Initializing, Done, and Failed.
+
+The first logical caller becomes the initializer owner. At the pthread_once SVC
+the service saves the post-SVC continuation, LR, and CPSR, then redirects guest
+execution to the requested initializer. The initializer returns through one
+caller-configured internal guest trampoline whose first instruction is private
+SVC 0x11A. Completion marks the control Done, wakes every cooperative waiter,
+and restores the original pthread_once continuation. This allows an initializer
+that suspends in another supported pthread service to interleave with other
+logical threads without host pthreads or a second scheduler.
+
+Concurrent callers while Initializing suspend in the same bounded waiter table.
+Calls after Done return immediately without rerunning the initializer. Nested
+once initialization on the same logical thread is supported by choosing the
+most recently started owned once-control at the completion trampoline.
+
+POSIX does not provide a useful pthread_once error result for arbitrary guest
+faults. If the initializer execution faults or otherwise terminates before the
+completion trampoline, the embedding explicitly calls
+`fail_once_initialization(thread_id)`. All Initializing controls owned by that
+logical thread latch Failed. Subsequent calls fail the host-service execution
+and existing waiters remain suspended because the owning guest execution is
+already considered fatally failed; the compatibility layer does not fabricate
+a POSIX success/error return or replay a partially run initializer.
+
+## Read/write locks
+
+The supplied VLC ARMv7 `libvlc.so` imports rwlock init/destroy/rdlock/wrlock/
+unlock. The issue contract also keeps bounded tryrdlock/trywrlock as coherent
+nonblocking companions; those two are covered by focused tests but are not
+claimed as supplied-binary imports.
+
+Rwlocks are finite opaque metadata: guest address, logical writer owner, reader
+count, and waiters in the shared bounded waiter table. No host
+`pthread_rwlock_t` or futex identity is mirrored.
+
+The accepted default matches current Bionic's reader-preference behavior while
+readers hold the lock: another reader may acquire even when a writer is already
+pending. When the lock reaches fully unlocked state, pending writers are
+preferred over pending readers; one writer is granted first, otherwise all
+pending readers are granted together. This is a deterministic compatibility
+rule, not a claim of global starvation freedom or scheduler fairness.
+
+A writer-owner blocking rdlock/wrlock returns EDEADLK, while the corresponding
+try operations return EBUSY. A writer unlock by another logical thread returns
+EPERM. Read ownership is represented as a bounded aggregate count, matching the
+observable Bionic implementation path rather than inventing per-reader host
+identity. Destroy while owned or with pending readers/writers returns EBUSY.
+
+Timed rwlocks and rwlock attrs are not imported by the supplied ARM32 evidence
+and remain outside this slice despite the clock seam already existing for
+condition variables.
+
 ## Scope limits
 
-Recursive/errorcheck mutexes, pthread_once, rwlocks, process-shared
-semaphores/condvars, cond attributes, signals/futex internals, cancellation,
-robust mutexes, and scheduler policy remain outside this bounded
-synchronization/TLS service. Join/detach ownership and thread-exit destructor
+Process-shared synchronization, cond/rwlock attributes, mutex protocol/
+pshared attributes, timed rwlocks, signals/futex internals, cancellation,
+robust mutex recovery, priority inheritance/protection, and scheduler policy
+remain outside this bounded synchronization/TLS service. Join/detach ownership and thread-exit destructor
 iteration are handled by the separate pthread lifecycle service.

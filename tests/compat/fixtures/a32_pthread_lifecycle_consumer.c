@@ -43,6 +43,34 @@ __attribute__((visibility("default")))
 int pthread_cond_signal(void* cond);
 __attribute__((visibility("default")))
 int pthread_cond_broadcast(void* cond);
+__attribute__((visibility("default")))
+int pthread_mutexattr_init(void* attr);
+__attribute__((visibility("default")))
+int pthread_mutexattr_destroy(void* attr);
+__attribute__((visibility("default")))
+int pthread_mutexattr_settype(void* attr, int type);
+__attribute__((visibility("default")))
+int pthread_mutex_init(void* mutex, const void* attr);
+__attribute__((visibility("default")))
+int pthread_mutex_destroy(void* mutex);
+__attribute__((visibility("default")))
+int pthread_mutex_lock(void* mutex);
+__attribute__((visibility("default")))
+int pthread_mutex_trylock(void* mutex);
+__attribute__((visibility("default")))
+int pthread_mutex_unlock(void* mutex);
+__attribute__((visibility("default")))
+int pthread_once(void* once_control, void (*init_routine)(void));
+__attribute__((visibility("default")))
+int pthread_rwlock_init(void* rwlock, const void* attr);
+__attribute__((visibility("default")))
+int pthread_rwlock_destroy(void* rwlock);
+__attribute__((visibility("default")))
+int pthread_rwlock_rdlock(void* rwlock);
+__attribute__((visibility("default")))
+int pthread_rwlock_wrlock(void* rwlock);
+__attribute__((visibility("default")))
+int pthread_rwlock_unlock(void* rwlock);
 
 __attribute__((visibility("default"), noinline))
 int fixture_pthread_attr_init(void* attr) {
@@ -119,6 +147,68 @@ int fixture_pthread_cond_signal(void* cond) {
 __attribute__((visibility("default"), noinline))
 int fixture_pthread_cond_broadcast(void* cond) {
     return pthread_cond_broadcast(cond);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_mutexattr_init(void* attr) {
+    return pthread_mutexattr_init(attr);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_mutexattr_destroy(void* attr) {
+    return pthread_mutexattr_destroy(attr);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_mutexattr_settype(void* attr, int type) {
+    return pthread_mutexattr_settype(attr, type);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_mutex_init(void* mutex, const void* attr) {
+    return pthread_mutex_init(mutex, attr);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_mutex_destroy(void* mutex) {
+    return pthread_mutex_destroy(mutex);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_mutex_lock(void* mutex) {
+    return pthread_mutex_lock(mutex);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_mutex_trylock(void* mutex) {
+    return pthread_mutex_trylock(mutex);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_mutex_unlock(void* mutex) {
+    return pthread_mutex_unlock(mutex);
+}
+
+__attribute__((noinline))
+static void fixture_once_initializer(void) {
+    __asm__ __volatile__("" ::: "memory");
+}
+
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_once(void* once_control) {
+    return pthread_once(once_control, fixture_once_initializer);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_rwlock_init(void* rwlock, const void* attr) {
+    return pthread_rwlock_init(rwlock, attr);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_rwlock_destroy(void* rwlock) {
+    return pthread_rwlock_destroy(rwlock);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_rwlock_rdlock(void* rwlock) {
+    return pthread_rwlock_rdlock(rwlock);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_rwlock_wrlock(void* rwlock) {
+    return pthread_rwlock_wrlock(rwlock);
+}
+__attribute__((visibility("default"), noinline))
+int fixture_pthread_rwlock_unlock(void* rwlock) {
+    return pthread_rwlock_unlock(rwlock);
 }
 
 __attribute__((visibility("default"), noinline))

@@ -19,6 +19,18 @@
 #define LIBA32ANDROID_A32_PTHREAD_COND_TIMEDWAIT_SVC 0x113
 #define LIBA32ANDROID_A32_PTHREAD_COND_SIGNAL_SVC 0x114
 #define LIBA32ANDROID_A32_PTHREAD_COND_BROADCAST_SVC 0x115
+#define LIBA32ANDROID_A32_PTHREAD_MUTEXATTR_INIT_SVC 0x116
+#define LIBA32ANDROID_A32_PTHREAD_MUTEXATTR_DESTROY_SVC 0x117
+#define LIBA32ANDROID_A32_PTHREAD_MUTEXATTR_SETTYPE_SVC 0x118
+#define LIBA32ANDROID_A32_PTHREAD_ONCE_SVC 0x119
+#define LIBA32ANDROID_A32_PTHREAD_ONCE_COMPLETE_SVC 0x11A
+#define LIBA32ANDROID_A32_PTHREAD_RWLOCK_INIT_SVC 0x11B
+#define LIBA32ANDROID_A32_PTHREAD_RWLOCK_DESTROY_SVC 0x11C
+#define LIBA32ANDROID_A32_PTHREAD_RWLOCK_RDLOCK_SVC 0x11D
+#define LIBA32ANDROID_A32_PTHREAD_RWLOCK_TRYRDLOCK_SVC 0x11E
+#define LIBA32ANDROID_A32_PTHREAD_RWLOCK_WRLOCK_SVC 0x11F
+#define LIBA32ANDROID_A32_PTHREAD_RWLOCK_TRYWRLOCK_SVC 0x120
+#define LIBA32ANDROID_A32_PTHREAD_RWLOCK_UNLOCK_SVC 0x121
 
 #ifdef __cplusplus
 
@@ -72,6 +84,35 @@ inline constexpr std::uint32_t kA32PthreadCondSignalSvcImmediate =
     LIBA32ANDROID_A32_PTHREAD_COND_SIGNAL_SVC;
 inline constexpr std::uint32_t kA32PthreadCondBroadcastSvcImmediate =
     LIBA32ANDROID_A32_PTHREAD_COND_BROADCAST_SVC;
+inline constexpr std::uint32_t kA32PthreadMutexattrInitSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_MUTEXATTR_INIT_SVC;
+inline constexpr std::uint32_t kA32PthreadMutexattrDestroySvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_MUTEXATTR_DESTROY_SVC;
+inline constexpr std::uint32_t kA32PthreadMutexattrSettypeSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_MUTEXATTR_SETTYPE_SVC;
+inline constexpr std::uint32_t kA32PthreadOnceSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_ONCE_SVC;
+inline constexpr std::uint32_t kA32PthreadOnceCompleteSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_ONCE_COMPLETE_SVC;
+inline constexpr std::uint32_t kA32PthreadRwlockInitSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_RWLOCK_INIT_SVC;
+inline constexpr std::uint32_t kA32PthreadRwlockDestroySvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_RWLOCK_DESTROY_SVC;
+inline constexpr std::uint32_t kA32PthreadRwlockRdlockSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_RWLOCK_RDLOCK_SVC;
+inline constexpr std::uint32_t kA32PthreadRwlockTryrdlockSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_RWLOCK_TRYRDLOCK_SVC;
+inline constexpr std::uint32_t kA32PthreadRwlockWrlockSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_RWLOCK_WRLOCK_SVC;
+inline constexpr std::uint32_t kA32PthreadRwlockTrywrlockSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_RWLOCK_TRYWRLOCK_SVC;
+inline constexpr std::uint32_t kA32PthreadRwlockUnlockSvcImmediate =
+    LIBA32ANDROID_A32_PTHREAD_RWLOCK_UNLOCK_SVC;
+
+inline constexpr std::uint32_t kA32PthreadMutexNormal = 0U;
+inline constexpr std::uint32_t kA32PthreadMutexRecursive = 1U;
+inline constexpr std::uint32_t kA32PthreadMutexErrorcheck = 2U;
+inline constexpr std::uint32_t kA32PthreadRecursiveDepthMax = 65536U;
 
 inline constexpr std::uint32_t kA32AndroidSemValueMax = 0x7fffffffU;
 
@@ -81,6 +122,9 @@ enum class A32PthreadWaitKind : std::uint8_t {
     Semaphore,
     Condition,
     ConditionMutex,
+    Once,
+    RwRead,
+    RwWrite,
 };
 
 enum class A32PthreadClockId : std::uint8_t {
@@ -99,6 +143,43 @@ public:
 struct A32PthreadMutexState {
     std::uint32_t address{};
     std::uint32_t owner_thread_id{};
+    std::uint32_t recursion_depth{};
+    std::uint32_t type{kA32PthreadMutexNormal};
+};
+
+struct A32PthreadMutexAttrState {
+    std::uint32_t address{};
+    std::uint32_t type{kA32PthreadMutexNormal};
+    bool active{};
+};
+
+struct A32PthreadRwlockState {
+    std::uint32_t address{};
+    std::uint32_t writer_thread_id{};
+    std::uint32_t reader_count{};
+};
+
+enum class A32PthreadOncePhase : std::uint8_t {
+    Uninitialized = 0,
+    Initializing,
+    Done,
+    Failed,
+};
+
+struct A32PthreadOnceState {
+    std::uint32_t address{};
+    std::uint32_t owner_thread_id{};
+    std::uint32_t saved_post_svc_pc{};
+    std::uint32_t saved_lr{};
+    std::uint32_t saved_cpsr{};
+    std::uint64_t sequence{};
+    A32PthreadOncePhase phase{A32PthreadOncePhase::Uninitialized};
+};
+
+struct A32PthreadSyncOptions {
+    // Guest address (low bit selects Thumb) of an internal trampoline whose
+    // first instruction is SVC kA32PthreadOnceCompleteSvcImmediate.
+    std::uint32_t once_completion_trampoline{};
 };
 
 struct A32SemaphoreState {
@@ -158,7 +239,11 @@ public:
         std::span<A32PthreadWaiter> waiters,
         std::span<A32PthreadKeyState> keys = {},
         std::span<A32PthreadTlsValue> tls_values = {},
-        A32PthreadClock* clock = nullptr) noexcept;
+        A32PthreadClock* clock = nullptr,
+        std::span<A32PthreadMutexAttrState> mutex_attrs = {},
+        std::span<A32PthreadRwlockState> rwlocks = {},
+        std::span<A32PthreadOnceState> once_controls = {},
+        A32PthreadSyncOptions options = {}) noexcept;
 
     A32PthreadSyncService(const A32PthreadSyncService&) = delete;
     A32PthreadSyncService& operator=(const A32PthreadSyncService&) = delete;
@@ -203,6 +288,12 @@ public:
     [[nodiscard]] std::optional<std::int64_t>
     next_condition_deadline_ns() const noexcept;
 
+    // Latch every pthread_once initializer currently owned by this logical
+    // thread as Failed. The embedding calls this if guest execution faults
+    // before reaching the internal once-completion trampoline.
+    [[nodiscard]] bool fail_once_initialization(
+        std::uint32_t thread_id) noexcept;
+
     [[nodiscard]] std::size_t tls_key_slot_count() const noexcept {
         return keys_.size();
     }
@@ -238,6 +329,19 @@ private:
         std::uint32_t value) noexcept;
     [[nodiscard]] std::size_t find_mutex(std::uint32_t address) const noexcept;
     [[nodiscard]] std::size_t ensure_mutex(std::uint32_t address) noexcept;
+    [[nodiscard]] std::size_t find_mutex_attr(
+        std::uint32_t address) const noexcept;
+    [[nodiscard]] std::size_t ensure_mutex_attr(
+        std::uint32_t address) noexcept;
+    [[nodiscard]] std::size_t find_rwlock(
+        std::uint32_t address) const noexcept;
+    [[nodiscard]] std::size_t ensure_rwlock(
+        std::uint32_t address) noexcept;
+    [[nodiscard]] std::size_t find_once(
+        std::uint32_t address) const noexcept;
+    [[nodiscard]] std::size_t ensure_once(
+        std::uint32_t address) noexcept;
+    [[nodiscard]] std::optional<std::size_t> current_once_owner() const noexcept;
     [[nodiscard]] std::size_t find_semaphore(std::uint32_t address) const noexcept;
     [[nodiscard]] std::size_t allocate_semaphore(
         std::uint32_t address,
@@ -270,6 +374,10 @@ private:
         std::uint32_t result_value) noexcept;
     [[nodiscard]] bool process_expired_condition_waiters(
         std::int64_t now_ns) noexcept;
+    void grant_rwlock_waiters(
+        std::size_t rwlock_index) noexcept;
+    void wake_once_waiters(
+        std::uint32_t once_address) noexcept;
 
     std::span<A32PthreadMutexState> mutexes_;
     std::span<A32SemaphoreState> semaphores_;
@@ -277,8 +385,13 @@ private:
     std::span<A32PthreadKeyState> keys_;
     std::span<A32PthreadTlsValue> tls_values_;
     A32PthreadClock* clock_{};
+    std::span<A32PthreadMutexAttrState> mutex_attrs_;
+    std::span<A32PthreadRwlockState> rwlocks_;
+    std::span<A32PthreadOnceState> once_controls_;
+    A32PthreadSyncOptions options_{};
     runtime::A32LogicalThreadId current_thread_id_{};
     std::uint64_t next_sequence_{1};
+    std::uint64_t next_once_sequence_{1};
 };
 
 }  // namespace liba32android::compat
