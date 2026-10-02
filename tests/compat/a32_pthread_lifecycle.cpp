@@ -24,6 +24,7 @@ using liba32android::compat::kA32PthreadAttrInitSvcImmediate;
 using liba32android::compat::kA32PthreadAttrSetdetachstateSvcImmediate;
 using liba32android::compat::kA32PthreadAttrSetstacksizeSvcImmediate;
 using liba32android::compat::kA32PthreadCreateDetached;
+using liba32android::compat::kA32PthreadCreateJoinable;
 using liba32android::compat::kA32PthreadCreateSvcImmediate;
 using liba32android::compat::kA32PthreadEqualSvcImmediate;
 using liba32android::compat::kA32PthreadExitSvcImmediate;
@@ -233,6 +234,14 @@ int test_create_return_and_explicit_exit() {
         regs[0] != 0U) {
         return fail("could not mark create attr detached");
     }
+    regs = {};
+    regs[0] = kAttrAddress;
+    regs[1] = kA32PthreadCreateJoinable;
+    if (call(fixture, kA32PthreadAttrSetdetachstateSvcImmediate, regs) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("could not restore joinable create attr");
+    }
 
     constexpr std::uint32_t kReturnValue = 0xcafebabeU;
     regs = {};
@@ -253,7 +262,7 @@ int test_create_return_and_explicit_exit() {
     auto created = fixture.service.pop_created_thread();
     if (!created.has_value() ||
         created->pthread_id != first_id ||
-        !created->detached ||
+        created->detached ||
         !fixture.service.set_current_thread_context(created->context)) {
         return fail("pthread_create did not publish first logical context");
     }

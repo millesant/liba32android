@@ -100,6 +100,12 @@ struct A32PthreadTlsValue {
     bool active{};
 };
 
+struct A32PthreadTlsDestructorCall {
+    std::uint32_t key{};
+    std::uint32_t destructor{};
+    std::uint32_t value{};
+};
+
 // Bounded compatibility-side state for opaque guest mutex/semaphore addresses.
 // The embedding selects current_thread_id before executing each guest thread.
 // Contended lock/wait calls return Suspended and are granted by a later
@@ -148,6 +154,21 @@ public:
     }
 
     [[nodiscard]] std::optional<A32PthreadWake> pop_ready() noexcept;
+
+    [[nodiscard]] std::size_t tls_key_slot_count() const noexcept {
+        return keys_.size();
+    }
+
+    // Consume one current value before a thread-exit destructor callback.
+    // Clearing happens before publication so a callback sees NULL unless it
+    // explicitly repopulates the key, matching pthread exit semantics.
+    [[nodiscard]] std::optional<A32PthreadTlsDestructorCall>
+    take_tls_destructor(
+        std::uint32_t thread_id,
+        std::size_t key_slot) noexcept;
+
+    void clear_tls_values_for_thread(
+        std::uint32_t thread_id) noexcept;
 
     [[nodiscard]] runtime::A32HostServiceDisposition handle(
         memory::GuestMemory& memory,
