@@ -34,6 +34,28 @@ public:
     [[nodiscard]] virtual bool read(std::uint32_t address, std::span<std::uint8_t> output) const = 0;
     [[nodiscard]] virtual bool write(std::uint32_t address, std::span<const std::uint8_t> input) = 0;
 
+    // Engine-independent bulk byte operations. The base implementation keeps
+    // callback-only backends correct; concrete backends may override these to
+    // avoid temporary buffers without exposing host pointers or spans.
+    [[nodiscard]] virtual bool copy_bytes(
+        std::uint32_t destination,
+        std::uint32_t source,
+        std::size_t length);
+    [[nodiscard]] virtual bool fill_bytes(
+        std::uint32_t address,
+        std::uint8_t value,
+        std::size_t length);
+    [[nodiscard]] virtual bool compare_bytes(
+        std::uint32_t lhs_address,
+        std::uint32_t rhs_address,
+        std::size_t length,
+        std::int32_t& result) const;
+    [[nodiscard]] virtual bool find_byte(
+        std::uint32_t address,
+        std::uint8_t value,
+        std::size_t length,
+        std::optional<std::uint32_t>& found_address) const;
+
     // Instruction fetch is separate from data reads so mapped backends can
     // enforce guest execute permission without leaking engine-specific types.
     [[nodiscard]] virtual bool read_code(std::uint32_t address, std::span<std::uint8_t> output) const {
@@ -71,6 +93,24 @@ public:
 
     [[nodiscard]] bool read(std::uint32_t address, std::span<std::uint8_t> output) const override;
     [[nodiscard]] bool write(std::uint32_t address, std::span<const std::uint8_t> input) override;
+    [[nodiscard]] bool copy_bytes(
+        std::uint32_t destination,
+        std::uint32_t source,
+        std::size_t length) override;
+    [[nodiscard]] bool fill_bytes(
+        std::uint32_t address,
+        std::uint8_t value,
+        std::size_t length) override;
+    [[nodiscard]] bool compare_bytes(
+        std::uint32_t lhs_address,
+        std::uint32_t rhs_address,
+        std::size_t length,
+        std::int32_t& result) const override;
+    [[nodiscard]] bool find_byte(
+        std::uint32_t address,
+        std::uint8_t value,
+        std::size_t length,
+        std::optional<std::uint32_t>& found_address) const override;
     [[nodiscard]] std::optional<std::uint64_t> code_generation() const noexcept override;
 
     [[nodiscard]] std::uint32_t base() const noexcept;
@@ -108,6 +148,24 @@ public:
     [[nodiscard]] bool read(std::uint32_t address, std::span<std::uint8_t> output) const override;
     [[nodiscard]] bool read_code(std::uint32_t address, std::span<std::uint8_t> output) const override;
     [[nodiscard]] bool write(std::uint32_t address, std::span<const std::uint8_t> input) override;
+    [[nodiscard]] bool copy_bytes(
+        std::uint32_t destination,
+        std::uint32_t source,
+        std::size_t length) override;
+    [[nodiscard]] bool fill_bytes(
+        std::uint32_t address,
+        std::uint8_t value,
+        std::size_t length) override;
+    [[nodiscard]] bool compare_bytes(
+        std::uint32_t lhs_address,
+        std::uint32_t rhs_address,
+        std::size_t length,
+        std::int32_t& result) const override;
+    [[nodiscard]] bool find_byte(
+        std::uint32_t address,
+        std::uint8_t value,
+        std::size_t length,
+        std::optional<std::uint32_t>& found_address) const override;
     [[nodiscard]] std::optional<std::uintptr_t> fastmem_base() const noexcept override;
     [[nodiscard]] std::optional<std::uint64_t> code_generation() const noexcept override;
     [[nodiscard]] bool direct_executable_writes_possible() const noexcept override;
