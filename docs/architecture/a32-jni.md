@@ -134,16 +134,28 @@ Supplied ARMv7 `libmla.so` wrappers directly identify AttachCurrentThread at
 JavaVM slot 4 / offset `0x10` and DetachCurrentThread at slot 5 / offset
 `0x14`.
 
-The service continues to model one bounded guest JNI context rather than a
-general host-thread registry. Installation starts attached. Detach transitions
-the context to detached; GetEnv then returns JNI_EDETACHED for supported
-versions without touching `*env`. AttachCurrentThread writes the configured
-logical JNIEnv pointer and restores attached state. JNIEnv-native services are
-rejected while detached. Exact-head validation at
-`35168f13294de7f88ed7b7054f0b08f1c9f5e7e9` passed all 11 required checks.
+The VM service now keeps a bounded table keyed by the same
+`runtime::A32LogicalThreadId` used by pthread compatibility. Installation
+creates one configured initial logical thread (default ID 1) in the attached
+state so existing JNI_OnLoad/bootstrap behavior is preserved. The embedding
+selects the active logical identity through `set_current_thread_id` or
+`set_current_thread_context`; no host TID or host pthread identity is used.
 
-AttachCurrentThreadAsDaemon, JavaVMAttachArgs semantics, multiple host threads,
-and thread-local Java reference state remain outside this slice.
+GetEnv, AttachCurrentThread, DetachCurrentThread, and every JNIEnv-native
+service apply to that selected logical thread. GetEnv returns JNI_EDETACHED
+without touching `*env` when the selected identity has no attached state.
+AttachCurrentThread creates or restores bounded state and writes the configured
+logical JNIEnv pointer. DetachCurrentThread releases only that logical thread's
+guest-created local references, pending exception, and owned scratch leases.
+Other logical threads and VM-wide global/weak-global references are unchanged.
+
+The default logical-thread ceiling is 64 with a hard ceiling of 1024.
+`A32JniVmService` also implements the existing `A32PthreadThreadExitHook`;
+pthread exit invokes the same cleanup path after pthread cleanup handlers/TLS
+destructors and before the logical thread is published Exited.
+
+AttachCurrentThreadAsDaemon, JavaVMAttachArgs contents, host-thread passthrough,
+and Java Thread objects remain outside this slice.
 
 See
 [ARM32 JNI JavaVM thread entrypoint evidence](../research/evidence/arm32-jni-thread-entrypoints-2026-09-29.md).
@@ -154,18 +166,25 @@ Supplied ARMv7 `libmla.so` wrappers directly identify NewGlobalRef at JNIEnv
 slot 21 / offset `0x54`, DeleteGlobalRef at slot 22 / `0x58`, and
 DeleteLocalRef at slot 23 / `0x5c`.
 
-The bounded registry keeps opaque logical object identities with independent
-local/global counts. Class registration establishes an identity with zero live
-counts; successful FindClass retains one local reference. NewGlobalRef promotes
-a known live identity by incrementing the global count and returns the same
-opaque logical handle. DeleteLocalRef/DeleteGlobalRef release only their
-respective counts. Null follows JNI no-op/null semantics.
+The bounded registry keeps opaque logical object identities and aggregate
+local/global/weak counts, while `A32JniVmService` records ownership of every
+guest-created local reference by logical thread. Successful FindClass and
+object/string/array-returning JNI paths charge their local reference to the
+selected attached thread. DeleteLocalRef can release only that thread's owned
+guest local, so one logical thread cannot consume another thread's local
+reference. References explicitly seeded by the embedding outside JNI service
+calls retain legacy initial-thread behavior for deterministic host fixtures.
 
-The representation is intentionally APK-agnostic and never exposes host
-pointers. Exact-head validation at
-`764658ec7a6bde80b2cc6b0474bba75f0dd79d1b` passed all 11 required checks.
-Full GC, weak refs, local frames, cross-thread local refs, and universal
-liveness enforcement are separate work.
+Global and weak-global counts remain VM-wide. NewGlobalRef/NewWeakGlobalRef
+accept a non-null source only when it is a selected-thread local or a VM-wide
+strong global. Global/weak deletion is visible across attached logical threads.
+Detach and pthread exit release the departing thread's guest locals without
+damaging VM-wide globals or surviving threads.
+
+The representation remains APK-agnostic and never exposes host pointers.
+Local frames/capacity APIs, NewLocalRef, IsSameObject, garbage collection,
+automatic weak clearing, and universal Java heap reachability remain separate
+work.
 
 See
 [ARM32 JNI reference entrypoint evidence](../research/evidence/arm32-jni-reference-entrypoints-2026-09-29.md).
@@ -371,16 +390,23 @@ Exact-head validation at
 Supplied ARMv7 `libmla.so` directly identifies ThrowNew at JNIEnv slot 14 /
 offset `0x38`.
 
-The bounded registry stores at most one pending logical exception: registered
-class handle, owned class name, and owned bounded message bytes. ThrowNew
-requires a live logical jclass reference. The first throw records state and
-returns JNI_OK; a second throw returns JNI_ERR and preserves the first pending
-exception. A host-side clear method provides the embedding/future
-ExceptionClear boundary.
+Each attached logical guest thread can hold at most one pending logical
+exception: registered class handle, owned class name, owned bounded message
+bytes, and one bounded logical exception identity. The selected thread's
+pending state is presented through the existing registry seam; switching
+logical threads stashes/restores that state without exposing it to another
+thread. ThrowNew requires a currently usable logical jclass reference. The
+first throw on a thread records state and returns JNI_OK; a second throw on the
+same thread returns JNI_ERR and preserves that thread's original exception.
 
-This is deliberately not a Java Throwable runtime. No Throwable jobject, stack
-trace, Java-frame unwinding, global JNI pending-exception restrictions, or
-ExceptionOccurred/Check/Clear/Describe behavior is claimed here.
+ExceptionOccurred, ExceptionCheck, and ExceptionClear operate on the selected
+logical thread's pending state. Detach and pthread exit discard only the
+departing thread's unobserved pending identity; local/global references already
+returned by ExceptionOccurred retain their ordinary reference lifetime.
+
+This remains deliberately smaller than a Java Throwable runtime: no host
+Throwable pointer, stack trace, Java-frame unwinding, or universal ART
+pending-exception gating is synthesized.
 
 See
 [ARM32 JNI ThrowNew evidence](../research/evidence/arm32-jni-throw-new-entrypoint-2026-09-29.md).

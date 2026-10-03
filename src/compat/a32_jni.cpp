@@ -1577,18 +1577,13 @@ A32JniRegistryError A32JniClassRegistry::set_pending_exception(
     return A32JniRegistryError::None;
 }
 
-void A32JniClassRegistry::clear_pending_exception() noexcept {
-    if (!pending_exception_.has_value()) {
-        return;
-    }
-    const std::uint32_t handle = pending_exception_->handle;
-    pending_exception_.reset();
-
+void A32JniClassRegistry::release_pending_exception_identity(
+    const A32JniPendingException& pending) noexcept {
     const auto found = std::find_if(
         references_.begin(),
         references_.end(),
-        [handle](const ReferenceEntry& entry) {
-            return entry.handle == handle;
+        [&](const ReferenceEntry& entry) {
+            return entry.handle == pending.handle;
         });
     if (found != references_.end() &&
         found->local_count == 0U &&
@@ -1596,6 +1591,15 @@ void A32JniClassRegistry::clear_pending_exception() noexcept {
         found->weak_count == 0U) {
         references_.erase(found);
     }
+}
+
+void A32JniClassRegistry::clear_pending_exception() noexcept {
+    if (!pending_exception_.has_value()) {
+        return;
+    }
+    A32JniPendingException pending = std::move(*pending_exception_);
+    pending_exception_.reset();
+    release_pending_exception_identity(pending);
 }
 
 const A32JniRegisteredNative* A32JniClassRegistry::find_native(
@@ -1685,8 +1689,331 @@ A32JniRegistryError A32JniClassRegistry::register_natives(
     return A32JniRegistryError::None;
 }
 
+A32JniVmService::ThreadState* A32JniVmService::find_thread_state(
+    runtime::A32LogicalThreadId thread_id) noexcept {
+    for (ThreadState& state : thread_states_) {
+        if (state.thread_id.value() == thread_id.value()) {
+            return &state;
+        }
+    }
+    return nullptr;
+}
+
+const A32JniVmService::ThreadState*
+A32JniVmService::find_thread_state(
+    runtime::A32LogicalThreadId thread_id) const noexcept {
+    for (const ThreadState& state : thread_states_) {
+        if (state.thread_id.value() == thread_id.value()) {
+            return &state;
+        }
+    }
+    return nullptr;
+}
+
+A32JniVmService::ThreadState*
+A32JniVmService::current_thread_state() noexcept {
+    return current_thread_id_.valid()
+        ? find_thread_state(current_thread_id_)
+        : nullptr;
+}
+
+const A32JniVmService::ThreadState*
+A32JniVmService::current_thread_state() const noexcept {
+    return current_thread_id_.valid()
+        ? find_thread_state(current_thread_id_)
+        : nullptr;
+}
+
+bool A32JniVmService::attached() const noexcept {
+    const ThreadState* state = current_thread_state();
+    return state != nullptr && state->attached;
+}
+
+std::uint32_t A32JniVmService::current_local_reference_count(
+    std::uint32_t handle) const noexcept {
+    const ThreadState* state = current_thread_state();
+    if (state == nullptr) {
+        return 0U;
+    }
+    for (const ThreadLocalReference& local : state->local_references) {
+        if (local.handle == handle) {
+            return local.count;
+        }
+    }
+    return 0U;
+}
+
+std::uint32_t A32JniVmService::owned_local_reference_count(
+    std::uint32_t handle) const noexcept {
+    std::uint64_t total = 0U;
+    for (const ThreadState& state : thread_states_) {
+        for (const ThreadLocalReference& local : state.local_references) {
+            if (local.handle == handle) {
+                total += local.count;
+            }
+        }
+    }
+    return total > std::numeric_limits<std::uint32_t>::max()
+        ? std::numeric_limits<std::uint32_t>::max()
+        : static_cast<std::uint32_t>(total);
+}
+
+const A32JniPendingException*
+A32JniVmService::current_pending_exception() const noexcept {
+    if (registry_ == nullptr || current_thread_state() == nullptr) {
+        return nullptr;
+    }
+    return registry_->pending_exception();
+}
+
+void A32JniVmService::stash_current_pending_exception() noexcept {
+    if (registry_ == nullptr || !current_thread_id_.valid()) {
+        return;
+    }
+    ThreadState* state = find_thread_state(current_thread_id_);
+    if (state == nullptr) {
+        return;
+    }
+    state->pending_exception = std::move(registry_->pending_exception_);
+    registry_->pending_exception_.reset();
+}
+
+void A32JniVmService::restore_current_pending_exception() noexcept {
+    if (registry_ == nullptr) {
+        return;
+    }
+    registry_->pending_exception_.reset();
+    ThreadState* state = current_thread_state();
+    if (state != nullptr) {
+        registry_->pending_exception_ = std::move(state->pending_exception);
+    }
+}
+
+void A32JniVmService::set_current_thread_id(
+    std::uint32_t thread_id) noexcept {
+    const auto logical_id =
+        runtime::A32LogicalThreadId::from_raw(thread_id);
+    if (logical_id.has_value()) {
+        (void)set_current_thread_id(*logical_id);
+        return;
+    }
+    stash_current_pending_exception();
+    current_thread_id_ = {};
+    if (registry_ != nullptr) {
+        registry_->pending_exception_.reset();
+    }
+}
+
+bool A32JniVmService::set_current_thread_id(
+    runtime::A32LogicalThreadId thread_id) noexcept {
+    if (!thread_id.valid()) {
+        return false;
+    }
+    if (current_thread_id_.valid() &&
+        current_thread_id_.value() == thread_id.value()) {
+        return true;
+    }
+    stash_current_pending_exception();
+    current_thread_id_ = thread_id;
+    restore_current_pending_exception();
+    return true;
+}
+
+bool A32JniVmService::set_current_thread_context(
+    const runtime::A32LogicalExecutionContext& context) noexcept {
+    return context.valid() && set_current_thread_id(context.thread_id);
+}
+
+bool A32JniVmService::adopt_current_local_reference(
+    std::uint32_t handle) {
+    if (handle == 0U || registry_ == nullptr || !attached()) {
+        return false;
+    }
+    ThreadState* state = current_thread_state();
+    if (state == nullptr) {
+        return false;
+    }
+    for (ThreadLocalReference& local : state->local_references) {
+        if (local.handle != handle) {
+            continue;
+        }
+        if (local.count >=
+            registry_->limits().max_reference_count_per_handle) {
+            return false;
+        }
+        ++local.count;
+        return true;
+    }
+    if (state->local_references.size() >=
+        registry_->limits().max_reference_handles) {
+        return false;
+    }
+    state->local_references.push_back(
+        ThreadLocalReference{.handle = handle, .count = 1U});
+    return true;
+}
+
+bool A32JniVmService::retain_current_local_reference(
+    std::uint32_t handle) {
+    if (registry_ == nullptr ||
+        !registry_->retain_local_reference(handle)) {
+        return false;
+    }
+    if (adopt_current_local_reference(handle)) {
+        return true;
+    }
+    (void)registry_->delete_local_reference(handle);
+    return false;
+}
+
+bool A32JniVmService::delete_current_local_reference(
+    std::uint32_t handle) noexcept {
+    if (handle == 0U) {
+        return true;
+    }
+    if (registry_ == nullptr || !attached()) {
+        return false;
+    }
+    ThreadState* state = current_thread_state();
+    if (state == nullptr) {
+        return false;
+    }
+
+    for (auto it = state->local_references.begin();
+         it != state->local_references.end();
+         ++it) {
+        if (it->handle != handle || it->count == 0U) {
+            continue;
+        }
+        if (!registry_->delete_local_reference(handle)) {
+            return false;
+        }
+        --it->count;
+        if (it->count == 0U) {
+            state->local_references.erase(it);
+        }
+        return true;
+    }
+
+    // Preserve legacy embedding-seeded locals created after install only for
+    // the configured initial logical thread. Guest-created locals are always
+    // represented above and cannot be consumed cross-thread.
+    if (current_thread_id_.value() ==
+        options_.initial_logical_thread_id) {
+        const auto counts = registry_->reference_counts(handle);
+        if (counts.has_value() &&
+            counts->local > owned_local_reference_count(handle)) {
+            return registry_->delete_local_reference(handle);
+        }
+    }
+    return false;
+}
+
+bool A32JniVmService::current_reference_live(
+    std::uint32_t handle) const noexcept {
+    if (handle == 0U || registry_ == nullptr || !attached()) {
+        return false;
+    }
+    const auto counts = registry_->reference_counts(handle);
+    if (!counts.has_value()) {
+        return false;
+    }
+    if (counts->global != 0U ||
+        current_local_reference_count(handle) != 0U) {
+        return true;
+    }
+
+    // References seeded by the embedding after install retain the legacy
+    // initial-thread behavior without becoming transferable guest locals.
+    return current_thread_id_.value() ==
+               options_.initial_logical_thread_id &&
+           counts->local > owned_local_reference_count(handle);
+}
+
+void A32JniVmService::clear_thread_leases(
+    runtime::A32LogicalThreadId thread_id) noexcept {
+    const std::uint32_t raw = thread_id.value();
+    if (active_utf_chars_thread_id_.has_value() &&
+        *active_utf_chars_thread_id_ == raw) {
+        active_utf_chars_thread_id_.reset();
+        active_utf_chars_string_.reset();
+    }
+    if (active_long_array_thread_id_.has_value() &&
+        *active_long_array_thread_id_ == raw) {
+        active_long_array_thread_id_.reset();
+        active_long_array_.reset();
+    }
+    if (active_byte_array_thread_id_.has_value() &&
+        *active_byte_array_thread_id_ == raw) {
+        active_byte_array_thread_id_.reset();
+        active_byte_array_.reset();
+    }
+}
+
+bool A32JniVmService::release_thread_state(
+    runtime::A32LogicalThreadId thread_id) noexcept {
+    auto found = std::find_if(
+        thread_states_.begin(),
+        thread_states_.end(),
+        [&](const ThreadState& state) {
+            return state.thread_id.value() == thread_id.value();
+        });
+    if (found == thread_states_.end()) {
+        clear_thread_leases(thread_id);
+        return true;
+    }
+
+    if (registry_ != nullptr) {
+        for (const ThreadLocalReference& local :
+             found->local_references) {
+            const auto counts =
+                registry_->reference_counts(local.handle);
+            if (!counts.has_value() ||
+                counts->local < local.count) {
+                return false;
+            }
+        }
+
+        const bool current =
+            current_thread_id_.valid() &&
+            current_thread_id_.value() == thread_id.value();
+        if (current) {
+            registry_->clear_pending_exception();
+        } else if (found->pending_exception.has_value()) {
+            registry_->release_pending_exception_identity(
+                *found->pending_exception);
+            found->pending_exception.reset();
+        }
+
+        for (const ThreadLocalReference& local :
+             found->local_references) {
+            for (std::uint32_t count = 0U;
+                 count < local.count;
+                 ++count) {
+                if (!registry_->delete_local_reference(local.handle)) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    clear_thread_leases(thread_id);
+    thread_states_.erase(found);
+    return true;
+}
+
+bool A32JniVmService::on_thread_exit(
+    memory::GuestMemory&,
+    runtime::A32LogicalThreadId thread_id) {
+    return release_thread_state(thread_id);
+}
+
 bool A32JniVmService::layout_valid() const noexcept {
-    if (layout_.string_utf_scratch_bytes == 0U ||
+    if (options_.max_logical_threads == 0U ||
+        options_.max_logical_threads > kA32JniHardMaxLogicalThreads ||
+        !runtime::A32LogicalThreadId::from_raw(
+            options_.initial_logical_thread_id).has_value() ||
+        layout_.string_utf_scratch_bytes == 0U ||
         layout_.string_utf_scratch_bytes >
             kA32JniHardMaxStringBytes + 1U ||
         layout_.long_array_scratch_bytes == 0U ||
@@ -2204,11 +2531,27 @@ A32JniVmInstallResult A32JniVmService::install(
         };
     }
 
+    const auto initial_thread =
+        runtime::A32LogicalThreadId::from_raw(
+            options_.initial_logical_thread_id);
+    if (!initial_thread.has_value()) {
+        return {.error = A32JniVmInstallError::InvalidLayout};
+    }
+
+    ThreadState initial_state;
+    initial_state.thread_id = *initial_thread;
+    initial_state.attached = true;
+
     installed_ = true;
-    attached_ = true;
+    current_thread_id_ = *initial_thread;
+    thread_states_.clear();
+    thread_states_.push_back(std::move(initial_state));
     active_utf_chars_string_.reset();
+    active_utf_chars_thread_id_.reset();
     active_long_array_.reset();
+    active_long_array_thread_id_.reset();
     active_byte_array_.reset();
+    active_byte_array_thread_id_.reset();
     return {};
 }
 
@@ -2271,13 +2614,20 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         svc_immediate == kA32JniAttachCurrentThreadSvcImmediate ||
         svc_immediate == kA32JniDetachCurrentThreadSvcImmediate;
     if (vm_service) {
-        if (regs[0] != layout_.java_vm_address) {
+        if (!current_thread_id_.valid() ||
+            regs[0] != layout_.java_vm_address) {
             return runtime::A32HostServiceDisposition::Failed;
         }
 
         if (svc_immediate == kA32JniDetachCurrentThreadSvcImmediate) {
-            regs[0] = jint_bits(attached_ ? kA32JniOk : kA32JniErr);
-            attached_ = false;
+            if (!attached()) {
+                regs[0] = jint_bits(kA32JniErr);
+                return runtime::A32HostServiceDisposition::Handled;
+            }
+            if (!release_thread_state(current_thread_id_)) {
+                return runtime::A32HostServiceDisposition::Failed;
+            }
+            regs[0] = jint_bits(kA32JniOk);
             return runtime::A32HostServiceDisposition::Handled;
         }
 
@@ -2288,25 +2638,47 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
                 regs[0] = jint_bits(kA32JniEversion);
                 return runtime::A32HostServiceDisposition::Handled;
             }
-            if (!attached_) {
+            if (!attached()) {
                 regs[0] = jint_bits(kA32JniEdetached);
                 return runtime::A32HostServiceDisposition::Handled;
             }
+            if (regs[1] == 0U) {
+                return runtime::A32HostServiceDisposition::Failed;
+            }
+            const auto env_bytes = u32_bytes(layout_.jni_env_address);
+            if (!memory.write(regs[1], env_bytes)) {
+                return runtime::A32HostServiceDisposition::Failed;
+            }
+            regs[0] = jint_bits(kA32JniOk);
+            return runtime::A32HostServiceDisposition::Handled;
         }
 
         if (regs[1] == 0U) {
             return runtime::A32HostServiceDisposition::Failed;
         }
+        ThreadState* state = current_thread_state();
+        if (state == nullptr &&
+            thread_states_.size() >= options_.max_logical_threads) {
+            regs[0] = jint_bits(kA32JniErr);
+            return runtime::A32HostServiceDisposition::Handled;
+        }
         const auto env_bytes = u32_bytes(layout_.jni_env_address);
         if (!memory.write(regs[1], env_bytes)) {
             return runtime::A32HostServiceDisposition::Failed;
         }
-        attached_ = true;
+        if (state == nullptr) {
+            ThreadState created;
+            created.thread_id = current_thread_id_;
+            created.attached = true;
+            thread_states_.push_back(std::move(created));
+        } else {
+            state->attached = true;
+        }
         regs[0] = jint_bits(kA32JniOk);
         return runtime::A32HostServiceDisposition::Handled;
     }
 
-    if (!attached_) {
+    if (!attached()) {
         return runtime::A32HostServiceDisposition::Failed;
     }
     if (regs[0] != layout_.jni_env_address) {
@@ -2335,7 +2707,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             regs[0] = 0U;
             return runtime::A32HostServiceDisposition::Handled;
         }
-        if (!registry_->retain_local_reference(*found)) {
+        if (!retain_current_local_reference(*found)) {
             return runtime::A32HostServiceDisposition::Failed;
         }
         regs[0] = *found;
@@ -2358,11 +2730,17 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
         const std::uint32_t reference = regs[1];
         if (svc_immediate == kA32JniNewGlobalRefSvcImmediate) {
-            regs[0] = registry_->new_global_reference(reference);
+            regs[0] =
+                reference == 0U || current_reference_live(reference)
+                    ? registry_->new_global_reference(reference)
+                    : 0U;
             return runtime::A32HostServiceDisposition::Handled;
         }
         if (svc_immediate == kA32JniNewWeakGlobalRefSvcImmediate) {
-            regs[0] = registry_->new_weak_global_reference(reference);
+            regs[0] =
+                reference == 0U || current_reference_live(reference)
+                    ? registry_->new_weak_global_reference(reference)
+                    : 0U;
             return runtime::A32HostServiceDisposition::Handled;
         }
         const bool deleted =
@@ -2370,7 +2748,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
                 ? registry_->delete_global_reference(reference)
                 : svc_immediate == kA32JniDeleteWeakGlobalRefSvcImmediate
                     ? registry_->delete_weak_global_reference(reference)
-                    : registry_->delete_local_reference(reference);
+                    : delete_current_local_reference(reference);
         if (!deleted) {
             return runtime::A32HostServiceDisposition::Failed;
         }
@@ -2395,6 +2773,10 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             registry_->create_modified_utf8_string(
                 value,
                 handle);
+        if (created == A32JniRegistryError::None &&
+            !adopt_current_local_reference(handle)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
         if (created == A32JniRegistryError::InvalidLimits) {
             return runtime::A32HostServiceDisposition::Failed;
         }
@@ -2415,12 +2797,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
         const A32JniStringInfo* string =
             registry_->find_modified_utf8_string(regs[1]);
-        const auto counts =
-            registry_->reference_counts(regs[1]);
         if (string == nullptr ||
-            !counts.has_value() ||
-            (counts->local == 0U &&
-             counts->global == 0U)) {
+            !current_reference_live(regs[1])) {
             regs[0] = 0U;
             return runtime::A32HostServiceDisposition::Handled;
         }
@@ -2452,6 +2830,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             }
         }
         active_utf_chars_string_ = regs[1];
+        active_utf_chars_thread_id_ = current_thread_id_.value();
         regs[0] = layout_.string_utf_scratch_address;
         return runtime::A32HostServiceDisposition::Handled;
     }
@@ -2459,11 +2838,14 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
     if (svc_immediate ==
         kA32JniReleaseStringUtfCharsSvcImmediate) {
         if (!active_utf_chars_string_.has_value() ||
+            !active_utf_chars_thread_id_.has_value() ||
+            *active_utf_chars_thread_id_ != current_thread_id_.value() ||
             regs[1] != *active_utf_chars_string_ ||
             regs[2] != layout_.string_utf_scratch_address) {
             return runtime::A32HostServiceDisposition::Failed;
         }
         active_utf_chars_string_.reset();
+        active_utf_chars_thread_id_.reset();
         regs[0] = 0U;
         return runtime::A32HostServiceDisposition::Handled;
     }
@@ -2479,6 +2861,10 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
                 regs[2],
                 regs[3],
                 handle);
+        if (created == A32JniRegistryError::None &&
+            !adopt_current_local_reference(handle)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
         if (created == A32JniRegistryError::InvalidLimits) {
             return runtime::A32HostServiceDisposition::Failed;
         }
@@ -2496,14 +2882,10 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
         A32JniObjectArrayInfo* array =
             registry_->find_object_array(regs[1]);
-        const auto array_counts =
-            registry_->reference_counts(regs[1]);
         const std::int32_t index =
             static_cast<std::int32_t>(regs[2]);
         if (array == nullptr ||
-            !array_counts.has_value() ||
-            (array_counts->local == 0U &&
-             array_counts->global == 0U) ||
+            !current_reference_live(regs[1]) ||
             index < 0 ||
             static_cast<std::size_t>(index) >=
                 array->elements.size()) {
@@ -2512,7 +2894,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         const std::uint32_t element =
             array->elements[static_cast<std::size_t>(index)];
         if (element != 0U &&
-            !registry_->retain_local_reference(element)) {
+            !retain_current_local_reference(element)) {
             return runtime::A32HostServiceDisposition::Failed;
         }
         regs[0] = element;
@@ -2526,14 +2908,10 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
         A32JniObjectArrayInfo* array =
             registry_->find_object_array(regs[1]);
-        const auto array_counts =
-            registry_->reference_counts(regs[1]);
         const std::int32_t index =
             static_cast<std::int32_t>(regs[2]);
         if (array == nullptr ||
-            !array_counts.has_value() ||
-            (array_counts->local == 0U &&
-             array_counts->global == 0U) ||
+            !current_reference_live(regs[1]) ||
             index < 0 ||
             static_cast<std::size_t>(index) >=
                 array->elements.size()) {
@@ -2541,11 +2919,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
         const std::uint32_t value = regs[3];
         if (value != 0U) {
-            const auto value_counts =
-                registry_->reference_counts(value);
-            if (!value_counts.has_value() ||
-                (value_counts->local == 0U &&
-                 value_counts->global == 0U)) {
+            if (!current_reference_live(value)) {
                 return runtime::A32HostServiceDisposition::Failed;
             }
         }
@@ -2563,6 +2937,10 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             registry_->create_long_array(
                 static_cast<std::int32_t>(regs[1]),
                 handle);
+        if (created == A32JniRegistryError::None &&
+            !adopt_current_local_reference(handle)) {
+            return runtime::A32HostServiceDisposition::Failed;
+        }
         if (created == A32JniRegistryError::InvalidLimits) {
             return runtime::A32HostServiceDisposition::Failed;
         }
@@ -2580,12 +2958,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
         const A32JniLongArrayInfo* array =
             registry_->find_long_array(regs[1]);
-        const auto counts =
-            registry_->reference_counts(regs[1]);
         if (array == nullptr ||
-            !counts.has_value() ||
-            (counts->local == 0U &&
-             counts->global == 0U)) {
+            !current_reference_live(regs[1])) {
             regs[0] = 0U;
             return runtime::A32HostServiceDisposition::Handled;
         }
@@ -2607,6 +2981,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             }
         }
         active_long_array_ = regs[1];
+        active_long_array_thread_id_ = current_thread_id_.value();
         regs[0] = layout_.long_array_scratch_address;
         return runtime::A32HostServiceDisposition::Handled;
     }
@@ -2615,6 +2990,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         kA32JniReleaseLongArrayElementsSvcImmediate) {
         if (registry_ == nullptr ||
             !active_long_array_.has_value() ||
+            !active_long_array_thread_id_.has_value() ||
+            *active_long_array_thread_id_ != current_thread_id_.value() ||
             regs[1] != *active_long_array_ ||
             regs[2] != layout_.long_array_scratch_address) {
             return runtime::A32HostServiceDisposition::Failed;
@@ -2642,6 +3019,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
         if (mode != 1) {
             active_long_array_.reset();
+            active_long_array_thread_id_.reset();
         }
         regs[0] = 0U;
         return runtime::A32HostServiceDisposition::Handled;
@@ -2654,12 +3032,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
         const A32JniByteArrayInfo* array =
             registry_->find_byte_array(regs[1]);
-        const auto counts =
-            registry_->reference_counts(regs[1]);
         if (array == nullptr ||
-            !counts.has_value() ||
-            (counts->local == 0U &&
-             counts->global == 0U)) {
+            !current_reference_live(regs[1])) {
             regs[0] = 0U;
             return runtime::A32HostServiceDisposition::Handled;
         }
@@ -2682,6 +3056,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             }
         }
         active_byte_array_ = regs[1];
+        active_byte_array_thread_id_ = current_thread_id_.value();
         regs[0] = layout_.byte_array_scratch_address;
         return runtime::A32HostServiceDisposition::Handled;
     }
@@ -2690,6 +3065,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         kA32JniReleaseByteArrayElementsSvcImmediate) {
         if (registry_ == nullptr ||
             !active_byte_array_.has_value() ||
+            !active_byte_array_thread_id_.has_value() ||
+            *active_byte_array_thread_id_ != current_thread_id_.value() ||
             regs[1] != *active_byte_array_ ||
             regs[2] != layout_.byte_array_scratch_address) {
             return runtime::A32HostServiceDisposition::Failed;
@@ -2717,6 +3094,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
         if (mode != 1) {
             active_byte_array_.reset();
+            active_byte_array_thread_id_.reset();
         }
         regs[0] = 0U;
         return runtime::A32HostServiceDisposition::Handled;
@@ -2788,11 +3166,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             regs[0] = jint_bits(kA32JniErr);
             return runtime::A32HostServiceDisposition::Handled;
         }
-        const auto class_counts =
-            registry_->reference_counts(regs[1]);
-        if (!class_counts.has_value() ||
-            (class_counts->local == 0U &&
-             class_counts->global == 0U)) {
+        if (!current_reference_live(regs[1])) {
             regs[0] = jint_bits(kA32JniErr);
             return runtime::A32HostServiceDisposition::Handled;
         }
@@ -2826,7 +3200,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             regs[0] = 0U;
             return runtime::A32HostServiceDisposition::Handled;
         }
-        if (!registry_->retain_local_reference(pending->handle)) {
+        if (!retain_current_local_reference(pending->handle)) {
             return runtime::A32HostServiceDisposition::Failed;
         }
         regs[0] = pending->handle;
@@ -2862,11 +3236,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         if (!registry_->contains_class_handle(regs[1])) {
             return runtime::A32HostServiceDisposition::Failed;
         }
-        const auto class_counts =
-            registry_->reference_counts(regs[1]);
-        if (!class_counts.has_value() ||
-            (class_counts->local == 0U &&
-             class_counts->global == 0U)) {
+        if (!current_reference_live(regs[1])) {
             return runtime::A32HostServiceDisposition::Failed;
         }
 
@@ -2895,11 +3265,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
                 argument.bits == 0U) {
                 continue;
             }
-            const auto counts = registry_->reference_counts(
-                static_cast<std::uint32_t>(argument.bits));
-            if (!counts.has_value() ||
-                (counts->local == 0U &&
-                 counts->global == 0U)) {
+            if (!current_reference_live(
+                    static_cast<std::uint32_t>(argument.bits))) {
                 return runtime::A32HostServiceDisposition::Failed;
             }
         }
@@ -2915,7 +3282,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         }
         if (registry_->add_reference_identity(object_handle) !=
                 A32JniRegistryError::None ||
-            !registry_->retain_local_reference(object_handle)) {
+            !retain_current_local_reference(object_handle)) {
             return runtime::A32HostServiceDisposition::Failed;
         }
         regs[0] = object_handle;
@@ -2929,11 +3296,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             !registry_->contains_class_handle(regs[1])) {
             return runtime::A32HostServiceDisposition::Failed;
         }
-        const auto class_counts =
-            registry_->reference_counts(regs[1]);
-        if (!class_counts.has_value() ||
-            (class_counts->local == 0U &&
-             class_counts->global == 0U)) {
+        if (!current_reference_live(regs[1])) {
             return runtime::A32HostServiceDisposition::Failed;
         }
 
@@ -2962,11 +3325,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
                 argument.bits == 0U) {
                 continue;
             }
-            const auto counts = registry_->reference_counts(
-                static_cast<std::uint32_t>(argument.bits));
-            if (!counts.has_value() ||
-                (counts->local == 0U &&
-                 counts->global == 0U)) {
+            if (!current_reference_live(
+                    static_cast<std::uint32_t>(argument.bits))) {
                 return runtime::A32HostServiceDisposition::Failed;
             }
         }
@@ -2980,7 +3340,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             return runtime::A32HostServiceDisposition::Failed;
         }
         if (object_handle != 0U &&
-            !registry_->retain_local_reference(object_handle)) {
+            !retain_current_local_reference(object_handle)) {
             return runtime::A32HostServiceDisposition::Failed;
         }
         regs[0] = object_handle;
@@ -2994,11 +3354,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             !registry_->contains_class_handle(regs[1])) {
             return runtime::A32HostServiceDisposition::Failed;
         }
-        const auto class_counts =
-            registry_->reference_counts(regs[1]);
-        if (!class_counts.has_value() ||
-            (class_counts->local == 0U &&
-             class_counts->global == 0U)) {
+        if (!current_reference_live(regs[1])) {
             return runtime::A32HostServiceDisposition::Failed;
         }
 
@@ -3027,11 +3383,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
                 argument.bits == 0U) {
                 continue;
             }
-            const auto counts = registry_->reference_counts(
-                static_cast<std::uint32_t>(argument.bits));
-            if (!counts.has_value() ||
-                (counts->local == 0U &&
-                 counts->global == 0U)) {
+            if (!current_reference_live(
+                    static_cast<std::uint32_t>(argument.bits))) {
                 return runtime::A32HostServiceDisposition::Failed;
             }
         }
@@ -3053,11 +3406,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             return runtime::A32HostServiceDisposition::Failed;
         }
 
-        const auto receiver_counts =
-            registry_->reference_counts(regs[1]);
-        if (!receiver_counts.has_value() ||
-            (receiver_counts->local == 0U &&
-             receiver_counts->global == 0U)) {
+        if (!current_reference_live(regs[1])) {
             return runtime::A32HostServiceDisposition::Failed;
         }
 
@@ -3096,11 +3445,8 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
                 argument.bits == 0U) {
                 continue;
             }
-            const auto counts = registry_->reference_counts(
-                static_cast<std::uint32_t>(argument.bits));
-            if (!counts.has_value() ||
-                (counts->local == 0U &&
-                 counts->global == 0U)) {
+            if (!current_reference_live(
+                    static_cast<std::uint32_t>(argument.bits))) {
                 return runtime::A32HostServiceDisposition::Failed;
             }
         }
@@ -3154,7 +3500,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
             return runtime::A32HostServiceDisposition::Failed;
         }
         if (*value != 0U &&
-            !registry_->retain_local_reference(*value)) {
+            !retain_current_local_reference(*value)) {
             return runtime::A32HostServiceDisposition::Failed;
         }
         regs[0] = *value;
@@ -3165,11 +3511,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         if (registry_ == nullptr || !registry_->valid()) {
             return runtime::A32HostServiceDisposition::Failed;
         }
-        const auto object_counts =
-            registry_->reference_counts(regs[1]);
-        if (!object_counts.has_value() ||
-            (object_counts->local == 0U &&
-             object_counts->global == 0U)) {
+        if (!current_reference_live(regs[1])) {
             return runtime::A32HostServiceDisposition::Failed;
         }
         const A32JniMemberId* member =
@@ -3196,11 +3538,7 @@ runtime::A32HostServiceDisposition A32JniVmService::handle(
         if (registry_ == nullptr || !registry_->valid()) {
             return runtime::A32HostServiceDisposition::Failed;
         }
-        const auto object_counts =
-            registry_->reference_counts(regs[1]);
-        if (!object_counts.has_value() ||
-            (object_counts->local == 0U &&
-             object_counts->global == 0U)) {
+        if (!current_reference_live(regs[1])) {
             return runtime::A32HostServiceDisposition::Failed;
         }
         const A32JniMemberId* member =
