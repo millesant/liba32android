@@ -40,6 +40,19 @@ LIBA32_STUB calloc,  LIBA32ANDROID_A32_LIBC_CALLOC_SVC
 LIBA32_STUB realloc, LIBA32ANDROID_A32_LIBC_REALLOC_SVC
 LIBA32_STUB free,    LIBA32ANDROID_A32_LIBC_FREE_SVC
 LIBA32_STUB __aeabi_atexit, LIBA32ANDROID_A32_AEABI_ATEXIT_SVC
+
+.text
+.p2align 2
+.global __cxa_atexit
+.type __cxa_atexit, %function
+__cxa_atexit:
+    mov r3, r0
+    mov r0, r1
+    mov r1, r3
+    svc #LIBA32ANDROID_A32_AEABI_ATEXIT_SVC
+    bx lr
+.size __cxa_atexit, .-__cxa_atexit
+
 LIBA32_STUB __cxa_finalize, LIBA32ANDROID_A32_CXA_FINALIZE_SVC
 LIBA32_STUB pthread_mutex_init,    LIBA32ANDROID_A32_PTHREAD_MUTEX_INIT_SVC
 LIBA32_STUB pthread_mutex_destroy, LIBA32ANDROID_A32_PTHREAD_MUTEX_DESTROY_SVC

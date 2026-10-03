@@ -467,6 +467,82 @@ int test_lifecycle_context_learns_dso_binding() {
     return 0;
 }
 
+int test_cxa_atexit_guest_argument_reorder() {
+    constexpr std::array<std::uint8_t, 20> code{
+        0x00, 0x30, 0xA0, 0xE1,  // mov r3, r0
+        0x01, 0x00, 0xA0, 0xE1,  // mov r0, r1
+        0x03, 0x10, 0xA0, 0xE1,  // mov r1, r3
+        0xD2, 0x00, 0x00, 0xEF,  // svc #0xd2
+        0x1E, 0xFF, 0x2F, 0xE1,  // bx lr
+    };
+
+    LinearGuestMemory memory{4096};
+    if (!memory.write(0U, code)) {
+        return fail("could not stage __cxa_atexit ARM fixture");
+    }
+
+    std::array<A32AeabiAtexitRecord, 2> records{};
+    A32AeabiAtexitService service{std::span{records}};
+    const std::array<A32HostServiceRegistryEntry, 1> entries{{
+        {kA32AeabiAtexitSvcImmediate, &service},
+    }};
+    A32HostServiceRegistry registry{std::span{entries}};
+
+    ExecutionRequest request{};
+    request.instruction_set = liba32android::cpu::InstructionSet::Arm;
+    request.regs[0] = 0x22220001U;
+    request.regs[1] = 0x11110000U;
+    request.regs[2] = 0x33330000U;
+    request.regs[14] = 4096U;
+    request.instruction_count = 5U;
+    request.stop_pc = 4096U;
+
+    const auto result =
+        execute_a32_with_services(memory, request, registry, 1U);
+    if (!result ||
+        !result.stop_pc_reached ||
+        result.services_handled != 1U ||
+        result.regs[0] != 0U ||
+        service.record_count() != 1U ||
+        service.records()[0].object != 0x11110000U ||
+        service.records()[0].destructor != 0x22220001U ||
+        service.records()[0].dso_handle != 0x33330000U) {
+        return fail("__cxa_atexit did not reorder destructor/object arguments");
+    }
+
+    std::array<std::uint32_t, 16> aeabi_regs{};
+    std::uint32_t cpsr{};
+    aeabi_regs[0] = 0x44440000U;
+    aeabi_regs[1] = 0x55550001U;
+    aeabi_regs[2] = 0x66660000U;
+    if (service.handle(
+            memory,
+            kA32AeabiAtexitSvcImmediate,
+            aeabi_regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        aeabi_regs[0] != 0U ||
+        service.record_count() != 2U ||
+        service.records()[1].object != 0x44440000U ||
+        service.records()[1].destructor != 0x55550001U ||
+        service.records()[1].dso_handle != 0x66660000U) {
+        return fail("__cxa_atexit did not share ordered registration state");
+    }
+
+    request.regs[0] = 0x77770001U;
+    request.regs[1] = 0x88880000U;
+    request.regs[2] = 0x99990000U;
+    const auto exhausted =
+        execute_a32_with_services(memory, request, registry, 1U);
+    if (!exhausted ||
+        exhausted.regs[0] != 0xffffffffU ||
+        service.record_count() != 2U ||
+        service.records()[0].object != 0x11110000U ||
+        service.records()[1].object != 0x44440000U) {
+        return fail("__cxa_atexit did not share registration capacity");
+    }
+    return 0;
+}
+
 int test_arm_registry_integration() {
     constexpr std::array<std::uint8_t, 8> code{
         0xD2, 0x00, 0x00, 0xEF,
@@ -512,6 +588,10 @@ int test_arm_registry_integration() {
 
 int main() {
     if (const int status = test_exact_registration_and_capacity();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_cxa_atexit_guest_argument_reorder();
         status != 0) {
         return status;
     }

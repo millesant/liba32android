@@ -337,13 +337,13 @@ int main(int argc, char** argv) {
         return fail("libc shim dependency/provider metadata was incorrect");
     }
 
-    constexpr std::array<std::string_view, 45> shim_names{{
+    constexpr std::array<std::string_view, 46> shim_names{{
         "memcpy", "memmove", "memset", "memcmp", "memchr",
         "strlen", "strcmp", "strncmp",
         "memmem", "strcpy", "strncpy",
         "atoi", "strtol", "__errno",
         "malloc", "calloc", "realloc", "free",
-        "__aeabi_atexit", "__cxa_finalize",
+        "__aeabi_atexit", "__cxa_atexit", "__cxa_finalize",
         "__aeabi_memcpy", "__aeabi_memcpy4", "__aeabi_memcpy8",
         "__aeabi_memmove", "__aeabi_memmove4", "__aeabi_memmove8",
         "__aeabi_memset", "__aeabi_memset4", "__aeabi_memset8",
@@ -836,8 +836,11 @@ int main(int argc, char** argv) {
     }
 
     // Let the ARM32 consumer compute both the destructor function value and
-    // &fixture_dso_handle. This is the same guest relocation path later used
-    // by fixture_on_dlclose -> __cxa_finalize(&fixture_dso_handle), so the
+    // &fixture_dso_handle, then register them through __cxa_atexit's
+    // (destructor, object, dso_handle) ABI. The shim reorders those words into
+    // the shared bounded registration service. This is the same guest
+    // relocation path later used by
+    // fixture_on_dlclose -> __cxa_finalize(&fixture_dso_handle), so the
     // registration selector and FINI selector cannot diverge due to a
     // host-side symbol-address assumption.
     result = run_wrapper(
