@@ -1,7 +1,7 @@
 # Compatibility contract
 
 Status: Accepted current project contract
-Last reconciled: 2026-10-01
+Last reconciled: 2026-10-03
 
 ## L32-C001 — Platform compatibility is a separate layer
 
@@ -2181,3 +2181,38 @@ the departing thread's lease.
 
 This contract adds no JNI table slots, host-thread passthrough, ART/Java Thread
 objects, local-frame APIs, GC, or public C embedding ABI.
+
+
+## L32-C071 — ARM32 __cxa_atexit registration entrypoint
+
+Supplied ARM32 compatibility evidence directly requires `__cxa_atexit`:
+the FMOD object exposes it as an undefined global function, and each supplied
+VLC `armeabi-v7a` DSO has an eager `R_ARM_JUMP_SLOT`
+`__cxa_atexit@LIBC` relocation. This entrypoint therefore belongs in the
+partial guest `libc.so` compatibility surface rather than remaining an
+implicit `__aeabi_atexit` assumption.
+
+The guest ABI is
+`int __cxa_atexit(void (*destructor)(void*), void* object, void* dso_handle)`.
+The ARM shim preserves r2, swaps incoming r0/r1 through r3, and traps the
+already accepted private `__aeabi_atexit` registration SVC `0xD2`.
+Consequently `A32AeabiAtexitService` still receives exactly
+`(object, destructor, dso_handle)` and remains the single bounded registration
+store. No new private service ID, host pointer, or duplicate destructor ledger
+is introduced.
+
+Success and capacity exhaustion remain the existing 0 / -1 guest results.
+Lifecycle-scoped DSO association, reverse registration order,
+`__cxa_finalize`, unload/finalization behavior, record failure latching, and
+all caller-selected ceilings are unchanged because both registration ABIs feed
+the same records.
+
+The reproducible base ARM32 libc consumer now requires 46 eager JUMP_SLOT
+imports. Its controlled static-destructor registration executes through
+`__cxa_atexit`, verifies that the reordered record contains the exact logical
+object/destructor/DSO values, and later completes through the existing
+FINI_ARRAY -> `__cxa_finalize` path. `__aeabi_atexit` remains exported and
+relocated for backward compatibility.
+
+This contract does not add host libc atexit passthrough, process-exit policy,
+new callback ownership semantics, or broader C++ runtime support.

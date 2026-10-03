@@ -1,6 +1,6 @@
 # ARM32 guest libc memory/string shim/provider path
 
-Status: features 032/034/036/038/041/043 accepted; exact-head validation PASSed
+Status: features 032/034/036/038/041/043 plus __cxa_atexit registration accepted; exact-head validation pending
 
 ## Goal
 
@@ -8,12 +8,13 @@ Connect feature 030's bounded libc memory/string host services to the real ELF
 dependency/symbol/relocation path using one reproducible partial ARM32
 `libc.so` compatibility DSO.
 
-The feature is deliberately partial. The accepted base grew from memory/string
-helpers through allocator, EABI, finalization, synchronization, and TLS-key
-extensions to 45 exports. The bounded pthread lifecycle surface adds twelve
-direct guest stubs, condition variables add six, and common synchronization
-adds eleven more libc-compatible stubs, bringing the prepared partial-libc
-export surface to 74.
+The feature is deliberately partial. The base consumer now resolves 46
+libc-compatible exports after adding __cxa_atexit to the existing
+memory/string, allocator, EABI, finalization, synchronization, and TLS-key
+surface. The dedicated pthread lifecycle fixture remains separate. Across the
+current shim's later pthread, signal, and scheduler extensions, the public
+surface is 91 libc-compatible exports plus the internal pthread_once completion
+trampoline.
 
 ## Guest stubs
 
@@ -63,8 +64,8 @@ feature-030/033/035/037/040/043/045 service -> shim return -> consumer return ->
 
 This DSO is not a replacement for Android's real libc. Its accepted surface is
 still finite and omits pthread/semaphore scheduling, file/socket/stdio,
-dynamic-loader APIs, libm, process startup, signals, locale, persistent C++
-destructor registration, and many other libc/platform symbols. The supplied
+dynamic-loader APIs, libm, process startup, stdio/file/socket APIs, locale,
+the broader C++ runtime, and many other libc/platform symbols. The supplied
 FMOD/VLC binaries still cannot be claimed loadable from this partial shim
 alone.
 
@@ -108,12 +109,18 @@ variants, EABI memset argument order, and EABI memclr zeroing.
 `__aeabi_atexit` is not part of feature 043 because it participates in C++
 static-destructor registration and requires a persistent lifecycle contract.
 
-A post-roadmap follow-up now supplies that bounded registration substrate:
+A post-roadmap follow-up supplies that bounded registration substrate:
 `__aeabi_atexit` is exported by the same partial `libc.so` and dispatches
 private SVC `0xD2` into caller-owned finite registration storage. The three
 guest words are preserved exactly as object, destructor, and DSO-handle values;
-success returns 0 and capacity exhaustion returns -1 without pretending the
-destructor has executed. Registered-destructor finalization remains separate.
+success returns 0 and capacity exhaustion returns -1.
+
+The evidence-backed `__cxa_atexit(destructor, object, dso_handle)` entrypoint
+now reuses exactly that storage and SVC. Its ARM shim swaps r0/r1 before
+dispatch so the host service continues to receive
+`(object, destructor, dso_handle)`; no second registration path or state
+table exists. `__cxa_finalize` continues to consume the same records in
+reverse registration order under the existing bounded lifecycle contract.
 
 ## Pthread mutex/semaphore extension (feature 045)
 
@@ -154,7 +161,7 @@ join suspension, target exit and return-value publication, wake/reclamation,
 post-SVC join continuation, and a running detach followed by detached exit
 reclamation.
 
-The original 45-wrapper partial-libc consumer remains unchanged and continues
+The base 46-wrapper partial-libc consumer remains unchanged and continues
 to prove the previously accepted surface. The lifecycle consumer is separate so
 new thread behavior does not broaden unrelated libc fixture assumptions.
 
@@ -178,7 +185,7 @@ that suspends and is signaled, post-SVC waiter resume only after mutex
 reacquisition, a deterministic fake-clock timed wait returning ETIMEDOUT,
 broadcast, and destroy.
 
-The original 45-wrapper base libc fixture remains unchanged. The condvar
+The base 46-wrapper base libc fixture remains unchanged. The condvar
 extension does not add `clock_gettime`; although supplied VLC ARMv7 libraries
 import that symbol, guest-visible clock APIs remain a separate bounded utility
 surface.
@@ -236,7 +243,7 @@ the guest callback result. Separate focused lifecycle coverage verifies LIFO
 exit unwinding and cleanup-before-TLS-destructor ordering.
 
 The dedicated ARM32 pthread consumer therefore requires 37 eager JUMP_SLOT
-imports and performs 43 wrapper calls. The original 45-wrapper base libc
+imports and performs 43 wrapper calls. The base 46-wrapper base libc
 consumer remains unchanged. No pthread cancellation symbol is added.
 
 ## Signal compatibility extension
@@ -268,6 +275,6 @@ query bounds, one-CPU synthetic ARM32 affinity, the accepted
 `SCHED_OTHER/0` mutation, logical current-thread nice state, and a real
 `sched_yield` suspension followed by post-SVC continuation.
 
-No wrapper calls the host scheduler or affinity APIs. The original 45-wrapper
+No wrapper calls the host scheduler or affinity APIs. The base 46-wrapper
 base libc consumer remains unchanged.
 

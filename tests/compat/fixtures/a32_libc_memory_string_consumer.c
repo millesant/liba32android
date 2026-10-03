@@ -46,6 +46,11 @@ int __aeabi_atexit(
     void (*destructor)(void*),
     void* dso_handle);
 __attribute__((visibility("default")))
+int __cxa_atexit(
+    void (*destructor)(void*),
+    void* object,
+    void* dso_handle);
+__attribute__((visibility("default")))
 void __cxa_finalize(void* dso_handle);
 __attribute__((visibility("default")))
 int pthread_mutex_init(void* mutex, const void* attr);
@@ -212,9 +217,9 @@ void fixture_registered_destructor(void* object) {
 
 __attribute__((visibility("default"), noinline))
 int fixture_register_static_destructor(void* object) {
-    return __aeabi_atexit(
-        object,
+    return __cxa_atexit(
         fixture_registered_destructor,
+        object,
         &fixture_dso_handle);
 }
 
