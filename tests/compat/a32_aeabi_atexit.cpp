@@ -509,6 +509,37 @@ int test_cxa_atexit_guest_argument_reorder() {
         service.records()[0].dso_handle != 0x33330000U) {
         return fail("__cxa_atexit did not reorder destructor/object arguments");
     }
+
+    std::array<std::uint32_t, 16> aeabi_regs{};
+    std::uint32_t cpsr{};
+    aeabi_regs[0] = 0x44440000U;
+    aeabi_regs[1] = 0x55550001U;
+    aeabi_regs[2] = 0x66660000U;
+    if (service.handle(
+            memory,
+            kA32AeabiAtexitSvcImmediate,
+            aeabi_regs,
+            cpsr) != A32HostServiceDisposition::Handled ||
+        aeabi_regs[0] != 0U ||
+        service.record_count() != 2U ||
+        service.records()[1].object != 0x44440000U ||
+        service.records()[1].destructor != 0x55550001U ||
+        service.records()[1].dso_handle != 0x66660000U) {
+        return fail("__cxa_atexit did not share ordered registration state");
+    }
+
+    request.regs[0] = 0x77770001U;
+    request.regs[1] = 0x88880000U;
+    request.regs[2] = 0x99990000U;
+    const auto exhausted =
+        execute_a32_with_services(memory, request, registry, 1U);
+    if (!exhausted ||
+        exhausted.regs[0] != 0xffffffffU ||
+        service.record_count() != 2U ||
+        service.records()[0].object != 0x11110000U ||
+        service.records()[1].object != 0x44440000U) {
+        return fail("__cxa_atexit did not share registration capacity");
+    }
     return 0;
 }
 

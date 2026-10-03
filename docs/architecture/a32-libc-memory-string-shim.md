@@ -243,8 +243,8 @@ the guest callback result. Separate focused lifecycle coverage verifies LIFO
 exit unwinding and cleanup-before-TLS-destructor ordering.
 
 The dedicated ARM32 pthread consumer therefore requires 37 eager JUMP_SLOT
-imports and performs 43 wrapper calls. The base 46-wrapper base libc
-consumer remains unchanged. No pthread cancellation symbol is added.
+imports and performs 43 wrapper calls. The base 46-wrapper libc consumer continues as the independent base
+integration. No pthread cancellation symbol is added.
 
 ## Signal compatibility extension
 
@@ -276,5 +276,5 @@ query bounds, one-CPU synthetic ARM32 affinity, the accepted
 `sched_yield` suspension followed by post-SVC continuation.
 
 No wrapper calls the host scheduler or affinity APIs. The base 46-wrapper
-base libc consumer remains unchanged.
+libc consumer continues as the independent base integration.
 
