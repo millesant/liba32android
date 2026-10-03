@@ -130,6 +130,7 @@ enum class A32PthreadWaitKind : std::uint8_t {
 enum class A32PthreadClockId : std::uint8_t {
     Realtime = 0,
     Monotonic = 1,
+    MonotonicRaw = 4,
 };
 
 class A32PthreadClock {

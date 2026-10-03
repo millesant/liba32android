@@ -8,12 +8,12 @@ Connect feature 030's bounded libc memory/string host services to the real ELF
 dependency/symbol/relocation path using one reproducible partial ARM32
 `libc.so` compatibility DSO.
 
-The feature is deliberately partial. The base consumer now resolves 46
+The feature is deliberately partial. The base consumer now resolves 47
 libc-compatible exports after adding __cxa_atexit to the existing
 memory/string, allocator, EABI, finalization, synchronization, and TLS-key
 surface. The dedicated pthread lifecycle fixture remains separate. Across the
 current shim's later pthread, signal, and scheduler extensions, the public
-surface is 91 libc-compatible exports plus the internal pthread_once completion
+surface is 92 libc-compatible exports plus the internal pthread_once completion
 trampoline.
 
 ## Guest stubs
@@ -51,7 +51,8 @@ loading may acquire the shim.
 
 ## Real consumer
 
-A freestanding companion DSO imports the current 46-symbol base surface through\nordinary function calls with builtins disabled. It therefore provides a real
+A freestanding companion DSO imports the current 47-symbol base surface through
+ordinary function calls with builtins disabled. It therefore provides a real
 `DT_NEEDED libc.so` edge plus eager ARM JUMP_SLOT relocations.
 
 After graph load and relocation, the integration executes every exported
@@ -136,7 +137,8 @@ Contended mutex lock and zero-count sem_wait use feature 044's `Suspended`
 runtime disposition. A later unlock/post grants the oldest waiter before the
 embedding resumes its saved post-SVC A32 state.
 
-At the feature-045 boundary the real pinned-NDK fixture exposed, relocated,\nand executed thirty-nine
+At the feature-045 boundary the real pinned-NDK fixture exposed, relocated,
+and executed thirty-nine
 partial-libc symbols. Its synchronization path covers default mutex init/lock,
 EBUSY trylock, unlock/destroy, and process-local semaphore init/wait/post/destroy.
 
@@ -161,7 +163,7 @@ join suspension, target exit and return-value publication, wake/reclamation,
 post-SVC join continuation, and a running detach followed by detached exit
 reclamation.
 
-The base 46-wrapper partial-libc consumer continues
+The base 47-wrapper partial-libc consumer continues
 to prove the previously accepted surface. The lifecycle consumer is separate so
 new thread behavior does not broaden unrelated libc fixture assumptions.
 
@@ -185,10 +187,11 @@ that suspends and is signaled, post-SVC waiter resume only after mutex
 reacquisition, a deterministic fake-clock timed wait returning ETIMEDOUT,
 broadcast, and destroy.
 
-The base 46-wrapper libc fixture remains the independent base integration.\nThe condvar
-extension does not add `clock_gettime`; although supplied VLC ARMv7 libraries
-import that symbol, guest-visible clock APIs remain a separate bounded utility
-surface.
+The base 47-wrapper libc fixture remains the independent base integration.
+The condition-variable slice itself still owns no guest clock API. The later
+bounded `clock_gettime` service reuses the same embedding-owned logical clock
+source, so timed waits and guest clock reads stay deterministic without host
+wall-clock access inside compatibility code.
 
 
 ## Pthread common-synchronization extension
@@ -243,7 +246,7 @@ the guest callback result. Separate focused lifecycle coverage verifies LIFO
 exit unwinding and cleanup-before-TLS-destructor ordering.
 
 The dedicated ARM32 pthread consumer therefore requires 37 eager JUMP_SLOT
-imports and performs 43 wrapper calls. The base 46-wrapper libc consumer continues as the independent base
+imports and performs 43 wrapper calls. The base 47-wrapper libc consumer continues as the independent base
 integration. No pthread cancellation symbol is added.
 
 ## Signal compatibility extension
@@ -275,6 +278,6 @@ query bounds, one-CPU synthetic ARM32 affinity, the accepted
 `SCHED_OTHER/0` mutation, logical current-thread nice state, and a real
 `sched_yield` suspension followed by post-SVC continuation.
 
-No wrapper calls the host scheduler or affinity APIs. The base 46-wrapper
+No wrapper calls the host scheduler or affinity APIs. The base 47-wrapper
 libc consumer continues as the independent base integration.
 

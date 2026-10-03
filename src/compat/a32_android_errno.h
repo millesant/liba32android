@@ -17,6 +17,7 @@ inline constexpr std::int32_t kA32AndroidEbusy = 16;
 inline constexpr std::int32_t kA32AndroidEinval = 22;
 inline constexpr std::int32_t kA32AndroidErange = 34;
 inline constexpr std::int32_t kA32AndroidEdeadlk = 35;
+inline constexpr std::int32_t kA32AndroidEoverflow = 75;
 inline constexpr std::int32_t kA32AndroidEtimedout = 110;
 
 }  // namespace liba32android::compat

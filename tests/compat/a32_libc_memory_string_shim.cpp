@@ -16,6 +16,7 @@
 #include "compat/a32_android_platform_provider.h"
 #include "compat/a32_aeabi_atexit.h"
 #include "compat/a32_libc_memory_string.h"
+#include "compat/a32_libc_clock.h"
 #include "compat/a32_libc_heap.h"
 #include "compat/a32_pthread_sync.h"
 #include "compat/a32_libc_integer.h"
@@ -41,10 +42,13 @@ using liba32android::compat::A32AeabiAtexitRecordStatus;
 using liba32android::compat::A32AeabiAtexitService;
 using liba32android::compat::A32AeabiFinalizeOptions;
 using liba32android::compat::A32CxaFinalizeService;
+using liba32android::compat::A32LibcClockService;
 using liba32android::compat::A32LibcGuestErrnoState;
 using liba32android::compat::A32LibcGuestHeap;
 using liba32android::compat::A32LibcHeapBlock;
 using liba32android::compat::A32LibcHeapOptions;
+using liba32android::compat::A32PthreadClock;
+using liba32android::compat::A32PthreadClockId;
 using liba32android::compat::A32PthreadKeyState;
 using liba32android::compat::A32PthreadMutexState;
 using liba32android::compat::A32PthreadSyncService;
@@ -57,6 +61,7 @@ using liba32android::compat::A32LibcMemoryStringOptions;
 using liba32android::compat::A32LibcMemoryStringService;
 using liba32android::compat::kA32AeabiAtexitSvcImmediate;
 using liba32android::compat::kA32CxaFinalizeSvcImmediate;
+using liba32android::compat::kA32ClockGettimeSvcImmediate;
 using liba32android::compat::kA32LibcMemchrSvcImmediate;
 using liba32android::compat::kA32LibcMemcmpSvcImmediate;
 using liba32android::compat::kA32LibcMemcpySvcImmediate;
@@ -147,6 +152,22 @@ std::uint32_t read_u32_le(
            (static_cast<std::uint32_t>(bytes[2]) << 16U) |
            (static_cast<std::uint32_t>(bytes[3]) << 24U);
 }
+
+class FixtureClock final : public A32PthreadClock {
+public:
+    [[nodiscard]] std::optional<std::int64_t> now_ns(
+        A32PthreadClockId clock_id) const noexcept override {
+        switch (clock_id) {
+        case A32PthreadClockId::Realtime:
+            return 1'234'567'890LL;
+        case A32PthreadClockId::Monotonic:
+            return 2'000'000'003LL;
+        case A32PthreadClockId::MonotonicRaw:
+            return 3'999'999'999LL;
+        }
+        return std::nullopt;
+    }
+};
 
 Elf32SymbolLookupOptions symbol_options() {
     return Elf32SymbolLookupOptions{
@@ -337,11 +358,11 @@ int main(int argc, char** argv) {
         return fail("libc shim dependency/provider metadata was incorrect");
     }
 
-    constexpr std::array<std::string_view, 46> shim_names{{
+    constexpr std::array<std::string_view, 47> shim_names{{
         "memcpy", "memmove", "memset", "memcmp", "memchr",
         "strlen", "strcmp", "strncmp",
         "memmem", "strcpy", "strncpy",
-        "atoi", "strtol", "__errno",
+        "atoi", "strtol", "__errno", "clock_gettime",
         "malloc", "calloc", "realloc", "free",
         "__aeabi_atexit", "__cxa_atexit", "__cxa_finalize",
         "__aeabi_memcpy", "__aeabi_memcpy4", "__aeabi_memcpy8",
@@ -438,6 +459,9 @@ int main(int argc, char** argv) {
     const std::uint32_t strtol_address = *data + 0x240U;
     const std::uint32_t endptr_address = *data + 0x260U;
     const std::uint32_t errno_address = *data + 0x280U;
+    const std::uint32_t realtime_timespec = *data + 0x2a0U;
+    const std::uint32_t monotonic_timespec = *data + 0x2a8U;
+    const std::uint32_t monotonic_raw_timespec = *data + 0x2b0U;
     constexpr std::array<std::uint8_t, 4> zero_errno{{0,0,0,0}};
     if (!memory.write(source_address, source) ||
         !memory.write(rhs_address, rhs) ||
@@ -454,6 +478,8 @@ int main(int argc, char** argv) {
     A32LibcGuestErrnoState errno_state{errno_address};
     A32LibcIntegerService integer_service{
         errno_state, A32LibcIntegerOptions{64}};
+    FixtureClock clock{};
+    A32LibcClockService clock_service{clock, errno_state};
     std::array<A32LibcHeapBlock, 8> heap_metadata{};
     A32LibcGuestHeap heap{
         errno_state,
@@ -487,7 +513,7 @@ int main(int argc, char** argv) {
         },
     };
 
-    const std::array<A32HostServiceRegistryEntry, 33> services{{
+    const std::array<A32HostServiceRegistryEntry, 34> services{{
         {kA32LibcMemcpySvcImmediate, &service},
         {kA32LibcMemmoveSvcImmediate, &service},
         {kA32LibcMemsetSvcImmediate, &service},
@@ -502,6 +528,7 @@ int main(int argc, char** argv) {
         {kA32LibcAtoiSvcImmediate, &integer_service},
         {kA32LibcStrtolSvcImmediate, &integer_service},
         {kA32LibcErrnoSvcImmediate, &errno_state},
+        {kA32ClockGettimeSvcImmediate, &clock_service},
         {kA32LibcMallocSvcImmediate, &heap},
         {kA32LibcCallocSvcImmediate, &heap},
         {kA32LibcReallocSvcImmediate, &heap},
@@ -772,6 +799,36 @@ int main(int argc, char** argv) {
     if (!result || !*result ||
         signed_r0(result->regs[0]) != kA32AndroidErange) {
         return fail("real libc __errno wrapper did not expose guest errno slot");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_clock_gettime", registry,
+        stack_top, *stop, 0U, realtime_timespec, 0U);
+    if (!result || !*result || result->regs[0] != 0U ||
+        read_u32_le(memory, realtime_timespec) != 1U ||
+        read_u32_le(memory, realtime_timespec + 4U) != 234'567'890U) {
+        return fail("real clock_gettime CLOCK_REALTIME wrapper failed");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_clock_gettime", registry,
+        stack_top, *stop, 1U, monotonic_timespec, 0U);
+    if (!result || !*result || result->regs[0] != 0U ||
+        read_u32_le(memory, monotonic_timespec) != 2U ||
+        read_u32_le(memory, monotonic_timespec + 4U) != 3U) {
+        return fail("real clock_gettime CLOCK_MONOTONIC wrapper failed");
+    }
+    ++completed_calls;
+
+    result = run_wrapper(
+        memory, graph_result.graph, "fixture_clock_gettime", registry,
+        stack_top, *stop, 4U, monotonic_raw_timespec, 0U);
+    if (!result || !*result || result->regs[0] != 0U ||
+        read_u32_le(memory, monotonic_raw_timespec) != 3U ||
+        read_u32_le(memory, monotonic_raw_timespec + 4U) != 999'999'999U) {
+        return fail("real clock_gettime CLOCK_MONOTONIC_RAW wrapper failed");
     }
     ++completed_calls;
 

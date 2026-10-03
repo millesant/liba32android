@@ -57,8 +57,9 @@ O runtime atual inclui:
 - política de namespace/bibliotecas de plataforma Android e busca de bibliotecas
   ciente do chamador;
 - superfícies parciais de compatibilidade para libc, liblog, libdl, libm,
-  sincronização no estilo pthread, `__aeabi_atexit` / `__cxa_atexit` / `__cxa_finalize` e
-  serviços relacionados;
+  sincronização no estilo pthread, `clock_gettime` limitado,
+  `__aeabi_atexit` / `__cxa_atexit` / `__cxa_finalize` e serviços
+  relacionados;
 - bootstrap JNI VM/GetEnv/JNI_OnLoad, mais FindClass, RegisterNatives,
   identificação limitada de membros, estado de attach/detach da JavaVM,
   bookkeeping de referências local/global, metadata limitada de comprimento de
