@@ -30,6 +30,8 @@ using liba32android::compat::A32JniRegistryLimits;
 using liba32android::compat::A32JniVmInstallError;
 using liba32android::compat::A32JniVmLayout;
 using liba32android::compat::A32JniVmService;
+using liba32android::compat::A32JniVmOptions;
+using liba32android::compat::A32PthreadThreadExitHook;
 using liba32android::compat::kA32JniEdetached;
 using liba32android::compat::kA32JniEversion;
 using liba32android::compat::kA32JniErr;
@@ -95,6 +97,7 @@ using liba32android::memory::LinearGuestMemory;
 using liba32android::runtime::A32HostServiceDisposition;
 using liba32android::runtime::A32HostServiceRegistry;
 using liba32android::runtime::A32HostServiceRegistryEntry;
+using liba32android::runtime::A32LogicalThreadId;
 
 int fail(const char* message) {
     std::cerr << message << '\n';
@@ -805,6 +808,373 @@ int test_vm_install_and_getenv() {
             cpsr) != A32HostServiceDisposition::Unhandled) {
         return fail("JNI service accepted wrong SVC immediate");
     }
+    return 0;
+}
+
+int test_per_logical_thread_jni_state() {
+    LinearGuestMemory memory{0x1000U, 0x1000U};
+    const A32JniRegistryLimits limits{
+        .max_classes = 2U,
+        .max_registered_methods = 2U,
+        .max_methods_per_registration = 2U,
+        .max_member_ids = 4U,
+        .max_reference_handles = 16U,
+        .max_reference_count_per_handle = 16U,
+        .max_arrays = 4U,
+        .max_long_array_elements = 4U,
+        .max_byte_array_elements = 4U,
+        .max_object_array_elements = 4U,
+        .max_strings = 4U,
+        .max_modified_utf8_bytes = 32U,
+        .max_exception_message_bytes = 32U,
+        .max_class_name_bytes = 64U,
+        .max_method_name_bytes = 32U,
+        .max_signature_bytes = 32U,
+    };
+    A32JniClassRegistry registry{limits};
+    constexpr std::uint32_t kClass = 0x44550000U;
+    constexpr std::uint32_t kClassName = 0x1f00U;
+    constexpr std::uint32_t kBoom = 0x1f40U;
+    constexpr std::uint32_t kLater = 0x1f60U;
+    constexpr std::uint32_t kEnvOut = 0x1f80U;
+    constexpr std::uint32_t kSentinel = 0xfeedbeefU;
+
+    if (registry.add_class(
+            kClass,
+            "java/lang/IllegalStateException") !=
+            A32JniRegistryError::None ||
+        !registry.retain_local_reference(kClass) ||
+        !write_c_string(
+            memory,
+            kClassName,
+            "java/lang/IllegalStateException") ||
+        !write_c_string(memory, kBoom, "boom") ||
+        !write_c_string(memory, kLater, "later")) {
+        return fail("could not seed per-thread JNI fixture");
+    }
+
+    const auto configured = layout();
+    A32JniVmService service{
+        configured,
+        &registry,
+        nullptr,
+        A32JniVmOptions{
+            .max_logical_threads = 2U,
+            .initial_logical_thread_id = 1U,
+        },
+    };
+    if (!service.install(memory) ||
+        service.current_thread_id() != 1U ||
+        !service.attached() ||
+        service.thread_state_count() != 1U) {
+        return fail("JNI initial logical-thread state was wrong");
+    }
+
+    std::uint32_t cpsr{};
+    std::array<std::uint32_t, 16> regs{};
+
+    const auto call = [&](std::uint32_t svc) {
+        return service.handle(memory, svc, regs, cpsr);
+    };
+
+    // Thread 1 obtains one guest-created local class reference.
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClassName;
+    if (call(kA32JniFindClassSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != kClass ||
+        service.current_local_reference_count(kClass) != 1U) {
+        return fail("JNI thread 1 did not own FindClass local");
+    }
+
+    // VM-wide strong/weak globals originate from thread 1.
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    if (call(kA32JniNewGlobalRefSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != kClass) {
+        return fail("JNI thread 1 could not create global reference");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    if (call(kA32JniNewWeakGlobalRefSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != kClass) {
+        return fail("JNI thread 1 could not create weak global reference");
+    }
+
+    const auto thread1 = A32LogicalThreadId::from_raw(1U);
+    const auto thread2 = A32LogicalThreadId::from_raw(2U);
+    const auto thread3 = A32LogicalThreadId::from_raw(3U);
+    if (!thread1.has_value() ||
+        !thread2.has_value() ||
+        !thread3.has_value() ||
+        !service.set_current_thread_id(*thread2)) {
+        return fail("could not select JNI logical thread 2");
+    }
+
+    // A selected-but-unattached logical thread is isolated from thread 1.
+    if (!write_u32(memory, kEnvOut, kSentinel)) {
+        return fail("could not stage JNI GetEnv sentinel");
+    }
+    regs = {};
+    regs[0] = configured.java_vm_address;
+    regs[1] = kEnvOut;
+    regs[2] = kA32JniVersion16;
+    if (call(kA32JniGetEnvSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniEdetached) ||
+        read_u32(memory, kEnvOut) != kSentinel ||
+        service.attached()) {
+        return fail("JNI thread 2 inherited thread 1 attachment");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClassName;
+    if (call(kA32JniFindClassSvcImmediate) !=
+            A32HostServiceDisposition::Failed) {
+        return fail("detached JNI thread accepted native-table service");
+    }
+
+    regs = {};
+    regs[0] = configured.java_vm_address;
+    regs[1] = kEnvOut;
+    if (call(kA32JniAttachCurrentThreadSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniOk) ||
+        read_u32(memory, kEnvOut) != configured.jni_env_address ||
+        !service.attached() ||
+        service.thread_state_count() != 2U) {
+        return fail("JNI thread 2 attach failed");
+    }
+
+    // Globals and weak-globals are VM-wide, but locals are not transferable.
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    if (call(kA32JniDeleteLocalRefSvcImmediate) !=
+            A32HostServiceDisposition::Failed) {
+        return fail("JNI thread 2 consumed thread 1 local reference");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    if (call(kA32JniNewGlobalRefSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != kClass) {
+        return fail("JNI thread 2 could not use VM-wide global");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    if (call(kA32JniDeleteGlobalRefSvcImmediate) !=
+            A32HostServiceDisposition::Handled) {
+        return fail("JNI thread 2 could not delete VM-wide global");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    if (call(kA32JniDeleteWeakGlobalRefSvcImmediate) !=
+            A32HostServiceDisposition::Handled) {
+        return fail("JNI thread 2 could not delete VM-wide weak global");
+    }
+
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClassName;
+    if (call(kA32JniFindClassSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != kClass ||
+        service.current_local_reference_count(kClass) != 1U) {
+        return fail("JNI thread 2 did not receive its own local");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    if (call(kA32JniDeleteLocalRefSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        service.current_local_reference_count(kClass) != 0U) {
+        return fail("JNI thread 2 local did not release");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    if (call(kA32JniDeleteLocalRefSvcImmediate) !=
+            A32HostServiceDisposition::Failed) {
+        return fail("JNI thread 2 consumed another thread local");
+    }
+
+    // Keep one thread-2 local for detach cleanup.
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClassName;
+    if (call(kA32JniFindClassSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        service.current_local_reference_count(kClass) != 1U) {
+        return fail("could not restore JNI thread 2 local");
+    }
+
+    // Thread 1 and thread 2 can carry independent pending exceptions.
+    if (!service.set_current_thread_id(*thread1)) {
+        return fail("could not reselect JNI thread 1");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    regs[2] = kBoom;
+    if (call(kA32JniThrowNewSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniOk) ||
+        service.current_pending_exception() == nullptr ||
+        service.current_pending_exception()->message != "boom") {
+        return fail("JNI thread 1 pending exception was not stored");
+    }
+
+    if (!service.set_current_thread_id(*thread2)) {
+        return fail("could not reselect JNI thread 2");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    if (call(kA32JniExceptionCheckSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != 0U) {
+        return fail("JNI thread 2 observed thread 1 exception");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    regs[2] = kLater;
+    if (call(kA32JniThrowNewSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniOk) ||
+        service.current_pending_exception() == nullptr ||
+        service.current_pending_exception()->message != "later") {
+        return fail("JNI thread 2 pending exception was not stored");
+    }
+
+    // The bounded thread table refuses a third simultaneous attached thread.
+    if (!service.set_current_thread_id(*thread3)) {
+        return fail("could not select JNI logical thread 3");
+    }
+    regs = {};
+    regs[0] = configured.java_vm_address;
+    regs[1] = kEnvOut;
+    if (call(kA32JniAttachCurrentThreadSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniErr) ||
+        service.thread_state_count() != 2U) {
+        return fail("JNI logical-thread capacity was not bounded");
+    }
+
+    if (!service.set_current_thread_id(*thread1) ||
+        service.current_pending_exception() == nullptr ||
+        service.current_pending_exception()->message != "boom" ||
+        service.current_local_reference_count(kClass) != 1U) {
+        return fail("JNI thread 1 state changed while other threads ran");
+    }
+
+    // Detach cleans only thread 2 and preserves thread 1/global state.
+    if (!service.set_current_thread_id(*thread2)) {
+        return fail("could not select JNI thread 2 for detach");
+    }
+    regs = {};
+    regs[0] = configured.java_vm_address;
+    if (call(kA32JniDetachCurrentThreadSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniOk) ||
+        service.attached() ||
+        service.thread_state_count() != 1U) {
+        return fail("JNI thread 2 detach did not clean its state");
+    }
+    auto counts = registry.reference_counts(kClass);
+    if (!counts.has_value() ||
+        counts->global != 1U ||
+        counts->weak != 0U) {
+        return fail("JNI detach damaged VM-wide reference state");
+    }
+
+    if (!service.set_current_thread_id(*thread1) ||
+        service.current_pending_exception() == nullptr ||
+        service.current_pending_exception()->message != "boom" ||
+        service.current_local_reference_count(kClass) != 1U) {
+        return fail("JNI detach damaged thread 1 state");
+    }
+
+    // Reattach thread 2 and exercise the exact pthread exit-hook cleanup seam.
+    if (!service.set_current_thread_id(*thread2)) {
+        return fail("could not select JNI thread 2 for exit-hook test");
+    }
+    regs = {};
+    regs[0] = configured.java_vm_address;
+    regs[1] = kEnvOut;
+    if (call(kA32JniAttachCurrentThreadSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniOk)) {
+        return fail("could not reattach JNI thread 2");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClassName;
+    if (call(kA32JniFindClassSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        service.current_local_reference_count(kClass) != 1U) {
+        return fail("could not seed JNI thread 2 exit local");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    regs[1] = kClass;
+    regs[2] = kLater;
+    if (call(kA32JniThrowNewSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniOk)) {
+        return fail("could not seed JNI thread 2 exit exception");
+    }
+
+    if (!service.set_current_thread_id(*thread1)) {
+        return fail("could not switch away before JNI exit cleanup");
+    }
+    A32PthreadThreadExitHook& exit_hook = service;
+    if (!exit_hook.on_thread_exit(memory, *thread2) ||
+        service.thread_state_count() != 1U ||
+        service.current_pending_exception() == nullptr ||
+        service.current_pending_exception()->message != "boom") {
+        return fail("pthread JNI exit hook damaged wrong logical thread");
+    }
+    counts = registry.reference_counts(kClass);
+    if (!counts.has_value() ||
+        counts->global != 1U ||
+        service.current_local_reference_count(kClass) != 1U) {
+        return fail("pthread JNI exit hook lost surviving references");
+    }
+
+    if (!service.set_current_thread_id(*thread2)) {
+        return fail("could not select exited JNI logical thread");
+    }
+    regs = {};
+    regs[0] = configured.java_vm_address;
+    regs[1] = kEnvOut;
+    regs[2] = kA32JniVersion16;
+    if (call(kA32JniGetEnvSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        regs[0] != static_cast<std::uint32_t>(kA32JniEdetached)) {
+        return fail("pthread JNI exit hook left thread attached");
+    }
+
+    if (!service.set_current_thread_id(*thread1)) {
+        return fail("could not restore JNI thread 1 after exit cleanup");
+    }
+    regs = {};
+    regs[0] = configured.jni_env_address;
+    if (call(kA32JniExceptionClearSvcImmediate) !=
+            A32HostServiceDisposition::Handled ||
+        service.current_pending_exception() != nullptr) {
+        return fail("could not clear surviving JNI thread exception");
+    }
+
     return 0;
 }
 
@@ -4907,6 +5277,10 @@ int test_exact_object_onunload_execution() {
 
 int main() {
     if (const int status = test_vm_install_and_getenv();
+        status != 0) {
+        return status;
+    }
+    if (const int status = test_per_logical_thread_jni_state();
         status != 0) {
         return status;
     }

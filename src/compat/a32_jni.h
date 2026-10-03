@@ -53,6 +53,7 @@
 #include <string_view>
 #include <vector>
 
+#include "compat/a32_pthread_lifecycle.h"
 #include "cpu/a32_cpu.h"
 #include "elf/elf32_dependency_graph.h"
 #include "elf/elf32_lifecycle.h"
@@ -167,6 +168,7 @@ inline constexpr std::size_t kA32JniHardMaxObjectArrayElements = 65536U;
 inline constexpr std::size_t kA32JniHardMaxStrings = 4096U;
 inline constexpr std::size_t kA32JniHardMaxStringBytes = 4096U;
 inline constexpr std::size_t kA32JniHardMaxMethodArguments = 128U;
+inline constexpr std::size_t kA32JniHardMaxLogicalThreads = 1024U;
 
 // Android/Dalvik GetEnv accepts the inclusive numeric JNI 1.1..1.6
 // range. JNI_OnLoad is stricter and accepts only 1.2, 1.4, or 1.6.
@@ -552,6 +554,8 @@ private:
     [[nodiscard]] A32JniRegistryError register_natives(
         std::uint32_t class_handle,
         std::vector<A32JniRegisteredNative> pending);
+    void release_pending_exception_identity(
+        const A32JniPendingException& pending) noexcept;
 
     A32JniRegistryLimits limits_;
     std::vector<ClassEntry> classes_;
@@ -642,20 +646,28 @@ struct A32JniVmInstallResult {
     }
 };
 
-// One bounded guest JNI context. install() begins attached; observed JavaVM
-// AttachCurrentThread/DetachCurrentThread services can transition that state.
-// The caller owns all guest mappings. install() publishes only logical 32-bit
-// guest pointers and ARM SVC stubs; it never maps, unmaps, or changes page
-// permissions.
-class A32JniVmService final : public runtime::A32HostServiceHandler {
+struct A32JniVmOptions {
+    std::size_t max_logical_threads{64U};
+    std::uint32_t initial_logical_thread_id{1U};
+};
+
+// Bounded guest JNI state keyed by the same logical thread identity used by the
+// pthread compatibility layer. install() begins with one attached logical
+// thread for backwards-compatible single-thread fixtures. The caller owns all
+// guest mappings; no host thread identity enters guest-visible state.
+class A32JniVmService final
+    : public runtime::A32HostServiceHandler,
+      public A32PthreadThreadExitHook {
 public:
     explicit A32JniVmService(
         A32JniVmLayout layout,
         A32JniClassRegistry* registry = nullptr,
-        A32JniMethodCallBridge* method_call_bridge = nullptr) noexcept
+        A32JniMethodCallBridge* method_call_bridge = nullptr,
+        A32JniVmOptions options = {}) noexcept
         : layout_(layout),
           registry_(registry),
-          method_call_bridge_(method_call_bridge) {}
+          method_call_bridge_(method_call_bridge),
+          options_(options) {}
 
     [[nodiscard]] A32JniVmInstallResult install(
         memory::GuestMemory& memory);
@@ -666,6 +678,19 @@ public:
         std::array<std::uint32_t, 16>& regs,
         std::uint32_t& cpsr) override;
 
+    void set_current_thread_id(std::uint32_t thread_id) noexcept;
+    [[nodiscard]] bool set_current_thread_id(
+        runtime::A32LogicalThreadId thread_id) noexcept;
+    [[nodiscard]] bool set_current_thread_context(
+        const runtime::A32LogicalExecutionContext& context) noexcept;
+    [[nodiscard]] std::uint32_t current_thread_id() const noexcept {
+        return current_thread_id_.value();
+    }
+
+    [[nodiscard]] bool on_thread_exit(
+        memory::GuestMemory& memory,
+        runtime::A32LogicalThreadId thread_id) override;
+
     [[nodiscard]] A32JniVmLayout layout() const noexcept {
         return layout_;
     }
@@ -673,9 +698,15 @@ public:
     [[nodiscard]] bool installed() const noexcept {
         return installed_;
     }
-    [[nodiscard]] bool attached() const noexcept {
-        return attached_;
+    [[nodiscard]] bool attached() const noexcept;
+    [[nodiscard]] std::size_t thread_state_count() const noexcept {
+        return thread_states_.size();
     }
+    [[nodiscard]] std::uint32_t current_local_reference_count(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] const A32JniPendingException*
+    current_pending_exception() const noexcept;
+
     [[nodiscard]] bool utf_chars_lease_active() const noexcept {
         return active_utf_chars_string_.has_value();
     }
@@ -694,16 +725,54 @@ public:
     }
 
 private:
+    struct ThreadLocalReference {
+        std::uint32_t handle{};
+        std::uint32_t count{};
+    };
+    struct ThreadState {
+        runtime::A32LogicalThreadId thread_id{};
+        bool attached{};
+        std::vector<ThreadLocalReference> local_references;
+        std::optional<A32JniPendingException> pending_exception;
+    };
+
     [[nodiscard]] bool layout_valid() const noexcept;
+    [[nodiscard]] ThreadState* find_thread_state(
+        runtime::A32LogicalThreadId thread_id) noexcept;
+    [[nodiscard]] const ThreadState* find_thread_state(
+        runtime::A32LogicalThreadId thread_id) const noexcept;
+    [[nodiscard]] ThreadState* current_thread_state() noexcept;
+    [[nodiscard]] const ThreadState* current_thread_state() const noexcept;
+    [[nodiscard]] bool adopt_current_local_reference(
+        std::uint32_t handle);
+    [[nodiscard]] bool retain_current_local_reference(
+        std::uint32_t handle);
+    [[nodiscard]] bool delete_current_local_reference(
+        std::uint32_t handle) noexcept;
+    [[nodiscard]] bool current_reference_live(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] std::uint32_t owned_local_reference_count(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] bool release_thread_state(
+        runtime::A32LogicalThreadId thread_id) noexcept;
+    void stash_current_pending_exception() noexcept;
+    void restore_current_pending_exception() noexcept;
+    void clear_thread_leases(
+        runtime::A32LogicalThreadId thread_id) noexcept;
 
     A32JniVmLayout layout_;
     A32JniClassRegistry* registry_{};
     A32JniMethodCallBridge* method_call_bridge_{};
+    A32JniVmOptions options_{};
     bool installed_{};
-    bool attached_{};
+    runtime::A32LogicalThreadId current_thread_id_{};
+    std::vector<ThreadState> thread_states_;
     std::optional<std::uint32_t> active_utf_chars_string_;
+    std::optional<std::uint32_t> active_utf_chars_thread_id_;
     std::optional<std::uint32_t> active_long_array_;
+    std::optional<std::uint32_t> active_long_array_thread_id_;
     std::optional<std::uint32_t> active_byte_array_;
+    std::optional<std::uint32_t> active_byte_array_thread_id_;
 };
 
 struct A32JniOnLoadOptions {

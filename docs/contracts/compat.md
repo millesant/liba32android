@@ -1147,26 +1147,31 @@ slot 4 / byte offset `0x10` and DetachCurrentThread at slot 5 / byte offset
 Each supported entry targets a distinct private guest ARM service stub while
 unsupported JavaVM entries remain zero.
 
-The VM service models one bounded guest JNI context. Successful installation
-starts that context attached so existing JNI_OnLoad behavior is preserved.
+The VM service keeps bounded attachment state keyed by
+`runtime::A32LogicalThreadId`. Successful installation creates the configured
+initial logical thread attached so existing JNI_OnLoad behavior is preserved.
+The embedding selects the current logical execution identity before guest JNI
+dispatch; host thread/TID identity is never used.
 
-AttachCurrentThread requires the exact configured logical JavaVM pointer and a
-writable guest JNIEnv** output slot. The attach-args pointer is accepted but not
-interpreted in this slice. Success writes the configured logical JNIEnv pointer,
-marks the modeled context attached, and returns JNI_OK. Re-attaching the same
-modeled context is idempotent.
+AttachCurrentThread requires the exact logical JavaVM pointer and a writable
+guest JNIEnv** output slot. The attach-args pointer remains uninterpreted.
+Success writes the configured logical JNIEnv pointer and creates/restores state
+for only the selected logical thread. The thread table defaults to 64 entries
+and has a hard ceiling of 1024; deterministic exhaustion returns JNI_ERR.
 
-DetachCurrentThread requires the exact JavaVM pointer. Transitioning from
-attached to detached returns JNI_OK. A second detach while already detached
-returns JNI_ERR.
+DetachCurrentThread removes only the selected attached logical thread and
+returns JNI_OK; detaching an already-detached identity returns JNI_ERR. Its
+guest-created locals, pending exception, and owned shared-scratch leases are
+released. VM-wide global/weak references and all other logical-thread state
+survive.
 
 GetEnv keeps JNI-version validation ahead of output access. For a supported
-version while detached it returns JNI_EDETACHED and does not modify the output
-slot. JNIEnv-native services fail while the modeled context is detached.
+version on an unattached selected logical identity it returns JNI_EDETACHED and
+does not modify the output slot. JNIEnv-native services fail for that detached
+identity without affecting attached peers.
 
-This slice does not implement multiple host threads, JavaVMAttachArgs contents,
-AttachCurrentThreadAsDaemon, Java thread objects, or thread-local reference
-lifetime.
+AttachCurrentThreadAsDaemon, JavaVMAttachArgs contents, host-thread passthrough,
+and Java Thread objects remain outside this contract.
 
 ## L32-C040 — ARM32 JNI strong/local reference bookkeeping
 
@@ -1175,26 +1180,28 @@ offset `0x54`, DeleteGlobalRef at slot 22 / `0x58`, and DeleteLocalRef at
 slot 23 / `0x5c`. Each entry targets a distinct private guest ARM service stub
 while unsupported JNIEnv entries remain zero.
 
-The bounded JNI registry stores opaque logical object identities with separate
+The bounded JNI registry stores opaque logical object identities and aggregate
 local/global reference counts under explicit identity/count ceilings. No host
-pointer becomes a jobject. Class registration creates a reference identity with
-zero live counts; successful FindClass retains one local reference before
-returning the existing logical class handle.
+pointer becomes a jobject. `A32JniVmService` additionally owns the provenance of
+guest-created local counts by logical thread. Class registration creates an
+identity with zero live counts; successful FindClass retains one aggregate local
+and records that local against the selected logical thread.
 
-NewGlobalRef on null returns null. For a known live non-null identity it
-increments the global count and returns the same opaque logical handle.
-DeleteLocalRef and DeleteGlobalRef accept null as a no-op and otherwise decrement
-only the matching reference count when present. Reference counts cannot exceed
-the configured hard-capped per-handle ceiling.
+NewGlobalRef on null returns null. A non-null source must be either a local owned
+by the selected logical thread or a VM-wide strong global; success increments
+the VM-wide global count and returns the same opaque handle. DeleteLocalRef can
+release only a guest local owned by the selected logical thread (plus explicit
+embedding-seeded legacy locals on the configured initial thread).
+DeleteGlobalRef remains VM-wide. Reference counts cannot exceed the configured
+hard-capped per-handle ceiling.
 
-The registry retains object identity metadata after counts reach zero so a later
-producer such as FindClass can establish a fresh local reference. This slice
-does not yet make every class/member operation a universal reference-liveness
-check.
+Detach and pthread thread-exit cleanup drain only that logical thread's owned
+locals. The registry retains identity metadata according to the existing object
+family rules, so another valid producer can establish later references.
 
-Weak references, NewLocalRef, IsSameObject, local frames, garbage collection,
-cross-thread local-reference ownership, general object allocation, and full
-lifetime enforcement across all JNI entrypoints remain separate.
+NewLocalRef, IsSameObject, local frames/capacity, garbage collection, and full
+Java heap reachability remain separate. Cross-thread consumption of a
+guest-created local reference is rejected.
 
 ## L32-C041 — ARM32 JNI seeded GetArrayLength
 
@@ -1348,22 +1355,25 @@ Supplied ARMv7 machine code identifies JNIEnv ThrowNew at slot 14 / byte offset
 `0x38`. The guest JNIEnv table publishes that exact entry through one distinct
 private ARM service stub.
 
-The bounded registry stores at most one pending logical exception containing a
-registered class handle, owned class name, and owned message bytes. Exception
-message length has one explicit hard-capped ceiling.
+Pending exception state is bounded per attached logical guest thread. Each
+thread can hold at most one registered class handle, owned class name/message,
+and logical exception identity; message length retains the explicit hard-capped
+ceiling. The selected thread's state is temporarily surfaced through the
+registry compatibility seam, while other threads' pending state remains
+isolated.
 
-ThrowNew requires a live logical jclass reference and one readable bounded
-NUL-terminated guest message. When no exception is pending, it copies and
-records the class/message then returns JNI_OK. When one is already pending, it
-returns JNI_ERR and preserves the original state.
+ThrowNew requires a currently usable logical jclass reference and one readable
+bounded NUL-terminated guest message. When the selected thread has no pending
+exception, it records the class/message and returns JNI_OK. A second throw on
+that same thread returns JNI_ERR and preserves its original state. A different
+logical thread may independently hold its own pending exception.
 
-The registry exposes a host-side clear operation so an embedding boundary or a
-future ExceptionClear implementation can consume/reset pending state without
-inventing a guest API.
+ExceptionOccurred/ExceptionCheck/ExceptionClear, implemented by later accepted
+contracts, observe or clear only the selected logical thread. Detach and pthread
+exit clean that thread's unobserved pending identity.
 
-This slice does not create Throwable jobject identity, stack traces, Java
-unwinding, automatic propagation through all JNI calls, or
-ExceptionOccurred/ExceptionCheck/ExceptionClear/ExceptionDescribe.
+This contract still does not create host Throwable objects, stack traces, Java
+unwinding, or universal ART exception gating across all JNI calls.
 
 ## L32-C048 — ARM32 JNI bounded CallVoidMethodV bridge
 
@@ -2125,3 +2135,49 @@ dedicated ARM32 pthread consumer requires 48 eager JUMP_SLOT imports and
 performs 55 wrapper calls. Host scheduler mutation, host affinity, cgroups,
 realtime execution, and Linux task-ID emulation remain out of scope.
 
+
+## L32-C070 — ARM32 JNI per-logical-thread state
+
+JNI thread state shares the accepted pthread/runtime logical identity seam.
+`A32JniVmService` is keyed by `runtime::A32LogicalThreadId`; it never derives
+guest identity from a host pthread, host TID, or host pointer. Installation
+creates one configurable initial logical thread (default ID 1) attached for
+backward-compatible JNI_OnLoad/bootstrap behavior. The bounded attached-thread
+table defaults to 64 entries and rejects configurations above the hard ceiling
+of 1024.
+
+GetEnv, AttachCurrentThread, DetachCurrentThread, and all JNIEnv-native service
+dispatch operate on the explicitly selected logical thread. GetEnv returns
+JNI_EDETACHED for an unattached selected identity without modifying `*env`.
+Attach creates bounded state for that identity; deterministic capacity
+exhaustion returns JNI_ERR. Detach removes only that identity's thread-local JNI
+state.
+
+Every local reference created by guest JNI service execution is charged to the
+selected logical thread while aggregate reference counts remain in the existing
+bounded registry. DeleteLocalRef cannot consume another logical thread's
+guest-created local. Existing references explicitly seeded by the embedding
+outside guest JNI service dispatch retain legacy initial-thread behavior for
+host fixtures. Strong global and weak-global ownership stays VM-wide and can be
+used/deleted from another attached logical thread according to the existing JNI
+reference rules.
+
+Pending exception state is independent per logical thread. Logical-thread
+selection stashes/restores the selected pending state; ExceptionOccurred,
+ExceptionCheck, ExceptionClear, and ThrowNew therefore cannot observe another
+thread's pending exception.
+
+The service implements `A32PthreadThreadExitHook`. The accepted pthread cleanup
+order invokes this hook after guest cleanup handlers and TLS destructor
+iteration but before the logical thread becomes Exited. Detach and the exit hook
+release that logical thread's guest-created locals, unobserved pending
+exception, and owned UTF/primitive-array scratch lease while preserving
+VM-wide globals/weak-globals and peer logical-thread state.
+
+Shared UTF/primitive-array scratch storage remains deliberately bounded to one
+outstanding lease per family. Lease ownership is tagged with the logical thread
+so a peer cannot release another thread's lease; thread cleanup abandons only
+the departing thread's lease.
+
+This contract adds no JNI table slots, host-thread passthrough, ART/Java Thread
+objects, local-frame APIs, GC, or public C embedding ABI.
