@@ -2216,3 +2216,40 @@ relocated for backward compatibility.
 
 This contract does not add host libc atexit passthrough, process-exit policy,
 new callback ownership semantics, or broader C++ runtime support.
+
+
+## L32-C072 — ARM32 bounded clock_gettime compatibility
+
+Supplied VLC ARMv7 `libc++_shared.so` and `libvlc.so` import
+`clock_gettime@LIBC`. Direct supplied-binary disassembly shows call sites
+using exactly clock IDs 0, 1, and 4 in this evidence slice, corresponding to
+`CLOCK_REALTIME`, `CLOCK_MONOTONIC`, and
+`CLOCK_MONOTONIC_RAW`.
+
+Private SVC `0x132` implements
+`clock_gettime(clockid_t, struct timespec*)` for exactly those three IDs.
+The service borrows the existing embedding-owned `A32PthreadClock` logical
+clock seam; it does not call host wall-clock APIs. `A32PthreadClockId`
+therefore additionally names `MonotonicRaw = 4` while existing pthread
+condition-variable timing remains on `Realtime`.
+
+The guest output is the Android ARM32 LP32 two-word timespec:
+signed 32-bit seconds followed by signed 32-bit nanoseconds. Nanoseconds are
+normalized into [0, 1_000_000_000), including for negative logical timestamps.
+A successful call publishes the complete 8-byte value and returns zero.
+
+Unsupported clock IDs and a supported logical clock that the embedding does not
+provide return -1 with guest `EINVAL`. A null, overflowing, or unwritable
+guest timespec address returns -1 with guest `EFAULT`. A logical timestamp
+whose normalized seconds do not fit signed 32-bit time_t returns -1 with guest
+`EOVERFLOW`. These failure paths do not intentionally publish a partial
+timespec.
+
+The partial ARM32 libc shim exports `clock_gettime` as a direct SVC stub.
+The reproducible base consumer therefore requires 47 eager JUMP_SLOT imports
+and executes the wrapper for all three evidenced clock IDs through one injected
+deterministic clock fixture.
+
+This contract does not add CPU-time, coarse, boottime, alarm, dynamic clock
+IDs, time64 ABI, `clock_settime`, `gettimeofday`, sleep/timer APIs, or host
+clock passthrough.

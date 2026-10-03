@@ -69,6 +69,16 @@ add_test(
 )
 
 liba32android_add_test_executable(
+    compat_libc_clock_test
+    tests/compat/a32_libc_clock.cpp
+)
+
+add_test(
+    NAME a32_libc_clock_gettime_service
+    COMMAND compat_libc_clock_test
+)
+
+liba32android_add_test_executable(
     compat_libc_heap_test
     tests/compat/a32_libc_heap.cpp
 )

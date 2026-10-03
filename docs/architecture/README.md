@@ -42,4 +42,7 @@ and deliberately does not introduce a generic scheduler.
 Evidence-backed pthread creation/identity/exit semantics are documented in
 [A32 pthread logical lifecycle service](a32-pthread-lifecycle.md).
 
+Guest-visible deterministic clock access is documented in
+[ARM32 libc clock_gettime compatibility](a32-libc-clock.md).
+
 Each architecture document describes one boundary and should avoid folding later-layer policy into earlier layers.

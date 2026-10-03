@@ -50,7 +50,8 @@ The current runtime includes:
 - constructor/destructor lifecycle planning and bounded execution;
 - Android namespace/platform-library policy and requester-aware library search;
 - partial compatibility surfaces for libc, liblog, libdl, libm, pthread-style
-  synchronization, `__aeabi_atexit` / `__cxa_atexit` / `__cxa_finalize`, and related services;
+  synchronization, bounded `clock_gettime`, `__aeabi_atexit` /
+  `__cxa_atexit` / `__cxa_finalize`, and related services;
 - JNI VM/GetEnv/JNI_OnLoad bootstrap plus bounded FindClass,
   RegisterNatives, member-ID lookup, JavaVM attach/detach state,
   strong/local reference bookkeeping, seeded array-length metadata, and

@@ -9,6 +9,7 @@ add_library(liba32android SHARED
     src/compat/a32_android_namespace_policy.cpp
     src/compat/a32_libc_memory_string.cpp
     src/compat/a32_libc_integer.cpp
+    src/compat/a32_libc_clock.cpp
     src/compat/a32_libc_heap.cpp
     src/compat/a32_pthread_sync.cpp
     src/compat/a32_pthread_lifecycle.cpp
