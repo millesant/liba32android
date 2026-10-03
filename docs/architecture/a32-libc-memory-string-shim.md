@@ -161,7 +161,7 @@ join suspension, target exit and return-value publication, wake/reclamation,
 post-SVC join continuation, and a running detach followed by detached exit
 reclamation.
 
-The base 46-wrapper partial-libc consumer remains unchanged and continues
+The base 46-wrapper partial-libc consumer continues
 to prove the previously accepted surface. The lifecycle consumer is separate so
 new thread behavior does not broaden unrelated libc fixture assumptions.
 
@@ -185,7 +185,7 @@ that suspends and is signaled, post-SVC waiter resume only after mutex
 reacquisition, a deterministic fake-clock timed wait returning ETIMEDOUT,
 broadcast, and destroy.
 
-The base 46-wrapper base libc fixture remains unchanged. The condvar
+The base 46-wrapper libc fixture remains the independent base integration. The condvar
 extension does not add `clock_gettime`; although supplied VLC ARMv7 libraries
 import that symbol, guest-visible clock APIs remain a separate bounded utility
 surface.
