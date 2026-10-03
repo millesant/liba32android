@@ -51,7 +51,7 @@ loading may acquire the shim.
 
 ## Real consumer
 
-A freestanding companion DSO imports the current thirty-symbol surface through ordinary function calls with builtins disabled. It therefore provides a real
+A freestanding companion DSO imports the current 46-symbol base surface through\nordinary function calls with builtins disabled. It therefore provides a real
 `DT_NEEDED libc.so` edge plus eager ARM JUMP_SLOT relocations.
 
 After graph load and relocation, the integration executes every exported
@@ -136,7 +136,7 @@ Contended mutex lock and zero-count sem_wait use feature 044's `Suspended`
 runtime disposition. A later unlock/post grants the oldest waiter before the
 embedding resumes its saved post-SVC A32 state.
 
-The real pinned-NDK fixture now exposes, relocates, and executes thirty-nine
+At the feature-045 boundary the real pinned-NDK fixture exposed, relocated,\nand executed thirty-nine
 partial-libc symbols. Its synchronization path covers default mutex init/lock,
 EBUSY trylock, unlock/destroy, and process-local semaphore init/wait/post/destroy.
 
@@ -185,7 +185,7 @@ that suspends and is signaled, post-SVC waiter resume only after mutex
 reacquisition, a deterministic fake-clock timed wait returning ETIMEDOUT,
 broadcast, and destroy.
 
-The base 46-wrapper libc fixture remains the independent base integration. The condvar
+The base 46-wrapper libc fixture remains the independent base integration.\nThe condvar
 extension does not add `clock_gettime`; although supplied VLC ARMv7 libraries
 import that symbol, guest-visible clock APIs remain a separate bounded utility
 surface.
