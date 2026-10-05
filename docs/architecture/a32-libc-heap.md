@@ -1,6 +1,6 @@
 # Bounded A32 guest heap service
 
-Status: feature 040 implementation prepared OFF-REF; exact-head validation NOT RUN
+Status: accepted current architecture; bounded guest heap service implemented
 
 ## Boundary
 

@@ -1,94 +1,81 @@
 # Roadmap
 
 liba32android is being built bottom-up: execution and ELF/linker correctness
-first, then Android compatibility surfaces, then increasingly realistic native
-application bootstrap.
+first, then bounded Android native compatibility surfaces, then increasingly
+realistic application bootstrap.
 
-This roadmap describes direction, not release promises or dates.
+This roadmap describes durable direction, not release promises, dates, or a
+mirror of the active GitHub issue queue.
 
 ## Current foundation
 
 Implemented and regression-tested foundations include:
 
-- A32 ARM/Thumb execution and logical guest memory;
-- public C embedding API v1;
+- A32 ARM/Thumb execution behind an engine-independent CPU adapter;
+- logical 32-bit guest memory plus a versioned public C embedding API;
 - ARM ELF32 mapping, placement, metadata, dependency loading, symbol lookup,
-  versioning, relocation, lifecycle, and RELRO;
-- bounded host-service dispatch;
-- Android namespace/platform-library policy;
-- partial libc/liblog/libdl/libm/pthread compatibility;
-- requester-scoped application native-library search;
-- JNI JavaVM/GetEnv/JNI_OnLoad bootstrap plus bounded FindClass, RegisterNatives, evidence-backed member IDs, and no-argument registered-native reverse dispatch.
+  versioning, relocation, lifecycle execution, and GNU RELRO hardening;
+- bounded host-service dispatch and logical guest-thread execution identity;
+- Android namespace/platform-provider policy and requester-aware filesystem/APK
+  native-library discovery;
+- evidence-backed partial libc, liblog, libdl, libm, pthread, signal,
+  scheduler/priority, clock, and C++ finalization compatibility;
+- a partial ARM32 `liblog.so` covering `__android_log_write`,
+  `__android_log_print`, and `__android_log_vprint` through one bounded sink
+  boundary;
+- bounded JNI JavaVM/JNIEnv bootstrap, native registration/invocation,
+  references, strings/arrays/fields/exceptions, and per-logical-thread
+  attachment/local-reference/pending-exception state;
+- reproducible ARM32 fixtures plus Android `arm64-v8a` cross-build and runtime
+  probe coverage.
 
-## Active track: JNI compatibility
+Accepted current engineering contracts live under `docs/contracts/`; subsystem
+boundaries live under `docs/architecture/`.
 
-The first registration, observed member-ID, bounded JavaVM attach/detach,
-strong/local-reference, seeded GetArrayLength, GetStaticIntField,
-modified-UTF-8 string, jlong-array, object-array, instance-long-field,
-ThrowNew pending-exception, CallVoidMethodV, raw CallVoidMethod, seeded
-byte-array element lease, GetIntField, ExceptionOccurred/ExceptionClear, and
-NewObjectV, GetStaticMethodID, raw CallStaticVoidMethod,
-CallStaticObjectMethod, balanced NewWeakGlobalRef/DeleteWeakGlobalRef,
-explicit bounded JNI_OnUnload invocation, and read-only ExceptionCheck are
-complete.
+## Near-term direction
 
-Direct supplied VLC ARMv7 `libvlc.so` evidence-backed GetStaticObjectField
-at slot 145 / offset `0x244` is complete, including bounded caller-seeded
-logical static object state and local-reference return semantics.
+Compatibility work remains evidence-driven. The next layers are selected from
+actual unresolved imports and runtime needs in supplied ARM32 Android binaries,
+not from API-table adjacency or a goal of cloning all of Bionic/ART.
 
-The supplied ARMv7 JNI surfaces currently exercised by the VLC artifacts are
-covered through GetStaticObjectField. Parallel compatibility work now advances
-through the evidence-backed pthread lifecycle family: logical
-create/self/equal/exit, basic creation attrs, join/detach ownership, bounded
-thread-exit TLS destructor cleanup, default condition variables with a
-deterministic timed-wait clock seam, typed recursive/error-check mutexes,
-pthread_once, and bounded rwlocks now build on the completed logical-thread
-foundation.
-In particular,
-generic ELF dlclose is not treated as equivalent to VM/class-loader
-JNI_OnUnload ownership. Local frames, NewLocalRef, IsSameObject, GC behavior,
-and other JNI families remain unselected until evidence justifies them.
-3. object construction and broader method invocation / exception APIs;
-4. remaining string/primitive-array/field families beyond the currently
-   evidence-backed seams;
-5. remaining exception operations;
-6. remaining object creation and method-call families;
-7. remaining instance/static field operations;
-8. remaining JavaVM/thread calls where evidence requires them;
-9. direct buffers, critical access, and monitors;
-10. evidence-driven completion of remaining native-facing JNI slots.
+The main remaining native-runtime themes are:
 
-The goal is a compatibility layer with explicit limits and deterministic guest
-handles, not an accidental full Java VM hidden inside the JNI adapter.
+- complete only the evidenced gaps in existing libc/libm compatibility;
+- add bounded descriptor/file and stdio behavior behind embedding-owned access
+  policy rather than unrestricted host passthrough;
+- add bounded socket/network behavior behind explicit embedding-owned policy;
+- introduce generic native-window/framework boundaries before graphics APIs;
+- add EGL/GLES support only after the window/object lifetime boundary is
+  explicit and device verification can distinguish mocked state from real GPU
+  behavior;
+- continue JNI coverage only where supplied binaries justify additional slots
+  or object-model semantics.
 
-## Parallel compatibility work
-
-As real libraries require it, the project will continue to improve:
-
-- Bionic/libc and pthread/TLS behavior;
-- Android dynamic-linker namespace/search/lifetime behavior;
-- application/APK native-library discovery and loading;
-- destructor/finalization and unload semantics;
-- diagnostics and Android device/emulator validation.
+GitHub Issues are the authoritative source for active work, acceptance criteria,
+and validation handoffs. This document intentionally does not duplicate issue
+status or sequencing.
 
 ## Later layers
 
 Graphics, audio, input, Android framework classes, and application-specific
-integration are intentionally later concerns. They should be introduced only
-after the generic native runtime boundary is strong enough to keep those layers
-separate.
+integration remain later concerns. They should be introduced only when generic
+runtime boundaries are strong enough to keep application behavior out of the
+core.
+
+Application-specific quirks belong in profiles or embedding code, not in the
+game-agnostic runtime.
 
 ## Release-readiness gates
 
-The project now has an Apache-2.0 license and a documented security-reporting
-path. Before calling liba32android a generally consumable release, it should
-still have:
+The project has an Apache-2.0 license, documented security reporting, and a
+versioned public C ABI. Before calling liba32android a generally consumable
+release, it should still have:
 
 - a documented supported platform/toolchain matrix;
-- stable release/versioning policy for the public C ABI;
+- a stable release/versioning policy for the public C ABI;
 - reproducible release artifacts;
 - representative real-device Android validation;
-- clearly documented compatibility limits.
+- clearly documented compatibility limits and unsupported behavior.
 
-See the open GitHub Issues for active bounded engineering work and
+See open GitHub Issues for active bounded engineering work and
 `docs/architecture/` for subsystem detail.

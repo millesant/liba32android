@@ -1,6 +1,6 @@
 # Additional A32 libc copy/search services
 
-Status: feature 033 implementation prepared OFF-REF; exact-head validation NOT RUN
+Status: accepted current architecture; bounded copy/search compatibility implemented
 
 Feature 033 extends `A32LibcMemoryStringService` with three additional
 primitives present in both supplied ARM32 targets:

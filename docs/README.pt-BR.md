@@ -40,9 +40,23 @@ pesquisa e evidências históricas.
 - [Execução de fixture real](architecture/elf32-execution.md)
 - [GNU RELRO](architecture/elf32-relro.md)
 
-Notas adicionais de arquitetura de compatibilidade ficam junto desses
-documentos em `architecture/` e cobrem superfícies de
-libc/liblog/pthread/finalização/namespace.
+### Arquitetura de compatibilidade
+
+- [Contexto lógico de thread guest](architecture/a32-logical-thread-context.md)
+- [Ciclo de vida pthread](architecture/a32-pthread-lifecycle.md)
+- [Sincronização pthread](architecture/a32-pthread-sync.md)
+- [Compatibilidade de sinais](architecture/a32-signal-compat.md)
+- [Compatibilidade de scheduler/prioridade](architecture/a32-scheduler-compat.md)
+- [Serviços libc de memória/strings](architecture/a32-libc-memory-string-service.md)
+- [Parsing inteiro da libc](architecture/a32-libc-integer-service.md)
+- [Heap da libc](architecture/a32-libc-heap.md)
+- [clock_gettime da libc](architecture/a32-libc-clock.md)
+- [Shim parcial ARM32 da libc](architecture/a32-libc-memory-string-shim.md)
+- [Serviços e shim Android liblog](architecture/android-log-write-shim.md)
+- [Catálogo de plataforma Android](architecture/android-platform-catalog-provider.md)
+- [Política de acesso a namespaces Android](architecture/android-namespace-access-policy.md)
+- [Finalização C++](architecture/a32-cxa-finalize.md)
+- [Transação residente de dlclose](architecture/a32-libdl-close-transaction.md)
 
 ## Desenvolvimento
 

@@ -1,6 +1,6 @@
 # Android namespace accessibility policy
 
-Status: feature 029 implementation prepared; exact-head validation NOT RUN
+Status: accepted current architecture; bounded namespace accessibility policy implemented
 
 ## Boundary
 

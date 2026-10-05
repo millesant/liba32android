@@ -161,12 +161,10 @@ For ownership/dependency rules, see
 
 ## Roadmap
 
-The public roadmap is in [ROADMAP.md](ROADMAP.md). The immediate compatibility
-track has completed class/native registration, member IDs, JavaVM
-attach/detach, strong/local references, bounded string/array/field seams,
-ThrowNew pending state, CallVoidMethod/CallVoidMethodV, GetIntField, and
-ExceptionOccurred/ExceptionClear. New JNI coverage is selected from direct
-ARMv7 binary evidence rather than table adjacency.
+The public roadmap is in [ROADMAP.md](ROADMAP.md). It records durable technical
+direction only; active work, ordering, acceptance criteria, and validation
+handoffs live in GitHub Issues. Compatibility expansion remains driven by
+direct ARM32 binary evidence rather than API-table adjacency.
 
 ## Contributing
 

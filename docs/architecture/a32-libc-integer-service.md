@@ -1,6 +1,6 @@
 # A32 libc atoi/strtol host service
 
-Status: feature 035 implementation prepared OFF-REF; exact-head validation NOT RUN
+Status: accepted current architecture; bounded atoi/strtol compatibility implemented
 
 ## Protocol
 

@@ -1,6 +1,6 @@
 # A32 guest errno state and __errno service
 
-Status: feature 037 implementation prepared OFF-REF; exact-head validation NOT RUN
+Status: accepted current architecture; bounded guest errno service implemented
 
 ## Shared service
 

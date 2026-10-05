@@ -1,6 +1,6 @@
 # ARM32 guest `liblog.so` shim/provider path
 
-Status: write/print/vprint compatibility implemented; exact-head validation pending
+Status: accepted current architecture; write/print/vprint compatibility implemented
 
 ## Goal
 
