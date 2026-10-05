@@ -377,8 +377,7 @@ int main(int argc, char** argv) {
     A32HostServiceRegistry registry{std::span{services}};
 
     const auto execute_wrapper =
-        [&](const Elf32GraphSymbolLookupResult& call)
-            -> std::optional<liba32android::runtime::A32ServiceDispatchResult> {
+        [&](const Elf32GraphSymbolLookupResult& call) {
             const auto& symbol = call.symbol.symbol;
             const bool thumb = (symbol.symbol.value & 1U) != 0U;
             ExecutionRequest request{};
@@ -397,40 +396,40 @@ int main(int argc, char** argv) {
 
     std::size_t completed_service_calls = 0U;
     auto result = execute_wrapper(call_write);
-    if (!result || !result->stop_pc_reached ||
-        result->services_handled != 1U ||
-        result->regs[0] != 1U ||
+    if (!result || !result.stop_pc_reached ||
+        result.services_handled != 1U ||
+        result.regs[0] != 1U ||
         sink.calls != 1U ||
         sink.priority != 4 ||
         sink.tag != std::optional<std::string>{"LibA32"} ||
         sink.text != "hello from guest shim") {
         return fail("__android_log_write integration failed");
     }
-    completed_service_calls += result->services_handled;
+    completed_service_calls += result.services_handled;
 
     result = execute_wrapper(call_print);
-    if (!result || !result->stop_pc_reached ||
-        result->services_handled != 1U ||
-        result->regs[0] != 1U ||
+    if (!result || !result.stop_pc_reached ||
+        result.services_handled != 1U ||
+        result.regs[0] != 1U ||
         sink.calls != 2U ||
         sink.priority != 5 ||
         sink.tag != std::optional<std::string>{"LibA32"} ||
         sink.text != "guest=hello from guest shim value=-7 hex=0x2a") {
         return fail("__android_log_print integration failed");
     }
-    completed_service_calls += result->services_handled;
+    completed_service_calls += result.services_handled;
 
     result = execute_wrapper(call_vprint);
-    if (!result || !result->stop_pc_reached ||
-        result->services_handled != 1U ||
-        result->regs[0] != 1U ||
+    if (!result || !result.stop_pc_reached ||
+        result.services_handled != 1U ||
+        result.regs[0] != 1U ||
         sink.calls != 3U ||
         sink.priority != 6 ||
         sink.tag != std::optional<std::string>{"LibA32"} ||
         sink.text != "width=     hel signed=-2 ptr=0x1234") {
         return fail("__android_log_vprint integration failed");
     }
-    completed_service_calls += result->services_handled;
+    completed_service_calls += result.services_handled;
 
     std::cout
         << "fixture.android_log.object_count="

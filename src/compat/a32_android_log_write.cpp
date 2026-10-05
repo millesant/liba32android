@@ -246,7 +246,7 @@ struct ParsedFormat {
         any = true;
         const std::size_t digit =
             static_cast<std::size_t>(format[index] - '0');
-        if (value > (limit - std::min(limit, digit)) / 10U) {
+        if (digit > limit || value > (limit - digit) / 10U) {
             return false;
         }
         value = value * 10U + digit;
@@ -666,6 +666,10 @@ template <typename T>
                     return false;
                 }
                 break;
+            }
+            if (parsed.precision.has_value() &&
+                *parsed.precision > options.max_string_argument_bytes) {
+                return false;
             }
             std::string value;
             if (!read_guest_format_string(
