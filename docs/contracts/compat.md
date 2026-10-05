@@ -1,7 +1,7 @@
 # Compatibility contract
 
 Status: Accepted current project contract
-Last reconciled: 2026-10-03
+Last reconciled: 2026-10-05
 
 ## L32-C001 — Platform compatibility is a separate layer
 
@@ -30,12 +30,13 @@ synchronous call and returns a signed 32-bit result whose bit pattern is copied
 to guest r0. The service does not validate Android logging policy itself and
 does not call host liblog directly.
 
-## L32-C003 — Deliberate log-service exclusions
+## L32-C003 — Deliberate feature-026 log-service exclusions
 
-Feature 026 does not implement `__android_log_print`,
+Feature 026 itself does not implement `__android_log_print`,
 `__android_log_vprint`, varargs/stack marshalling, Android log filtering,
 guest ELF symbol export/provider generation, namespace/search policy, JNI,
-graphics, audio, or general libc emulation.
+graphics, audio, or general libc emulation. Later contracts may add bounded
+entrypoints without changing the accepted `__android_log_write` service ABI.
 
 ## L32-C004 — ARM32 guest `liblog.so` write shim/provider
 
@@ -57,9 +58,9 @@ identity `liba32android-compat-liblog`. The returned entry borrows the supplied
 image bytes; their backing storage must outlive the provider operation.
 
 The runtime does not embed or own the generated shim DSO. Automatic platform
-catalog installation, filesystem/namespace search policy,
-`__android_log_print`/`__android_log_vprint`, and general `liblog.so`
-compatibility remain separate work.
+catalog installation, filesystem/namespace search policy, and general
+`liblog.so` compatibility remain separate work. L32-C073 later extends this
+same shim identity with bounded print/vprint entrypoints.
 
 ## L32-C005 — Explicit Android platform-provider policy seam
 
@@ -2253,3 +2254,50 @@ deterministic clock fixture.
 This contract does not add CPU-time, coarse, boottime, alarm, dynamic clock
 IDs, time64 ABI, `clock_settime`, `gettimeofday`, sleep/timer APIs, or host
 clock passthrough.
+
+
+## L32-C073 — ARM32 bounded __android_log_print / __android_log_vprint
+
+The supplied VLC ARMv7 native set directly imports
+`__android_log_print` from `libmla.so`, `libvlc.so`, and
+`libvlcjni.so`, and imports `__android_log_vprint` from `libvlc.so`.
+The accepted Android declarations are
+`int __android_log_print(int prio, const char* tag, const char* fmt, ...)`
+and
+`int __android_log_vprint(int prio, const char* tag, const char* fmt,
+va_list ap)`. Both return the result supplied by the logging sink, preserving
+the existing write-service return boundary.
+
+Private SVCs `0x133` and `0x134` identify the print and vprint guest
+stubs. `__android_log_print` observes r0 priority, r1 tag, r2 format, then
+AAPCS32 variadic words beginning with r3 and continuing on the guest stack.
+`__android_log_vprint` observes the same first three named arguments and
+treats r3 as the ARM32 `va_list` word. AAPCS32 defines that `va_list` as
+one pointer-bearing word and requires double-word parameters at double-word
+alignment. The compatibility decoder follows those rules through
+`GuestMemory`; it never reinterprets a guest va_list as a host va_list.
+
+The caller supplies finite ceilings for tag bytes, format bytes, produced
+message bytes, guest-string argument bytes, consumed variadic arguments,
+field width, and precision. Formatting supports `%%`, integer
+`d/i/u/o/x/X`, `c`, `s`, `p`, and double
+`f/F/e/E/g/G/a/A`, with selected standard flags, width/precision, and
+integer length modifiers `hh/h/l/ll/j/z/t`. `%s` reads only logical guest
+memory. `%p` renders the logical 32-bit guest value and never creates a host
+pointer.
+
+The service rejects `%n`, positional parameters, long-double/wide
+conversions, unselected extensions, malformed formats, argument-memory
+failures, and configured ceiling violations before sink invocation. It never
+passes a guest-controlled format string or guest va_list directly to a host
+variadic function. Host scalar formatting may be used only with a newly built,
+validated single-conversion format string and an already decoded scalar value.
+
+The partial `liblog.so` exports write/print/vprint together. The reproducible
+ARM32 consumer requires three eager JUMP_SLOT relocations and executes:
+the existing write call, a real variadic print call spanning r3 and stack
+arguments, and a compiler-built ARM32 va_list forwarded through vprint.
+
+This contract does not add complete printf semantics, Android filtering,
+assert/event/buffer log APIs, host liblog passthrough, locale/wide formatting,
+or broader Android framework compatibility.

@@ -25,6 +25,8 @@
 
 namespace {
 
+using liba32android::compat::A32AndroidLogFormatOptions;
+using liba32android::compat::A32AndroidLogPrintService;
 using liba32android::compat::A32AndroidLogSink;
 using liba32android::compat::A32AndroidLogWriteOptions;
 using liba32android::compat::A32AndroidLogWriteService;
@@ -32,8 +34,10 @@ using liba32android::compat::A32AndroidNamespaceAccessPolicy;
 using liba32android::compat::A32AndroidNamespaceBinding;
 using liba32android::compat::A32AndroidNamespaceLink;
 using liba32android::compat::A32AndroidPlatformProvider;
+using liba32android::compat::kA32AndroidLogPrintShimSvcImmediate;
 using liba32android::compat::kA32AndroidLogShimIdentity;
 using liba32android::compat::kA32AndroidLogShimSoname;
+using liba32android::compat::kA32AndroidLogVprintShimSvcImmediate;
 using liba32android::compat::kA32AndroidLogWriteShimSvcImmediate;
 using liba32android::cpu::ExecutionRequest;
 using liba32android::cpu::InstructionSet;
@@ -230,34 +234,78 @@ int main(int argc, char** argv) {
     }
 
     const auto lookup_options = symbol_options();
-    const auto call = lookup_elf32_graph_symbol(
-        memory,
-        graph_result.graph,
-        0,
-        "fixture_android_log_write",
+    const auto call_write = lookup_elf32_graph_symbol(
+        memory, graph_result.graph, 0, "fixture_android_log_write",
+        lookup_options);
+    const auto call_print = lookup_elf32_graph_symbol(
+        memory, graph_result.graph, 0, "fixture_android_log_print",
+        lookup_options);
+    const auto call_vprint = lookup_elf32_graph_symbol(
+        memory, graph_result.graph, 0, "fixture_android_log_vprint",
         lookup_options);
     const auto log_write = lookup_elf32_graph_symbol(
-        memory,
-        graph_result.graph,
-        0,
-        "__android_log_write",
+        memory, graph_result.graph, 0, "__android_log_write",
         lookup_options);
-    if (!call) return fail(lookup_error("fixture_android_log_write", call));
+    const auto log_print = lookup_elf32_graph_symbol(
+        memory, graph_result.graph, 0, "__android_log_print",
+        lookup_options);
+    const auto log_vprint = lookup_elf32_graph_symbol(
+        memory, graph_result.graph, 0, "__android_log_vprint",
+        lookup_options);
+    if (!call_write) {
+        return fail(lookup_error("fixture_android_log_write", call_write));
+    }
+    if (!call_print) {
+        return fail(lookup_error("fixture_android_log_print", call_print));
+    }
+    if (!call_vprint) {
+        return fail(lookup_error("fixture_android_log_vprint", call_vprint));
+    }
     if (!log_write) return fail(lookup_error("__android_log_write", log_write));
-    if (call.symbol.object_index != 0 || log_write.symbol.object_index != 1) {
+    if (!log_print) return fail(lookup_error("__android_log_print", log_print));
+    if (!log_vprint) {
+        return fail(lookup_error("__android_log_vprint", log_vprint));
+    }
+    if (call_write.symbol.object_index != 0 ||
+        call_print.symbol.object_index != 0 ||
+        call_vprint.symbol.object_index != 0 ||
+        log_write.symbol.object_index != 1 ||
+        log_print.symbol.object_index != 1 ||
+        log_vprint.symbol.object_index != 1) {
         return fail("Android log shim symbols resolved from the wrong graph objects");
     }
 
     const auto relocated = apply_elf32_combined_relocations(
         memory, graph_result.graph, 0, relocation_options());
-    if (!relocated ||
-        relocated.application.writes.size() != 1 ||
-        relocated.application.writes[0].type != kRArmJumpSlot ||
-        relocated.application.writes[0].final_word !=
-            log_write.symbol.symbol.guest_value) {
+    if (!relocated || relocated.application.writes.size() != 3U) {
         return fail(
             std::string("Android log shim consumer relocation failed: ") +
             liba32android::elf::to_string(relocated.error));
+    }
+    std::array<bool, 3> targets_seen{};
+    const std::array<std::uint32_t, 3> expected_targets{{
+        log_write.symbol.symbol.guest_value,
+        log_print.symbol.symbol.guest_value,
+        log_vprint.symbol.symbol.guest_value,
+    }};
+    for (const auto& write : relocated.application.writes) {
+        if (write.type != kRArmJumpSlot) {
+            return fail("Android log consumer emitted a non-JUMP_SLOT import");
+        }
+        bool matched = false;
+        for (std::size_t i = 0; i < expected_targets.size(); ++i) {
+            if (write.final_word == expected_targets[i] && !targets_seen[i]) {
+                targets_seen[i] = true;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) {
+            return fail("Android log consumer relocation targeted unexpected symbol");
+        }
+    }
+    if (!targets_seen[0] || !targets_seen[1] || !targets_seen[2]) {
+        return fail("Android log consumer did not relocate all log entrypoints");
     }
 
     const auto data = find_unmapped_region(memory, 0x70000000U, 1);
@@ -287,14 +335,12 @@ int main(int argc, char** argv) {
         return fail("could not stage Android log shim guest strings");
     }
 
-    const auto& call_symbol = call.symbol.symbol;
-    if (call_symbol.symbol.type != 2U || call_symbol.symbol.size == 0) {
-        return fail("fixture_android_log_write was not a non-empty STT_FUNC");
+    for (const auto* call : {&call_write, &call_print, &call_vprint}) {
+        if (call->symbol.symbol.symbol.type != 2U ||
+            call->symbol.symbol.symbol.size == 0U) {
+            return fail("Android log fixture wrapper was not a non-empty STT_FUNC");
+        }
     }
-    const bool thumb = (call_symbol.symbol.value & 1U) != 0;
-    const InstructionSet instruction_set =
-        thumb ? InstructionSet::Thumb : InstructionSet::Arm;
-    const std::uint32_t entry_pc = call_symbol.guest_value & ~1U;
 
     const std::uint64_t stack_top64 =
         static_cast<std::uint64_t>(*stack) +
@@ -304,38 +350,86 @@ int main(int argc, char** argv) {
     }
 
     RecordingSink sink;
-    A32AndroidLogWriteService service{
+    A32AndroidLogWriteService write_service{
         kA32AndroidLogWriteShimSvcImmediate,
         sink,
-        A32AndroidLogWriteOptions{32, 64},
+        A32AndroidLogWriteOptions{32, 128},
     };
-    const std::array<A32HostServiceRegistryEntry, 1> services{{
-        {kA32AndroidLogWriteShimSvcImmediate, &service},
+    A32AndroidLogPrintService print_service{
+        kA32AndroidLogPrintShimSvcImmediate,
+        kA32AndroidLogVprintShimSvcImmediate,
+        sink,
+        A32AndroidLogFormatOptions{
+            .max_tag_bytes = 32U,
+            .max_format_bytes = 128U,
+            .max_output_bytes = 256U,
+            .max_string_argument_bytes = 128U,
+            .max_arguments = 16U,
+            .max_field_width = 64U,
+            .max_precision = 64U,
+        },
+    };
+    const std::array<A32HostServiceRegistryEntry, 3> services{{
+        {kA32AndroidLogWriteShimSvcImmediate, &write_service},
+        {kA32AndroidLogPrintShimSvcImmediate, &print_service},
+        {kA32AndroidLogVprintShimSvcImmediate, &print_service},
     }};
     A32HostServiceRegistry registry{std::span{services}};
 
-    ExecutionRequest request{};
-    request.instruction_set = instruction_set;
-    request.entry_pc = entry_pc;
-    request.regs[0] = tag_address;
-    request.regs[1] = text_address;
-    request.regs[13] =
-        static_cast<std::uint32_t>(stack_top64) & ~7U;
-    request.regs[14] = *stop | (thumb ? 1U : 0U);
-    request.instruction_count = kInstructionBudget;
-    request.stop_pc = *stop;
+    const auto execute_wrapper =
+        [&](const Elf32GraphSymbolLookupResult& call) {
+            const auto& symbol = call.symbol.symbol;
+            const bool thumb = (symbol.symbol.value & 1U) != 0U;
+            ExecutionRequest request{};
+            request.instruction_set =
+                thumb ? InstructionSet::Thumb : InstructionSet::Arm;
+            request.entry_pc = symbol.guest_value & ~1U;
+            request.regs[0] = tag_address;
+            request.regs[1] = text_address;
+            request.regs[13] =
+                static_cast<std::uint32_t>(stack_top64) & ~7U;
+            request.regs[14] = *stop | (thumb ? 1U : 0U);
+            request.instruction_count = kInstructionBudget;
+            request.stop_pc = *stop;
+            return execute_a32_with_services(memory, request, registry, 1);
+        };
 
-    const auto result =
-        execute_a32_with_services(memory, request, registry, 1);
+    std::size_t completed_service_calls = 0U;
+    auto result = execute_wrapper(call_write);
     if (!result || !result.stop_pc_reached ||
-        result.services_handled != 1 ||
+        result.services_handled != 1U ||
         result.regs[0] != 1U ||
-        sink.calls != 1 ||
+        sink.calls != 1U ||
         sink.priority != 4 ||
         sink.tag != std::optional<std::string>{"LibA32"} ||
         sink.text != "hello from guest shim") {
-        return fail("ARM32 liblog.so shim did not execute through the service bridge");
+        return fail("__android_log_write integration failed");
     }
+    completed_service_calls += result.services_handled;
+
+    result = execute_wrapper(call_print);
+    if (!result || !result.stop_pc_reached ||
+        result.services_handled != 1U ||
+        result.regs[0] != 1U ||
+        sink.calls != 2U ||
+        sink.priority != 5 ||
+        sink.tag != std::optional<std::string>{"LibA32"} ||
+        sink.text != "guest=hello from guest shim value=-7 hex=0x2a") {
+        return fail("__android_log_print integration failed");
+    }
+    completed_service_calls += result.services_handled;
+
+    result = execute_wrapper(call_vprint);
+    if (!result || !result.stop_pc_reached ||
+        result.services_handled != 1U ||
+        result.regs[0] != 1U ||
+        sink.calls != 3U ||
+        sink.priority != 6 ||
+        sink.tag != std::optional<std::string>{"LibA32"} ||
+        sink.text != "width=     hel signed=-2 ptr=0x1234") {
+        return fail("__android_log_vprint integration failed");
+    }
+    completed_service_calls += result.services_handled;
 
     std::cout
         << "fixture.android_log.object_count="
@@ -346,10 +440,14 @@ int main(int argc, char** argv) {
         << log_write.symbol.object_index << '\n'
         << "fixture.android_log.relocation_count="
         << relocated.application.writes.size() << '\n'
-        << "fixture.android_log.service_id=0x" << std::hex
-        << kA32AndroidLogWriteShimSvcImmediate << std::dec << '\n'
+        << "fixture.android_log.write_service_id=0x" << std::hex
+        << kA32AndroidLogWriteShimSvcImmediate
+        << "\nfixture.android_log.print_service_id=0x"
+        << kA32AndroidLogPrintShimSvcImmediate
+        << "\nfixture.android_log.vprint_service_id=0x"
+        << kA32AndroidLogVprintShimSvcImmediate << std::dec << '\n'
         << "fixture.android_log.service_calls="
-        << result.services_handled << '\n'
+        << completed_service_calls << '\n'
         << "fixture.android_log.priority=" << sink.priority << '\n'
         << "fixture.android_log.status=PASS\n";
     return 0;

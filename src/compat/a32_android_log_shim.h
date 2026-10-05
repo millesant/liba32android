@@ -1,6 +1,8 @@
 #pragma once
 
 #define LIBA32ANDROID_A32_ANDROID_LOG_WRITE_SHIM_SVC 0xA0
+#define LIBA32ANDROID_A32_ANDROID_LOG_PRINT_SHIM_SVC 0x133
+#define LIBA32ANDROID_A32_ANDROID_LOG_VPRINT_SHIM_SVC 0x134
 
 #ifdef __cplusplus
 
@@ -14,6 +16,10 @@ namespace liba32android::compat {
 
 inline constexpr std::uint32_t kA32AndroidLogWriteShimSvcImmediate =
     LIBA32ANDROID_A32_ANDROID_LOG_WRITE_SHIM_SVC;
+inline constexpr std::uint32_t kA32AndroidLogPrintShimSvcImmediate =
+    LIBA32ANDROID_A32_ANDROID_LOG_PRINT_SHIM_SVC;
+inline constexpr std::uint32_t kA32AndroidLogVprintShimSvcImmediate =
+    LIBA32ANDROID_A32_ANDROID_LOG_VPRINT_SHIM_SVC;
 inline constexpr std::string_view kA32AndroidLogShimSoname = "liblog.so";
 inline constexpr std::string_view kA32AndroidLogShimIdentity =
     "liba32android-compat-liblog";
