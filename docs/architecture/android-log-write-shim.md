@@ -1,91 +1,104 @@
-# ARM32 guest `liblog.so` write shim/provider path
+# ARM32 guest `liblog.so` shim/provider path
 
-Status: feature 027 DONE; exact-head implementation validation PASSed at `37624f389bb34197669a763c32631a1174d099a6`
+Status: write/print/vprint compatibility implemented; exact-head validation pending
 
 ## Goal
 
-Connect the verified feature-026 host service to the existing ELF
-dependency/symbol/relocation machinery with the smallest real ARM32 guest
-compatibility library.
+Connect the bounded Android logging compatibility services to the existing
+ELF dependency/symbol/relocation machinery with one reproducible ARM32
+`liblog.so`.
 
-The feature supplies reproducible source for a freestanding ARMv7 Android
-`liblog.so` whose only exported compatibility function is
-`__android_log_write`.
+The shim now exports the three Android logging entrypoints directly required by
+the supplied ARM32 FMOD/VLC evidence set:
+
+- `__android_log_write`;
+- `__android_log_print`;
+- `__android_log_vprint`.
+
+The original write path remains byte-preserving and unchanged. The print paths
+add bounded AAPCS32 vararg decoding and formatting before reusing the same
+caller-owned `A32AndroidLogSink` boundary.
 
 ## Private guest/host protocol
 
 `src/compat/a32_android_log_shim.h` is the single source of truth for the
-private service immediate:
+private service immediates:
 
-`LIBA32ANDROID_A32_ANDROID_LOG_WRITE_SHIM_SVC == 0xA0`.
+- `__android_log_write` -> `0xA0`;
+- `__android_log_print` -> `0x133`;
+- `__android_log_vprint` -> `0x134`.
 
-The guest assembly fixture includes that header through the C preprocessor, and
-host integration code uses the matching C++ constant
-`kA32AndroidLogWriteShimSvcImmediate`.
+Each generated guest function is a direct ARM SVC stub followed by `bx lr`.
+The stubs do not rewrite argument words, so the host compatibility services see
+the exact AAPCS32 call state at the logging entrypoint.
 
-The guest function is deliberately tiny:
+## ARM32 varargs boundary
 
-```text
-__android_log_write:
-    svc #0xa0
-    bx lr
-```
+Android declares `__android_log_print(int, const char*, const char*, ...)`
+and `__android_log_vprint(int, const char*, const char*, va_list)`.
+AAPCS32 defines `va_list` as a one-word structure containing a pointer to the
+current argument and requires double-word arguments to appear at double-word
+alignment.
 
-It does not marshal or rewrite arguments. AAPCS32 therefore leaves feature 026
-to consume r0/r1/r2 exactly as established by its accepted contract.
+For `__android_log_print`, the three named arguments occupy r0-r2. The
+formatter therefore consumes the first eligible word argument from r3 and then
+continues from the guest stack, applying AAPCS32 alignment before 64-bit
+arguments. For `__android_log_vprint`, r3 is the one-word ARM32 `va_list`
+value and decoding proceeds only through bounded `GuestMemory` reads.
+
+The selected formatter supports:
+
+- `%%`;
+- signed/unsigned integer `d i u o x X` with `hh h l ll j z t`;
+- `c`, guest-string `s`, logical guest-pointer `p`;
+- double `f F e E g G a A`;
+- `- + space # 0` flags where meaningful;
+- bounded numeric or `*` width and precision.
+
+The implementation never forwards a guest format string or guest `va_list`
+to a host variadic function. Numeric conversions use host formatting only after
+the conversion specification has been parsed, validated, and rebuilt from
+bounded state. Guest `%s` pointers are copied through `GuestMemory`, and
+`%p` formats the logical 32-bit guest value rather than constructing or
+exposing a host pointer.
+
+`%n`, positional parameters, wide/long-double formatting, locale extensions,
+and every unselected conversion fail the host-service call before sink
+invocation.
 
 ## ELF/provider boundary
 
-The reproducible shim is linked with SONAME `liblog.so`. The companion
-freestanding consumer has one `DT_NEEDED` edge to `liblog.so` and one
-`R_ARM_JUMP_SLOT` reference to `__android_log_write`.
+The reproducible shim is linked with SONAME `liblog.so`. The freestanding
+consumer has one `DT_NEEDED liblog.so` edge and eager
+`R_ARM_JUMP_SLOT` imports for all three entrypoints.
 
-`make_a32_android_log_shim_catalog_entry` creates the exact-name catalog entry
-for that SONAME using stable identity `liba32android-compat-liblog`. The entry
-borrows the supplied image bytes; neither the helper nor
-`Elf32DependencyCatalogProvider` owns the backing storage.
-
-The generated DSO is not vendored into Git and is not embedded into
-`liba32android.so`. Packaging an ARM32 shim image remains an embedding/build
-responsibility.
+`make_a32_android_log_shim_catalog_entry` keeps stable identity
+`liba32android-compat-liblog`. The generated image is still build/embedding
+material rather than bytes embedded into `liba32android.so`.
 
 ## Integration path
 
-The feature-027 integration regression:
+The real ARM32 fixture:
 
-1. loads the real consumer root;
-2. resolves `DT_NEEDED liblog.so` through the exact-name catalog helper;
-3. resolves `__android_log_write` from the loaded shim object;
-4. applies the consumer's eager JUMP_SLOT relocation;
-5. maps bounded guest stack/string storage;
-6. executes the consumer function;
-7. crosses the real shim SVC into the feature-025 registry and feature-026 log
-   service;
-8. resumes through `bx lr` and reaches the requested stop PC.
+1. loads the consumer and namespace-gated platform `liblog.so`;
+2. resolves and eagerly relocates write/print/vprint;
+3. executes the existing write wrapper;
+4. executes a real variadic print call whose first formatted argument arrives
+   in r3 and later arguments arrive on the stack;
+5. executes a wrapper that constructs a real NDK ARM32 `va_list` and forwards
+   it to `__android_log_vprint`;
+6. verifies all three calls reach one recording sink with the expected bounded
+   formatted bytes.
 
-This is the first proof that the ELF linker side and compatibility-service side
-are connected by a real ARM32 guest library rather than only a synthetic SVC
-program.
+The print fixture covers string, signed integer, alternate hexadecimal,
+64-bit integer, width/precision, and logical-pointer formatting across both
+vararg entry forms.
 
-## Validation
+## Limits
 
-Exact implementation revision
-`37624f389bb34197669a763c32631a1174d099a6` PASSed:
-
-- ARM32 liblog shim integration check `108389674586`;
-- Linux A32 smoke check `108389675056`;
-- Android x86_64 address-space probe check `108389675036`;
-- Android arm64-v8a cross-build check `108389674910`.
-
-The dedicated shim check built the pair twice and byte-compared both outputs,
-verified SONAME/DT_NEEDED/export/JUMP_SLOT metadata, then executed the generated
-consumer through the loaded shim and feature-026 service. The integration
-reported two graph objects, one relocation, service ID `0xa0`, one service
-call, priority 4, and PASS.
-
-## Deliberate exclusions
-
-The shim exports no `__android_log_print` or `__android_log_vprint`; there is
-no varargs/stack marshalling, Android namespace/search policy, automatic
-platform-catalog installation, host `liblog` binding, JNI/graphics/audio
-surface, or broad application compatibility claim.
+This is not a complete Android `liblog.so` or a general printf
+implementation. Android filtering/policy remains the sink's responsibility.
+There is no host `liblog` passthrough, assertion/event/buffer logging,
+automatic platform-catalog installation, locale/wide formatting, arbitrary
+printf extensions, JNI/graphics/audio surface, or broad application
+compatibility claim.

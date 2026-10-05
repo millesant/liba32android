@@ -47,10 +47,12 @@ jobs:
           readelf -rW build-fixtures/android-log/liba32android_android_log_consumer.so |
             tee build-fixtures/android-log-consumer-relocations.txt
           grep -F 'Library soname: [liblog.so]' build-fixtures/android-log-shim-dynamic.txt
-          grep -F '__android_log_write' build-fixtures/android-log-shim-symbols.txt
+          for symbol in __android_log_write __android_log_print __android_log_vprint; do
+            grep -F "$symbol" build-fixtures/android-log-shim-symbols.txt
+            grep -F 'R_ARM_JUMP_SLOT' build-fixtures/android-log-consumer-relocations.txt |
+              grep -F "$symbol"
+          done
           grep -F 'Shared library: [liblog.so]' build-fixtures/android-log-consumer-dynamic.txt
-          grep -F 'R_ARM_JUMP_SLOT' build-fixtures/android-log-consumer-relocations.txt |
-            grep -F '__android_log_write'
           sha256sum             build-fixtures/android-log/liblog.so             build-fixtures/android-log/liba32android_android_log_consumer.so
 
       - name: Configure integration
@@ -70,10 +72,12 @@ jobs:
           grep -F 'fixture.android_log.object_count=2' build-fixtures/android-log-integration-evidence.txt
           grep -F 'fixture.android_log.needed=liblog.so' build-fixtures/android-log-integration-evidence.txt
           grep -F 'fixture.android_log.symbol_object=1' build-fixtures/android-log-integration-evidence.txt
-          grep -F 'fixture.android_log.relocation_count=1' build-fixtures/android-log-integration-evidence.txt
-          grep -F 'fixture.android_log.service_id=0xa0' build-fixtures/android-log-integration-evidence.txt
-          grep -F 'fixture.android_log.service_calls=1' build-fixtures/android-log-integration-evidence.txt
-          grep -F 'fixture.android_log.priority=4' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.relocation_count=3' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.write_service_id=0xa0' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.print_service_id=0x133' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.vprint_service_id=0x134' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.service_calls=3' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.priority=6' build-fixtures/android-log-integration-evidence.txt
           grep -F 'fixture.android_log.status=PASS' build-fixtures/android-log-integration-evidence.txt
 
       - name: Upload shim integration evidence

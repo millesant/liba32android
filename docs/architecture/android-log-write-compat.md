@@ -62,12 +62,16 @@ synchronous call. It decides host logging/filter behavior and returns the
 The compatibility service itself does not link to host `liblog`, invent
 logging policy, or translate return codes.
 
-## Deliberate exclusions
+## Deliberate exclusions and later extension
 
-Feature 026 does not provide a guest ELF `liblog.so`, export
-`__android_log_write` into a dependency graph, select a platform provider, or
-implement `__android_log_print`/`__android_log_vprint` and their varargs
-marshalling. Those are separate compatibility/linker layers.
+Feature 026 itself provides only the bounded `__android_log_write` service;
+it does not provide a guest ELF `liblog.so`, select a platform provider, or
+decode variadic formatting.
+
+The later bounded liblog extension adds
+`__android_log_print`/`__android_log_vprint` in the same compatibility
+source and reuses the existing sink. That extension has its own AAPCS32
+varargs/formatting contract and does not change this write-service ABI.
 
 ## Validation
 

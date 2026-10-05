@@ -49,3 +49,15 @@ platform function signature, calling convention details, runtime call
 frequency, acceptable return behavior, logging side effects, or compatibility.
 Those contracts must be sourced from authoritative Android API/ABI material
 before implementation.
+
+
+## 2026-10-05 follow-up selection
+
+After the shared write path was accepted, the remaining supplied VLC
+`liblog.so` imports became the next bounded logging gap. Issue #72 therefore
+selects exactly `__android_log_print` and `__android_log_vprint` rather than
+expanding to unrelated Android log APIs.
+
+Authoritative Android declarations and AAPCS32 vararg/`va_list` details are
+captured in
+`docs/research/evidence/android-log-format-abi-2026-10-05.md`.
