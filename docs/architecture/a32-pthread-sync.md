@@ -162,10 +162,11 @@ deadline, expired waiters are resolved first. This gives the bounded
 single-threaded compatibility model one deterministic timeout-vs-signal race
 rule and guarantees a waiter can transition only once.
 
-The supplied VLC ARMv7 libraries also import `clock_gettime`; that libc
-export is intentionally not implemented by this condvar slice. The internal
-clock seam is sufficient to specify/test pthread timed-wait behavior while the
-guest-visible clock API remains separate evidence-backed utility work.
+The supplied VLC ARMv7 libraries also import `clock_gettime`. A later
+bounded libc service exposes the directly evidenced REALTIME, MONOTONIC, and
+MONOTONIC_RAW IDs through this same embedding-owned `A32PthreadClock` seam.
+The condvar slice still uses only CLOCK_REALTIME and remains unaware of the
+guest-facing libc entrypoint.
 
 ## Mutex attributes and typed ownership
 
