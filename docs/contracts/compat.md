@@ -1,7 +1,7 @@
 # Compatibility contract
 
 Status: Accepted current project contract
-Last reconciled: 2026-10-05
+Last reconciled: 2026-10-06
 
 ## L32-C001 — Platform compatibility is a separate layer
 
@@ -2301,3 +2301,45 @@ arguments, and a compiler-built ARM32 va_list forwarded through vprint.
 This contract does not add complete printf semantics, Android filtering,
 assert/event/buffer log APIs, host liblog passthrough, locale/wide formatting,
 or broader Android framework compatibility.
+
+
+## L32-C074 — Complete supplied VLC ARMv7 libm math-import surface
+
+Bounded inspection of the supplied VLC APK's four `armeabi-v7a` DSOs selects
+66 math imports. The accepted L32-C022 set supplies seventeen. The completion
+slice adds exactly:
+
+`acosf, atan, atan2f, atanf, cbrt, cbrtf, ceil, ceilf, cosh, exp2, exp2f,
+expf, expm1, fabs, floorf, fmax, fmaxf, fminf, fmod, fmodf, frexpf, hypot,
+hypotf, ldexpf, llrint, llrintf, llround, llroundf, log1p, logf, lrint,
+lrintf, lround, lroundf, modf, modff, nanf, rint, rintf, round, roundf,
+scalbn, sincos, sincosf, sinh, tanf, tanh, trunc, truncf`.
+
+The original private SVC IDs `0xC1..0xD1` remain unchanged. The 49 added
+entrypoints use `0x180..0x1B0` one-to-one in the order listed above. This
+deliberately avoids renumbering or overlapping the compatibility services
+allocated between those ranges.
+
+AAPCS32 softfp translation is explicit. Float values use one core word; doubles
+use aligned little-endian register pairs; ARM32 `long` is a signed 32-bit r0
+result; `long long` uses r0/r1. Pointer-result functions write only through
+logical `GuestMemory`: `frexpf` publishes an int exponent, `modf/modff`
+publish integral parts, and `sincos/sincosf` publish sine/cosine pairs.
+`nanf` copies a guest payload string under caller-selected
+`max_nan_tag_bytes` rather than passing a guest pointer to the host.
+
+All numerical operations preserve the embedding process's pre-call `errno`
+and floating-point environment under the existing L32-C022 rule. No guest math
+errno/fenv model is invented. Rounding-sensitive and exceptional integer
+conversions are only claimed for the bounded normal-domain behavior exercised by
+the fixtures.
+
+The reproducible ARM32 `libm.so` and consumer must export/import all 66
+selected names, produce 66 eager `R_ARM_JUMP_SLOT` relocations, and execute
+all 66 wrappers through the service registry. Exact-value cases are used where
+stable; `nanf` is checked by NaN classification rather than implementation-
+specific payload bits.
+
+This contract completes the supplied VLC sample's selected math-import surface;
+it does not claim every Android libm export, vector/complex/long-double math,
+Bionic bit identity, or future-binary coverage.
