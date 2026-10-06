@@ -51,7 +51,8 @@ jobs:
 
           grep -F 'Library soname: [libm.so]' build-fixtures/libm-shim-dynamic.txt
           grep -F 'Shared library: [libm.so]' build-fixtures/libm-consumer-dynamic.txt
-          for symbol in acos asin atan2 cos cosf exp floor frexp ldexp log log10 log10f pow powf sin sinf tan; do
+          symbols='acos acosf asin atan atan2 atan2f atanf cbrt cbrtf ceil ceilf cos cosf cosh exp exp2 exp2f expf expm1 fabs floor floorf fmax fmaxf fminf fmod fmodf frexp frexpf hypot hypotf ldexp ldexpf llrint llrintf llround llroundf log log10 log10f log1p logf lrint lrintf lround lroundf modf modff nanf pow powf rint rintf round roundf scalbn sin sincos sincosf sinf sinh tan tanf tanh trunc truncf'
+          for symbol in $symbols; do
             grep -F "$symbol" build-fixtures/libm-shim-symbols.txt
             grep -F 'R_ARM_JUMP_SLOT' build-fixtures/libm-consumer-relocations.txt |
               grep -F "$symbol"
@@ -75,8 +76,8 @@ jobs:
           grep -F 'fixture.libm.object_count=2' build-fixtures/libm-integration-evidence.txt
           grep -F 'fixture.libm.needed=libm.so' build-fixtures/libm-integration-evidence.txt
           grep -F 'fixture.libm.namespace_access=linked' build-fixtures/libm-integration-evidence.txt
-          grep -F 'fixture.libm.required_jump_slots=17' build-fixtures/libm-integration-evidence.txt
-          grep -F 'fixture.libm.completed_service_calls=17' build-fixtures/libm-integration-evidence.txt
+          grep -F 'fixture.libm.required_jump_slots=66' build-fixtures/libm-integration-evidence.txt
+          grep -F 'fixture.libm.completed_service_calls=66' build-fixtures/libm-integration-evidence.txt
           grep -F 'fixture.libm.status=PASS' build-fixtures/libm-integration-evidence.txt
 
       - name: Upload libm integration evidence

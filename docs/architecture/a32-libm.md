@@ -1,59 +1,93 @@
 # ARM32 shared libm compatibility
 
-Status: feature 047 accepted; exact-head validation PASSed
+Status: accepted current architecture; complete supplied VLC ARMv7 math-import surface implemented
 
 ## Scope
 
-Feature 047 implements the seventeen `libm.so` functions shared by the supplied
-FMOD ARM32 image and VLC ARMv7 native set:
+The partial guest `libm.so` now covers the complete 66-symbol math surface
+selected from the supplied VLC `armeabi-v7a` native graph.
+
+The original shared FMOD/VLC slice remains unchanged:
 
 `acos, asin, atan2, cos, cosf, exp, floor, frexp, ldexp, log, log10, log10f,
 pow, powf, sin, sinf, tan`.
 
-The wider VLC-only libm surface remains outside this slice.
+The VLC completion adds exactly 49 directly evidenced math imports:
+
+`acosf, atan, atan2f, atanf, cbrt, cbrtf, ceil, ceilf, cosh, exp2, exp2f,
+expf, expm1, fabs, floorf, fmax, fmaxf, fminf, fmod, fmodf, frexpf, hypot,
+hypotf, ldexpf, llrint, llrintf, llround, llroundf, log1p, logf, lrint,
+lrintf, lround, lroundf, modf, modff, nanf, rint, rintf, round, roundf,
+scalbn, sincos, sincosf, sinh, tanf, tanh, trunc, truncf`.
+
+The evidence is pinned in
+[`vlc-armv7-libm-imports-2026-10-06.md`](../research/evidence/vlc-armv7-libm-imports-2026-10-06.md).
+This is complete only for the supplied VLC sample, not for every Bionic libm
+export.
 
 ## Guest ABI
 
-Private SVC IDs `0xC1` through `0xD1` map one-to-one to the functions above.
+The original private SVC range `0xC1` through `0xD1` is preserved exactly.
+The 49 VLC-only additions use the disjoint private range `0x180` through
+`0x1B0`; no existing service IDs are renumbered.
 
-The generated consumer and shim use Android ARMv7 softfp. Double arguments are
-decoded from core-register pairs and double results are returned in r0/r1.
-Float arguments/results use their raw 32-bit register words. Binary doubles use
-r0/r1 then r2/r3. `frexp` writes its exponent through the logical guest
-pointer in r2; `ldexp` decodes the signed r2 exponent.
+The generated consumer and shim use Android ARMv7 softfp:
 
-All translation uses raw bit copies. No guest floating value is represented by
-a host pointer.
+- float arguments/results occupy one core-register word;
+- double arguments/results occupy little-endian core-register pairs;
+- binary doubles use r0/r1 then r2/r3;
+- `frexp(double, int*)` uses r2 for the logical exponent pointer while
+  `frexpf(float, int*)` uses r1;
+- `ldexp/scalbn(double, int)` use r2 for the signed exponent and
+  `ldexpf(float, int)` uses r1;
+- ARM32 `long` results from `lrint/lround` use signed r0, while
+  `long long` results from `llrint/llround` use r0/r1;
+- `modf/modff` publish the integral component through bounded logical guest
+  pointers and return the fractional component normally;
+- `sincos` receives sine/cosine output pointers in r2/r3 after the input
+  double, while `sincosf` receives them in r1/r2;
+- `nanf` reads its optional payload text through bounded `GuestMemory` using
+  the caller-selected `A32LibmOptions::max_nan_tag_bytes` ceiling.
+
+No host pointer is ever exposed to guest code.
 
 ## Host numerical engine
 
-`A32LibmService` calls the corresponding host C++ math primitive. Before each
-operation it snapshots host errno and floating-point environment and restores
-both afterward. This prevents a guest domain/range/exception side effect from
-changing embedding-process math state.
+`A32LibmService` uses the corresponding host C++ math primitives as the
+numerical engine. Every operation snapshots embedding-process `errno` and the
+floating-point environment and restores both before returning.
 
-Feature 047 intentionally does not synthesize guest errno or guest floating
-exception flags. Those policies need a separate thread-local/fenv contract.
+The runtime still does not synthesize guest math errno or guest floating-point
+exception flags. Rounding-sensitive functions such as `rint` and `lrint`
+therefore do not create a new guest fenv model; exact fixture cases use values
+whose expected result is independent of rounding mode.
+
+`sincos/sincosf` compute the selected sine/cosine pair inside one preserved
+host-math-state scope. `nanf` is the only selected call that consumes a guest
+string and is separately bounded.
 
 ## Real ELF path
 
-The pinned-NDK fixture builds:
+The pinned NDK fixture builds:
 
-- generated ARM32 `libm.so` with seventeen direct SVC exports;
-- a freestanding ARM32 consumer importing all seventeen symbols.
+- generated ARM32 `libm.so` with all 66 direct SVC exports;
+- a freestanding ARM32 consumer importing all 66 selected symbols.
 
-The integration loads the consumer application-first and the shim through the
-requester-aware namespace-gated platform catalog, resolves every symbol from
-the shim, applies exactly seventeen eager JUMP_SLOT relocations, and executes
-every wrapper through the service registry.
+Integration loads the consumer application-first and the shim through the
+requester-aware namespace-gated platform catalog, resolves every selected name,
+applies exactly 66 eager `R_ARM_JUMP_SLOT` relocations, and executes every
+wrapper through the service registry.
 
-Stable exact-value cases avoid tolerance-policy ambiguity: zero/one identities,
-integer powers, floor, and exact binary `frexp/ldexp` values prove argument and
-result placement. The frexp case also proves little-endian guest exponent
-publication.
+Stable exact-value cases are preferred: zero/one identities, exact integer
+powers/scales, 3-4-5 hypot, exact cbrt/fmod values, integral rounding inputs,
+and binary-exact pointer-result cases cover every ABI shape. `nanf` is
+validated by NaN classification rather than payload bits because NaN payload
+encoding is implementation-specific.
 
 ## Limits
 
-No complete libm claim, vector/complex API, VLC-only extra symbols,
-architecture-specific bionic implementation equivalence, guest errno/fenv
-exception publication, or alternate rounding-mode compatibility is introduced.
+This does not claim complete Android/Bionic `libm.so`, vector/complex or
+long-double coverage, bit-for-bit equivalence with architecture-specific Bionic
+implementations, guest errno/fenv publication, or exceptional/out-of-range
+integer-conversion equivalence. Additional math symbols require new binary
+evidence rather than table adjacency.
