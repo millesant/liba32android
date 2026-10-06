@@ -6,12 +6,12 @@
 .macro LIBA32_LIBM_STUB name, immediate
 .text
 .p2align 2
-.global \\name
-.type \\name, %function
-\\name:
-    svc #\\immediate
+.global \name
+.type \name, %function
+\name:
+    svc #\immediate
     bx lr
-.size \\name, .-\\name
+.size \name, .-\name
 .endm
 
 LIBA32_LIBM_STUB acos, LIBA32ANDROID_A32_LIBM_ACOS_SVC

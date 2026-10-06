@@ -286,21 +286,21 @@ int test_exact_reference_values() {
         float expected;
     };
     constexpr std::array<UnaryFloatCase, 15> unary_floats{{
-        {kA32LibmAcosfSvcImmediate, 1f, 0f},
-        {kA32LibmAtanfSvcImmediate, 0f, 0f},
-        {kA32LibmCbrtfSvcImmediate, 8f, 2f},
-        {kA32LibmCeilfSvcImmediate, 1.25f, 2f},
-        {kA32LibmCosfSvcImmediate, 0f, 1f},
-        {kA32LibmExp2fSvcImmediate, 3f, 8f},
-        {kA32LibmExpfSvcImmediate, 0f, 1f},
-        {kA32LibmFloorfSvcImmediate, 1.75f, 1f},
-        {kA32LibmLog10fSvcImmediate, 1f, 0f},
-        {kA32LibmLogfSvcImmediate, 1f, 0f},
-        {kA32LibmRintfSvcImmediate, 2f, 2f},
-        {kA32LibmRoundfSvcImmediate, 1.5f, 2f},
-        {kA32LibmSinfSvcImmediate, 0f, 0f},
-        {kA32LibmTanfSvcImmediate, 0f, 0f},
-        {kA32LibmTruncfSvcImmediate, 1.75f, 1f},
+        {kA32LibmAcosfSvcImmediate, 1.0f, 0.0f},
+        {kA32LibmAtanfSvcImmediate, 0.0f, 0.0f},
+        {kA32LibmCbrtfSvcImmediate, 8.0f, 2.0f},
+        {kA32LibmCeilfSvcImmediate, 1.25f, 2.0f},
+        {kA32LibmCosfSvcImmediate, 0.0f, 1.0f},
+        {kA32LibmExp2fSvcImmediate, 3.0f, 8.0f},
+        {kA32LibmExpfSvcImmediate, 0.0f, 1.0f},
+        {kA32LibmFloorfSvcImmediate, 1.75f, 1.0f},
+        {kA32LibmLog10fSvcImmediate, 1.0f, 0.0f},
+        {kA32LibmLogfSvcImmediate, 1.0f, 0.0f},
+        {kA32LibmRintfSvcImmediate, 2.0f, 2.0f},
+        {kA32LibmRoundfSvcImmediate, 1.5f, 2.0f},
+        {kA32LibmSinfSvcImmediate, 0.0f, 0.0f},
+        {kA32LibmTanfSvcImmediate, 0.0f, 0.0f},
+        {kA32LibmTruncfSvcImmediate, 1.75f, 1.0f},
     }};
     for (const auto& test_case : unary_floats) {
         if (!unary_float(
@@ -338,12 +338,12 @@ int test_exact_reference_values() {
         float expected;
     };
     constexpr std::array<BinaryFloatCase, 6> binary_floats{{
-        {kA32LibmAtan2fSvcImmediate, 0f, 1f, 0f},
-        {kA32LibmFmaxfSvcImmediate, 2f, 3f, 3f},
-        {kA32LibmFminfSvcImmediate, 2f, 3f, 2f},
-        {kA32LibmFmodfSvcImmediate, 5f, 2f, 1f},
-        {kA32LibmHypotfSvcImmediate, 3f, 4f, 5f},
-        {kA32LibmPowfSvcImmediate, 2f, 3f, 8f},
+        {kA32LibmAtan2fSvcImmediate, 0.0f, 1.0f, 0.0f},
+        {kA32LibmFmaxfSvcImmediate, 2.0f, 3.0f, 3.0f},
+        {kA32LibmFminfSvcImmediate, 2.0f, 3.0f, 2.0f},
+        {kA32LibmFmodfSvcImmediate, 5.0f, 2.0f, 1.0f},
+        {kA32LibmHypotfSvcImmediate, 3.0f, 4.0f, 5.0f},
+        {kA32LibmPowfSvcImmediate, 2.0f, 3.0f, 8.0f},
     }};
     for (const auto& test_case : binary_floats) {
         if (!binary_float(

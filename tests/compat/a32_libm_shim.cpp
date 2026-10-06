@@ -599,21 +599,21 @@ int main(int argc, char** argv) {
         float input;
         float expected;
     } unary_float_cases[] = {
-        {"fixture_acosf", 1f, 0f},
-        {"fixture_atanf", 0f, 0f},
-        {"fixture_cbrtf", 8f, 2f},
-        {"fixture_ceilf", 1.25f, 2f},
-        {"fixture_cosf", 0f, 1f},
-        {"fixture_exp2f", 3f, 8f},
-        {"fixture_expf", 0f, 1f},
-        {"fixture_floorf", 1.75f, 1f},
-        {"fixture_log10f", 1f, 0f},
-        {"fixture_logf", 1f, 0f},
-        {"fixture_rintf", 2f, 2f},
-        {"fixture_roundf", 1.5f, 2f},
-        {"fixture_sinf", 0f, 0f},
-        {"fixture_tanf", 0f, 0f},
-        {"fixture_truncf", 1.75f, 1f},
+        {"fixture_acosf", 1.0f, 0.0f},
+        {"fixture_atanf", 0.0f, 0.0f},
+        {"fixture_cbrtf", 8.0f, 2.0f},
+        {"fixture_ceilf", 1.25f, 2.0f},
+        {"fixture_cosf", 0.0f, 1.0f},
+        {"fixture_exp2f", 3.0f, 8.0f},
+        {"fixture_expf", 0.0f, 1.0f},
+        {"fixture_floorf", 1.75f, 1.0f},
+        {"fixture_log10f", 1.0f, 0.0f},
+        {"fixture_logf", 1.0f, 0.0f},
+        {"fixture_rintf", 2.0f, 2.0f},
+        {"fixture_roundf", 1.5f, 2.0f},
+        {"fixture_sinf", 0.0f, 0.0f},
+        {"fixture_tanf", 0.0f, 0.0f},
+        {"fixture_truncf", 1.75f, 1.0f},
     };
     for (const auto& test_case : unary_float_cases) {
         if (!exact_float_call(
@@ -654,12 +654,12 @@ int main(int argc, char** argv) {
         float second;
         float expected;
     } binary_float_cases[] = {
-        {"fixture_atan2f", 0f, 1f, 0f},
-        {"fixture_fmaxf", 2f, 3f, 3f},
-        {"fixture_fminf", 2f, 3f, 2f},
-        {"fixture_fmodf", 5f, 2f, 1f},
-        {"fixture_hypotf", 3f, 4f, 5f},
-        {"fixture_powf", 2f, 3f, 8f},
+        {"fixture_atan2f", 0.0f, 1.0f, 0.0f},
+        {"fixture_fmaxf", 2.0f, 3.0f, 3.0f},
+        {"fixture_fminf", 2.0f, 3.0f, 2.0f},
+        {"fixture_fmodf", 5.0f, 2.0f, 1.0f},
+        {"fixture_hypotf", 3.0f, 4.0f, 5.0f},
+        {"fixture_powf", 2.0f, 3.0f, 8.0f},
     };
     for (const auto& test_case : binary_float_cases) {
         if (!exact_binary_float_call(
