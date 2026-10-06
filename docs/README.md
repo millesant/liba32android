@@ -37,8 +37,23 @@ research and historical evidence.
 - [Real fixture execution](architecture/elf32-execution.md)
 - [GNU RELRO](architecture/elf32-relro.md)
 
-Additional compatibility architecture notes live alongside those documents under
-`architecture/` and cover libc/liblog/pthread/finalization/namespace surfaces.
+### Compatibility architecture
+
+- [Logical guest-thread context](architecture/a32-logical-thread-context.md)
+- [Pthread lifecycle](architecture/a32-pthread-lifecycle.md)
+- [Pthread synchronization](architecture/a32-pthread-sync.md)
+- [Signal compatibility](architecture/a32-signal-compat.md)
+- [Scheduler/priority compatibility](architecture/a32-scheduler-compat.md)
+- [Libc memory/string services](architecture/a32-libc-memory-string-service.md)
+- [Libc integer parsing](architecture/a32-libc-integer-service.md)
+- [Libc heap](architecture/a32-libc-heap.md)
+- [Libc clock_gettime](architecture/a32-libc-clock.md)
+- [Partial ARM32 libc shim](architecture/a32-libc-memory-string-shim.md)
+- [Android liblog services and shim](architecture/android-log-write-shim.md)
+- [Android platform catalog](architecture/android-platform-catalog-provider.md)
+- [Android namespace access policy](architecture/android-namespace-access-policy.md)
+- [C++ finalization](architecture/a32-cxa-finalize.md)
+- [Resident dlclose transaction](architecture/a32-libdl-close-transaction.md)
 
 ## Development
 

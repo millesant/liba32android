@@ -1,6 +1,6 @@
 # Android platform-library provider seam
 
-Status: feature 028 implementation prepared; exact-head validation NOT RUN
+Status: accepted current architecture; bounded platform-library provider seam implemented
 
 ## Boundary
 

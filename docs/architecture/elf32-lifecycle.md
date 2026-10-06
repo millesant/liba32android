@@ -1,6 +1,6 @@
 # ELF32 lifecycle arrays
 
-Status: feature 042 array lifecycle accepted; post-roadmap persistent DT_INIT/DT_FINI execution implemented, exact-head validation pending
+Status: accepted current architecture; lifecycle arrays and persistent DT_INIT/DT_FINI execution implemented
 
 ## Boundary
 

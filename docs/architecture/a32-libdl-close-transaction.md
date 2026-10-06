@@ -1,6 +1,6 @@
 # Resident dlclose lifecycle transaction
 
-Status: integrated; exact-head validation pending
+Status: accepted current architecture; resident dlclose lifecycle transaction implemented
 
 The resident libdl close path can now be wired to a bounded exact-object
 lifecycle transaction.

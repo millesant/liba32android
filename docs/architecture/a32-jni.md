@@ -1,6 +1,6 @@
 # ARM32 JNI compatibility
 
-Status: raw static calls, bounded weak globals, ExceptionCheck, and GetStaticObjectField validated
+Status: accepted current architecture; bounded JNI services with per-logical-thread state implemented
 
 ## Goal
 

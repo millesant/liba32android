@@ -1,6 +1,6 @@
 # ARM32 libc clock_gettime compatibility
 
-Status: evidence-backed bounded clock_gettime slice; exact-head validation pending
+Status: accepted current architecture; bounded clock_gettime compatibility implemented
 
 ## Goal
 

@@ -1,6 +1,6 @@
 # A32 logical thread execution context
 
-Status: issue #38 implementation contract
+Status: accepted current architecture; logical guest-thread context implemented
 
 ## Purpose
 

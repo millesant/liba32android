@@ -1,6 +1,6 @@
 # ARM32 guest libc memory/string shim/provider path
 
-Status: features 032/034/036/038/041/043 plus __cxa_atexit registration accepted; exact-head validation pending
+Status: accepted current architecture; partial ARM32 libc shim integration implemented
 
 ## Goal
 
