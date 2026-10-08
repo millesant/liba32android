@@ -50,7 +50,7 @@ Current compatibility architecture is split by ownership and ABI boundary:
 - Android [liblog](android-log-write-shim.md),
   [platform catalog](android-platform-catalog-provider.md), and
   [namespace access](android-namespace-access-policy.md) boundaries;
-- [libdl](a32-libdl.md),
+- [libdl](a32-libdl.md), [libm](a32-libm.md),
   [resident dlclose lifecycle](a32-libdl-close-transaction.md),
   [C++ finalization](a32-cxa-finalize.md), and [JNI](a32-jni.md).
 
