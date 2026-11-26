@@ -1,4 +1,4 @@
-name: ARM32 liblog shim
+name: ARM32 compat shim integration
 
 on:
   push:
@@ -9,12 +9,340 @@ on:
 permissions:
   contents: read
 
+env:
+  NDK_VERSION: 27.3.13750724
+
 jobs:
-  arm32-liblog-shim:
-    name: ARM32 liblog shim integration
+  arm32-shim-matrix:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-24.04
-    env:
-      NDK_VERSION: 27.3.13750724
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ARM32 liblog shim integration
+            id: android-log
+            builder: tools/fixtures/build_arm32_android_log_shim_fixture.sh
+            fixture_kind: dir
+            dir: android-log
+            fixture_file: liblog.so
+            artifacts: liblog.so liba32android_android_log_consumer.so
+            text_outputs: >-
+              android-log-shim-dynamic.txt
+              android-log-shim-symbols.txt
+              android-log-consumer-dynamic.txt
+              android-log-consumer-relocations.txt
+            fixture_checks: |
+              for symbol in __android_log_write __android_log_print __android_log_vprint; do
+                grep -F "$symbol" build-fixtures/android-log-shim-symbols.txt
+                grep -F 'R_ARM_JUMP_SLOT' build-fixtures/android-log-consumer-relocations.txt |
+                  grep -F "$symbol"
+              done
+              grep -F 'Shared library: [liblog.so]' build-fixtures/android-log-consumer-dynamic.txt
+            configure_defs: >-
+              -DLIBA32ANDROID_ARM32_ANDROID_LOG_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/android-log/liba32android_android_log_consumer.so"
+              -DLIBA32ANDROID_ARM32_ANDROID_LOG_SHIM_PATH="$GITHUB_WORKSPACE/build-fixtures/android-log/liblog.so"
+            build_targets: compat_android_log_shim_integration_test
+            ctest_filter: '^a32_android_log_shim_integration$'
+            test_script: |
+              build/compat_android_log_shim_integration_test \
+              build-fixtures/android-log/liba32android_android_log_consumer.so \
+              build-fixtures/android-log/liblog.so | tee build-fixtures/android-log-integration-evidence.txt
+            evidence_checks: |
+              grep -F 'fixture.android_log.object_count=2' build-fixtures/android-log-integration-evidence.txt
+              grep -F 'fixture.android_log.needed=liblog.so' build-fixtures/android-log-integration-evidence.txt
+              grep -F 'fixture.android_log.symbol_object=1' build-fixtures/android-log-integration-evidence.txt
+              grep -F 'fixture.android_log.relocation_count=3' build-fixtures/android-log-integration-evidence.txt
+              grep -F 'fixture.android_log.write_service_id=0xa0' build-fixtures/android-log-integration-evidence.txt
+              grep -F 'fixture.android_log.print_service_id=0x133' build-fixtures/android-log-integration-evidence.txt
+              grep -F 'fixture.android_log.vprint_service_id=0x134' build-fixtures/android-log-integration-evidence.txt
+              grep -F 'fixture.android_log.service_calls=3' build-fixtures/android-log-integration-evidence.txt
+              grep -F 'fixture.android_log.priority=6' build-fixtures/android-log-integration-evidence.txt
+              grep -F 'fixture.android_log.status=PASS' build-fixtures/android-log-integration-evidence.txt
+            artifact_name: arm32-liblog-shim
+            artifact_paths: |
+              build-fixtures/android-log/*
+              build-fixtures/android-log-integration-evidence.txt
+              build-fixtures/android-log-shim-dynamic.txt
+              build-fixtures/android-log-shim-symbols.txt
+              build-fixtures/android-log-consumer-dynamic.txt
+              build-fixtures/android-log-consumer-relocations.txt
+
+          - name: ARM32 libc memory string shim integration
+            id: libc-ms
+            builder: tools/fixtures/build_arm32_libc_memory_string_fixture.sh
+            fixture_kind: dir
+            dir: libc-ms
+            fixture_file: libc.so
+            artifacts: libc.so liba32android_libc_memory_string_consumer.so liba32android_pthread_lifecycle_consumer.so
+            text_outputs: >-
+              libc-ms-shim-dynamic.txt
+              libc-ms-shim-symbols.txt
+              libc-ms-consumer-dynamic.txt
+              libc-ms-consumer-relocations.txt
+              libc-ms-pthread-consumer-dynamic.txt
+              libc-ms-pthread-consumer-relocations.txt
+            fixture_checks: |
+              grep -F 'Library soname: [libc.so]' build-fixtures/libc-ms-shim-dynamic.txt
+              grep -F 'Shared library: [libc.so]' build-fixtures/libc-ms-consumer-dynamic.txt
+              grep -F '(FINI_ARRAY)' build-fixtures/libc-ms-consumer-dynamic.txt
+              for symbol in memcpy memmove memset memcmp memchr strlen strcmp strncmp memmem strcpy strncpy atoi strtol __errno clock_gettime malloc calloc realloc free __aeabi_atexit __cxa_atexit __cxa_finalize __aeabi_memcpy __aeabi_memcpy4 __aeabi_memcpy8 __aeabi_memmove __aeabi_memmove4 __aeabi_memmove8 __aeabi_memset __aeabi_memset4 __aeabi_memset8 __aeabi_memclr __aeabi_memclr4 __aeabi_memclr8 pthread_mutex_init pthread_mutex_destroy pthread_mutex_lock pthread_mutex_trylock pthread_mutex_unlock sem_init sem_destroy sem_wait sem_post pthread_key_create pthread_key_delete pthread_getspecific pthread_setspecific; do
+                grep -F "$symbol" build-fixtures/libc-ms-shim-symbols.txt
+                grep -F 'R_ARM_JUMP_SLOT' build-fixtures/libc-ms-consumer-relocations.txt |
+                  grep -F "$symbol"
+              done
+              grep -F 'Shared library: [libc.so]' build-fixtures/libc-ms-pthread-consumer-dynamic.txt
+              for symbol in pthread_attr_init pthread_attr_destroy pthread_attr_getdetachstate pthread_attr_setdetachstate pthread_attr_getstacksize pthread_attr_setstacksize pthread_create pthread_self pthread_equal pthread_exit pthread_join pthread_detach __pthread_cleanup_push __pthread_cleanup_pop raise sigaction sigpending pthread_sigmask sigwait setpriority sched_get_priority_max sched_get_priority_min sched_getaffinity sched_setscheduler sched_yield pthread_cond_init pthread_cond_destroy pthread_cond_wait pthread_cond_timedwait pthread_cond_signal pthread_cond_broadcast pthread_mutexattr_init pthread_mutexattr_settype pthread_mutexattr_destroy pthread_mutex_init pthread_mutex_destroy pthread_mutex_lock pthread_mutex_trylock pthread_mutex_unlock pthread_once pthread_rwlock_init pthread_rwlock_destroy pthread_rwlock_rdlock pthread_rwlock_wrlock pthread_rwlock_unlock; do
+                grep -F "$symbol" build-fixtures/libc-ms-shim-symbols.txt
+                grep -F 'R_ARM_JUMP_SLOT' build-fixtures/libc-ms-pthread-consumer-relocations.txt |
+                  grep -F "$symbol"
+              done
+            configure_defs: >-
+              -DLIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/libc-ms/liba32android_libc_memory_string_consumer.so"
+              -DLIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH="$GITHUB_WORKSPACE/build-fixtures/libc-ms/libc.so"
+              -DLIBA32ANDROID_ARM32_PTHREAD_LIFECYCLE_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/libc-ms/liba32android_pthread_lifecycle_consumer.so"
+            build_targets: >-
+              compat_libc_memory_string_shim_integration_test
+              compat_pthread_lifecycle_shim_integration_test
+            ctest_filter: >-
+              ^a32_libc_memory_string_shim_integration$
+              ^a32_pthread_lifecycle_shim_integration$
+            test_script: |
+              build/compat_libc_memory_string_shim_integration_test \
+              build-fixtures/libc-ms/liba32android_libc_memory_string_consumer.so \
+              build-fixtures/libc-ms/libc.so |
+              tee build-fixtures/libc-ms-integration-evidence.txt
+              build/compat_pthread_lifecycle_shim_integration_test \
+              build-fixtures/libc-ms/liba32android_pthread_lifecycle_consumer.so \
+              build-fixtures/libc-ms/libc.so |
+              tee build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+            evidence_checks: |
+              grep -F 'fixture.libc.object_count=2' build-fixtures/libc-ms-integration-evidence.txt
+              grep -F 'fixture.libc.needed=libc.so' build-fixtures/libc-ms-integration-evidence.txt
+              grep -F 'fixture.libc.namespace_access=linked' build-fixtures/libc-ms-integration-evidence.txt
+              grep -F 'fixture.libc.required_jump_slots=47' build-fixtures/libc-ms-integration-evidence.txt
+              grep -F 'fixture.libc.completed_service_calls=48' build-fixtures/libc-ms-integration-evidence.txt
+              grep -F 'fixture.libc.fini_array_calls=1' build-fixtures/libc-ms-integration-evidence.txt
+              grep -F 'fixture.libc.status=PASS' build-fixtures/libc-ms-integration-evidence.txt
+              grep -F 'fixture.pthread_lifecycle.object_count=2' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+              grep -F 'fixture.pthread_lifecycle.required_jump_slots=48' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+              grep -F 'fixture.pthread_lifecycle.wrapper_calls=55' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+              grep -F 'fixture.pthread_lifecycle.thread_exits=2' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+              grep -F 'fixture.pthread_lifecycle.status=PASS' build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+            artifact_name: arm32-libc-memory-string-shim
+            artifact_paths: |
+              build-fixtures/libc-ms/*
+              build-fixtures/libc-ms-integration-evidence.txt
+              build-fixtures/libc-ms-pthread-lifecycle-evidence.txt
+              build-fixtures/libc-ms-shim-dynamic.txt
+              build-fixtures/libc-ms-shim-symbols.txt
+              build-fixtures/libc-ms-consumer-dynamic.txt
+              build-fixtures/libc-ms-consumer-relocations.txt
+              build-fixtures/libc-ms-pthread-consumer-dynamic.txt
+              build-fixtures/libc-ms-pthread-consumer-relocations.txt
+
+          - name: ARM32 libdl shim integration
+            id: libdl
+            builder: tools/fixtures/build_arm32_libdl_shim_fixture.sh
+            fixture_kind: dir
+            dir: libdl
+            fixture_file: libdl.so
+            artifacts: libdl.so liba32android_libdl_consumer.so libfixture_dl_target.so
+            text_outputs: >-
+              libdl-shim-dynamic.txt
+              libdl-shim-symbols.txt
+              libdl-consumer-dynamic.txt
+              libdl-consumer-relocations.txt
+              libdl-provider-symbols.txt
+              libdl-provider-dynamic.txt
+            fixture_checks: |
+              grep -F 'Library soname: [libdl.so]' build-fixtures/libdl-shim-dynamic.txt
+              grep -F 'Shared library: [libdl.so]' build-fixtures/libdl-consumer-dynamic.txt
+              grep -F 'Shared library: [libfixture_dl_target.so]' build-fixtures/libdl-consumer-dynamic.txt
+              for symbol in dlopen dlsym dlclose dlerror dladdr; do
+                grep -F "$symbol" build-fixtures/libdl-shim-symbols.txt
+                grep -F 'R_ARM_JUMP_SLOT' build-fixtures/libdl-consumer-relocations.txt |
+                  grep -F "$symbol"
+              done
+              grep -F 'fixture_dynamic_value' build-fixtures/libdl-provider-symbols.txt
+              grep -F 'fixture_dlclose_marker' build-fixtures/libdl-provider-symbols.txt
+              grep -F 'fixture_dlclose_dso_handle' build-fixtures/libdl-provider-symbols.txt
+              grep -F '(FINI_ARRAY)' build-fixtures/libdl-provider-dynamic.txt
+            configure_defs: >-
+              -DLIBA32ANDROID_ARM32_LIBDL_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/libdl/liba32android_libdl_consumer.so"
+              -DLIBA32ANDROID_ARM32_LIBDL_SHIM_PATH="$GITHUB_WORKSPACE/build-fixtures/libdl/libdl.so"
+              -DLIBA32ANDROID_ARM32_LIBDL_PROVIDER_PATH="$GITHUB_WORKSPACE/build-fixtures/libdl/libfixture_dl_target.so"
+            build_targets: compat_libdl_shim_integration_test
+            ctest_filter: '^a32_libdl_shim_integration$'
+            test_script: |
+              build/compat_libdl_shim_integration_test \
+              build-fixtures/libdl/liba32android_libdl_consumer.so \
+              build-fixtures/libdl/libdl.so \
+              build-fixtures/libdl/libfixture_dl_target.so | tee build-fixtures/libdl-integration-evidence.txt
+            evidence_checks: |
+              grep -F 'fixture.libdl.object_count=3' build-fixtures/libdl-integration-evidence.txt
+              grep -F 'fixture.libdl.needed=libdl.so' build-fixtures/libdl-integration-evidence.txt
+              grep -F 'fixture.libdl.namespace_access=linked' build-fixtures/libdl-integration-evidence.txt
+              grep -F 'fixture.libdl.fini_marker=0x0d1c105e' build-fixtures/libdl-integration-evidence.txt
+              grep -F 'fixture.libdl.service_calls=6' build-fixtures/libdl-integration-evidence.txt
+              grep -F 'fixture.libdl.status=PASS' build-fixtures/libdl-integration-evidence.txt
+            artifact_name: arm32-libdl-shim
+            artifact_paths: |
+              build-fixtures/libdl/*
+              build-fixtures/libdl-integration-evidence.txt
+              build-fixtures/libdl-shim-dynamic.txt
+              build-fixtures/libdl-shim-symbols.txt
+              build-fixtures/libdl-consumer-dynamic.txt
+              build-fixtures/libdl-consumer-relocations.txt
+              build-fixtures/libdl-provider-symbols.txt
+              build-fixtures/libdl-provider-dynamic.txt
+
+          - name: ARM32 libm shim integration
+            id: libm
+            builder: tools/fixtures/build_arm32_libm_shim_fixture.sh
+            fixture_kind: dir
+            dir: libm
+            fixture_file: libm.so
+            artifacts: libm.so liba32android_libm_consumer.so
+            text_outputs: >-
+              libm-shim-dynamic.txt
+              libm-shim-symbols.txt
+              libm-consumer-dynamic.txt
+              libm-consumer-relocations.txt
+            fixture_checks: |
+              grep -F 'Library soname: [libm.so]' build-fixtures/libm-shim-dynamic.txt
+              grep -F 'Shared library: [libm.so]' build-fixtures/libm-consumer-dynamic.txt
+              symbols='acos acosf asin atan atan2 atan2f atanf cbrt cbrtf ceil ceilf cos cosf cosh exp exp2 exp2f expf expm1 fabs floor floorf fmax fmaxf fminf fmod fmodf frexp frexpf hypot hypotf ldexp ldexpf llrint llrintf llround llroundf log log10 log10f log1p logf lrint lrintf lround lroundf modf modff nanf pow powf rint rintf round roundf scalbn sin sincos sincosf sinf sinh tan tanf tanh trunc truncf'
+              for symbol in $symbols; do
+                grep -F "$symbol" build-fixtures/libm-shim-symbols.txt
+                grep -F 'R_ARM_JUMP_SLOT' build-fixtures/libm-consumer-relocations.txt |
+                  grep -F "$symbol"
+              done
+            configure_defs: >-
+              -DLIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/libm/liba32android_libm_consumer.so"
+              -DLIBA32ANDROID_ARM32_LIBM_SHIM_PATH="$GITHUB_WORKSPACE/build-fixtures/libm/libm.so"
+            build_targets: compat_libm_shim_integration_test
+            ctest_filter: '^a32_libm_shim_integration$'
+            test_script: |
+              build/compat_libm_shim_integration_test \
+              build-fixtures/libm/liba32android_libm_consumer.so \
+              build-fixtures/libm/libm.so | tee build-fixtures/libm-integration-evidence.txt
+            evidence_checks: |
+              grep -F 'fixture.libm.object_count=2' build-fixtures/libm-integration-evidence.txt
+              grep -F 'fixture.libm.needed=libm.so' build-fixtures/libm-integration-evidence.txt
+              grep -F 'fixture.libm.namespace_access=linked' build-fixtures/libm-integration-evidence.txt
+              grep -F 'fixture.libm.required_jump_slots=66' build-fixtures/libm-integration-evidence.txt
+              grep -F 'fixture.libm.completed_service_calls=66' build-fixtures/libm-integration-evidence.txt
+              grep -F 'fixture.libm.status=PASS' build-fixtures/libm-integration-evidence.txt
+            artifact_name: arm32-libm-shim
+            artifact_paths: |
+              build-fixtures/libm/*
+              build-fixtures/libm-integration-evidence.txt
+              build-fixtures/libm-shim-dynamic.txt
+              build-fixtures/libm-shim-symbols.txt
+              build-fixtures/libm-consumer-dynamic.txt
+              build-fixtures/libm-consumer-relocations.txt
+
+          - name: ARM32 Android app library search integration
+            id: app-search
+            builder: tools/fixtures/build_arm32_android_app_search_fixture.sh
+            fixture_kind: app-search
+            dir: app-search
+            fixture_file: libfixture_app_root.so
+            artifacts: libfixture_app_root.so libfixture_app_child.so fixture-app.apk
+            text_outputs: >-
+              app-search-root-dynamic.txt
+              app-search-root-relocations.txt
+              app-search-child-symbols.txt
+            fixture_checks: |
+              grep -F 'Library soname: [libfixture_app_root.so]' build-fixtures/app-search-root-dynamic.txt
+              grep -F 'Shared library: [libfixture_app_child.so]' build-fixtures/app-search-root-dynamic.txt
+              grep -F 'R_ARM_JUMP_SLOT' build-fixtures/app-search-root-relocations.txt |
+                grep -F 'fixture_app_child_value'
+              grep -F 'fixture_app_child_value' build-fixtures/app-search-child-symbols.txt
+            configure_defs: >-
+              -DLIBA32ANDROID_ARM32_APP_SEARCH_APK_PATH="$GITHUB_WORKSPACE/build-fixtures/app-search/fixture-app.apk"
+            build_targets: compat_android_library_search_integration_test
+            ctest_filter: '^a32_android_library_search_integration$'
+            test_script: |
+              build/compat_android_library_search_integration_test \
+              build-fixtures/app-search/fixture-app.apk | tee build-fixtures/app-search-integration-evidence.txt
+            evidence_checks: |
+              grep -F 'fixture.android_search.catalog_count=2' build-fixtures/app-search-integration-evidence.txt
+              grep -F 'fixture.android_search.object_count=2' build-fixtures/app-search-integration-evidence.txt
+              grep -F 'fixture.android_search.requested=libfixture_app_child.so' build-fixtures/app-search-integration-evidence.txt
+              grep -F 'fixture.android_search.source=apk-bootstrap' build-fixtures/app-search-integration-evidence.txt
+              grep -F 'fixture.android_search.root_identity=build-fixtures/app-search/fixture-app.apk!/lib/armeabi-v7a/libfixture_app_root.so' build-fixtures/app-search-integration-evidence.txt
+              grep -F 'fixture.android_search.child_identity=build-fixtures/app-search/fixture-app.apk!/lib/armeabi-v7a/libfixture_app_child.so' build-fixtures/app-search-integration-evidence.txt
+              grep -F 'fixture.android_search.root_handle=1879048192' build-fixtures/app-search-integration-evidence.txt
+              grep -F 'fixture.android_search.child_handle=1879048196' build-fixtures/app-search-integration-evidence.txt
+              grep -F 'fixture.android_search.result=123' build-fixtures/app-search-integration-evidence.txt
+              grep -F 'fixture.android_search.status=PASS' build-fixtures/app-search-integration-evidence.txt
+            artifact_name: arm32-android-app-search
+            artifact_paths: |
+              build-fixtures/app-search/*
+              build-fixtures/app-search-integration-evidence.txt
+              build-fixtures/app-search-root-dynamic.txt
+              build-fixtures/app-search-root-relocations.txt
+              build-fixtures/app-search-child-symbols.txt
+
+          - name: ARM32 JNI registration integration
+            id: jni
+            builder: tools/fixtures/build_arm32_jni_onload_fixture.sh
+            fixture_kind: jni
+            dir: jni
+            fixture_file: libfixture_jni_onload.so
+            artifacts: libfixture_jni_onload.so
+            text_outputs: >-
+              jni-header.txt
+              jni-dynamic.txt
+              jni-symbols.txt
+              jni-relocations.txt
+            fixture_checks: |
+              grep -F 'Machine:' build-fixtures/jni-header.txt | grep -F 'ARM'
+              grep -F 'Library soname: [libfixture_jni_onload.so]' build-fixtures/jni-dynamic.txt
+              grep -F 'JNI_OnLoad' build-fixtures/jni-symbols.txt
+              if grep -F 'Shared library:' build-fixtures/jni-dynamic.txt; then
+                echo "JNI fixture unexpectedly gained DT_NEEDED dependencies" >&2
+                exit 1
+              fi
+            configure_defs: >-
+              -DLIBA32ANDROID_ARM32_JNI_ONLOAD_FIXTURE_PATH="$GITHUB_WORKSPACE/build-fixtures/jni/libfixture_jni_onload.so"
+            build_targets: >-
+              compat_jni_test
+              compat_jni_onload_integration_test
+            ctest_filter: >-
+              ^a32_jni_vm_bootstrap$
+              ^a32_jni_onload_integration$
+            test_script: |
+              build/compat_jni_onload_integration_test \
+              build-fixtures/jni/libfixture_jni_onload.so | tee build-fixtures/jni-integration-evidence.txt
+            evidence_checks: |
+              grep -F 'fixture.jni.object_count=1' build-fixtures/jni-integration-evidence.txt
+              grep -F 'fixture.jni.service_calls=26' build-fixtures/jni-integration-evidence.txt
+              grep -F 'fixture.jni.version=0x10006' build-fixtures/jni-integration-evidence.txt
+              grep -E '^fixture\.jni\.registered_function=0x[1-9a-f][0-9a-f]*$' build-fixtures/jni-integration-evidence.txt
+              grep -F 'fixture.jni.native_return=42' build-fixtures/jni-integration-evidence.txt
+              grep -F 'fixture.jni.local_refs=0' build-fixtures/jni-integration-evidence.txt
+              grep -F 'fixture.jni.global_refs=0' build-fixtures/jni-integration-evidence.txt
+              grep -F 'fixture.jni.array_length=7' build-fixtures/jni-integration-evidence.txt
+              grep -F 'fixture.jni.static_int=42' build-fixtures/jni-integration-evidence.txt
+              grep -F 'fixture.jni.string_count=1' build-fixtures/jni-integration-evidence.txt
+              grep -F 'fixture.jni.utf_lease=0' build-fixtures/jni-integration-evidence.txt
+              grep -F 'fixture.jni.long_array=1,7,42' build-fixtures/jni-integration-evidence.txt
+              grep -F 'fixture.jni.long_refs=0' build-fixtures/jni-integration-evidence.txt
+              grep -F 'fixture.jni.object_array_length=2' build-fixtures/jni-integration-evidence.txt
+              grep -F 'fixture.jni.object_refs=0' build-fixtures/jni-integration-evidence.txt
+              grep -F 'fixture.jni.status=PASS' build-fixtures/jni-integration-evidence.txt
+            artifact_name: arm32-jni-registration
+            artifact_paths: |
+              build-fixtures/jni/*
+              build-fixtures/jni-integration-evidence.txt
+              build-fixtures/jni-header.txt
+              build-fixtures/jni-dynamic.txt
+              build-fixtures/jni-symbols.txt
+              build-fixtures/jni-relocations.txt
+
     steps:
       - uses: actions/checkout@v4
 
@@ -29,68 +357,68 @@ jobs:
           fi
           test -x "$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi26-clang"
 
-      - name: Build reproducible ARM32 liblog shim fixture
+      - name: Build reproducible ARM32 fixture
         run: |
           set -euxo pipefail
-          bash -n tools/fixtures/build_arm32_android_log_shim_fixture.sh
-          rm -rf build-fixtures/android-log build-fixtures/android-log-second
-          bash tools/fixtures/build_arm32_android_log_shim_fixture.sh             "$ANDROID_HOME/ndk/$NDK_VERSION"             build-fixtures/android-log
-          bash tools/fixtures/build_arm32_android_log_shim_fixture.sh             "$ANDROID_HOME/ndk/$NDK_VERSION"             build-fixtures/android-log-second
-          cmp             build-fixtures/android-log/liblog.so             build-fixtures/android-log-second/liblog.so
-          cmp             build-fixtures/android-log/liba32android_android_log_consumer.so             build-fixtures/android-log-second/liba32android_android_log_consumer.so
-          readelf -dW build-fixtures/android-log/liblog.so |
-            tee build-fixtures/android-log-shim-dynamic.txt
-          readelf -sW build-fixtures/android-log/liblog.so |
-            tee build-fixtures/android-log-shim-symbols.txt
-          readelf -dW build-fixtures/android-log/liba32android_android_log_consumer.so |
-            tee build-fixtures/android-log-consumer-dynamic.txt
-          readelf -rW build-fixtures/android-log/liba32android_android_log_consumer.so |
-            tee build-fixtures/android-log-consumer-relocations.txt
-          grep -F 'Library soname: [liblog.so]' build-fixtures/android-log-shim-dynamic.txt
-          for symbol in __android_log_write __android_log_print __android_log_vprint; do
-            grep -F "$symbol" build-fixtures/android-log-shim-symbols.txt
-            grep -F 'R_ARM_JUMP_SLOT' build-fixtures/android-log-consumer-relocations.txt |
-              grep -F "$symbol"
+          bash -n "${{ matrix.builder }}"
+          dir="build-fixtures/${{ matrix.dir }}"
+          dir_second="build-fixtures/${{ matrix.dir }}-second"
+          rm -rf "$dir" "$dir_second"
+          mkdir -p "$dir" "$dir_second"
+          if [ "${{ matrix.fixture_kind }}" = "jni" ]; then
+            bash "${{ matrix.builder }}" "$ANDROID_HOME/ndk/$NDK_VERSION" "$dir/${{ matrix.fixture_file }}"
+            bash "${{ matrix.builder }}" "$ANDROID_HOME/ndk/$NDK_VERSION" "$dir_second/${{ matrix.fixture_file }}"
+          else
+            bash "${{ matrix.builder }}" "$ANDROID_HOME/ndk/$NDK_VERSION" "$dir"
+            bash "${{ matrix.builder }}" "$ANDROID_HOME/ndk/$NDK_VERSION" "$dir_second"
+          fi
+          if [ "${{ matrix.fixture_kind }}" = "app-search" ]; then
+            python3 tools/fixtures/build_arm32_android_app_search_apk.py \
+              "$dir/libfixture_app_root.so" \
+              "$dir/libfixture_app_child.so" \
+              "$dir/fixture-app.apk"
+            python3 tools/fixtures/build_arm32_android_app_search_apk.py \
+              "$dir_second/libfixture_app_root.so" \
+              "$dir_second/libfixture_app_child.so" \
+              "$dir_second/fixture-app.apk"
+          fi
+          for file in ${{ matrix.artifacts }}; do
+            cmp "$dir/$file" "$dir_second/$file"
           done
-          grep -F 'Shared library: [liblog.so]' build-fixtures/android-log-consumer-dynamic.txt
-          sha256sum             build-fixtures/android-log/liblog.so             build-fixtures/android-log/liba32android_android_log_consumer.so
+
+          ${{ matrix.fixture_checks }}
+          sha256sum $(for file in ${{ matrix.artifacts }}; do echo "$dir/$file"; done)
 
       - name: Configure integration
-        run: |
-          set -euxo pipefail
-          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DLIBA32ANDROID_BUILD_TESTS=ON             -DLIBA32ANDROID_ARM32_ANDROID_LOG_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/android-log/liba32android_android_log_consumer.so"             -DLIBA32ANDROID_ARM32_ANDROID_LOG_SHIM_PATH="$GITHUB_WORKSPACE/build-fixtures/android-log/liblog.so"
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBA32ANDROID_BUILD_TESTS=ON
+          ${{ matrix.configure_defs }}
 
       - name: Build integration
-        run: cmake --build build --target compat_android_log_shim_integration_test --parallel 2
-
-      - name: Test integration
         run: |
           set -euxo pipefail
-          ctest --test-dir build --output-on-failure -R '^a32_android_log_shim_integration$'
-          build/compat_android_log_shim_integration_test             build-fixtures/android-log/liba32android_android_log_consumer.so             build-fixtures/android-log/liblog.so |
-            tee build-fixtures/android-log-integration-evidence.txt
-          grep -F 'fixture.android_log.object_count=2' build-fixtures/android-log-integration-evidence.txt
-          grep -F 'fixture.android_log.needed=liblog.so' build-fixtures/android-log-integration-evidence.txt
-          grep -F 'fixture.android_log.symbol_object=1' build-fixtures/android-log-integration-evidence.txt
-          grep -F 'fixture.android_log.relocation_count=3' build-fixtures/android-log-integration-evidence.txt
-          grep -F 'fixture.android_log.write_service_id=0xa0' build-fixtures/android-log-integration-evidence.txt
-          grep -F 'fixture.android_log.print_service_id=0x133' build-fixtures/android-log-integration-evidence.txt
-          grep -F 'fixture.android_log.vprint_service_id=0x134' build-fixtures/android-log-integration-evidence.txt
-          grep -F 'fixture.android_log.service_calls=3' build-fixtures/android-log-integration-evidence.txt
-          grep -F 'fixture.android_log.priority=6' build-fixtures/android-log-integration-evidence.txt
-          grep -F 'fixture.android_log.status=PASS' build-fixtures/android-log-integration-evidence.txt
+          cmake --build build --target ${{ matrix.build_targets }} --parallel 2
 
-      - name: Upload shim integration evidence
+      - name: Test integration
+        env:
+          TEST_SCRIPT: ${{ matrix.test_script || '' }}
+        run: |
+          set -euxo pipefail
+          for pattern in ${{ matrix.ctest_filter }}; do
+            ctest --test-dir build --output-on-failure -R "$pattern"
+          done
+
+          eval "$TEST_SCRIPT"
+
+          ${{ matrix.evidence_checks }}
+
+      - name: Upload integration evidence
         uses: actions/upload-artifact@v4
         with:
-          name: arm32-liblog-shim
+          name: ${{ matrix.artifact_name }}
           path: |
-            build-fixtures/android-log/liblog.so
-            build-fixtures/android-log/liba32android_android_log_consumer.so
-            build-fixtures/android-log-shim-dynamic.txt
-            build-fixtures/android-log-shim-symbols.txt
-            build-fixtures/android-log-consumer-dynamic.txt
-            build-fixtures/android-log-consumer-relocations.txt
-            build-fixtures/android-log-integration-evidence.txt
+            ${{ matrix.artifact_paths }}
           if-no-files-found: error
           retention-days: 14
