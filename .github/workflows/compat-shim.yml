@@ -39,6 +39,11 @@ jobs:
                   grep -F "$symbol"
               done
               grep -F 'Shared library: [liblog.so]' build-fixtures/android-log-consumer-dynamic.txt
+            fixture_capture_script: |
+              readelf -dW "$dir/liblog.so" | tee build-fixtures/android-log-shim-dynamic.txt
+              readelf -sW "$dir/liblog.so" | tee build-fixtures/android-log-shim-symbols.txt
+              readelf -dW "$dir/liba32android_android_log_consumer.so" | tee build-fixtures/android-log-consumer-dynamic.txt
+              readelf -rW "$dir/liba32android_android_log_consumer.so" | tee build-fixtures/android-log-consumer-relocations.txt
             configure_defs: >-
               -DLIBA32ANDROID_ARM32_ANDROID_LOG_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/android-log/liba32android_android_log_consumer.so"
               -DLIBA32ANDROID_ARM32_ANDROID_LOG_SHIM_PATH="$GITHUB_WORKSPACE/build-fixtures/android-log/liblog.so"
@@ -97,6 +102,13 @@ jobs:
                 grep -F 'R_ARM_JUMP_SLOT' build-fixtures/libc-ms-pthread-consumer-relocations.txt |
                   grep -F "$symbol"
               done
+            fixture_capture_script: |
+              readelf -dW "$dir/libc.so" | tee build-fixtures/libc-ms-shim-dynamic.txt
+              readelf -sW "$dir/libc.so" | tee build-fixtures/libc-ms-shim-symbols.txt
+              readelf -dW "$dir/liba32android_libc_memory_string_consumer.so" | tee build-fixtures/libc-ms-consumer-dynamic.txt
+              readelf -rW "$dir/liba32android_libc_memory_string_consumer.so" | tee build-fixtures/libc-ms-consumer-relocations.txt
+              readelf -dW "$dir/liba32android_pthread_lifecycle_consumer.so" | tee build-fixtures/libc-ms-pthread-consumer-dynamic.txt
+              readelf -rW "$dir/liba32android_pthread_lifecycle_consumer.so" | tee build-fixtures/libc-ms-pthread-consumer-relocations.txt
             configure_defs: >-
               -DLIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/libc-ms/liba32android_libc_memory_string_consumer.so"
               -DLIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH="$GITHUB_WORKSPACE/build-fixtures/libc-ms/libc.so"
@@ -168,6 +180,13 @@ jobs:
               grep -F 'fixture_dlclose_marker' build-fixtures/libdl-provider-symbols.txt
               grep -F 'fixture_dlclose_dso_handle' build-fixtures/libdl-provider-symbols.txt
               grep -F '(FINI_ARRAY)' build-fixtures/libdl-provider-dynamic.txt
+            fixture_capture_script: |
+              readelf -dW "$dir/libdl.so" | tee build-fixtures/libdl-shim-dynamic.txt
+              readelf -sW "$dir/libdl.so" | tee build-fixtures/libdl-shim-symbols.txt
+              readelf -dW "$dir/liba32android_libdl_consumer.so" | tee build-fixtures/libdl-consumer-dynamic.txt
+              readelf -rW "$dir/liba32android_libdl_consumer.so" | tee build-fixtures/libdl-consumer-relocations.txt
+              readelf -sW "$dir/libfixture_dl_target.so" | tee build-fixtures/libdl-provider-symbols.txt
+              readelf -dW "$dir/libfixture_dl_target.so" | tee build-fixtures/libdl-provider-dynamic.txt
             configure_defs: >-
               -DLIBA32ANDROID_ARM32_LIBDL_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/libdl/liba32android_libdl_consumer.so"
               -DLIBA32ANDROID_ARM32_LIBDL_SHIM_PATH="$GITHUB_WORKSPACE/build-fixtures/libdl/libdl.so"
@@ -218,6 +237,11 @@ jobs:
                 grep -F 'R_ARM_JUMP_SLOT' build-fixtures/libm-consumer-relocations.txt |
                   grep -F "$symbol"
               done
+            fixture_capture_script: |
+              readelf -dW "$dir/libm.so" | tee build-fixtures/libm-shim-dynamic.txt
+              readelf -sW "$dir/libm.so" | tee build-fixtures/libm-shim-symbols.txt
+              readelf -dW "$dir/liba32android_libm_consumer.so" | tee build-fixtures/libm-consumer-dynamic.txt
+              readelf -rW "$dir/liba32android_libm_consumer.so" | tee build-fixtures/libm-consumer-relocations.txt
             configure_defs: >-
               -DLIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/libm/liba32android_libm_consumer.so"
               -DLIBA32ANDROID_ARM32_LIBM_SHIM_PATH="$GITHUB_WORKSPACE/build-fixtures/libm/libm.so"
@@ -260,6 +284,10 @@ jobs:
               grep -F 'R_ARM_JUMP_SLOT' build-fixtures/app-search-root-relocations.txt |
                 grep -F 'fixture_app_child_value'
               grep -F 'fixture_app_child_value' build-fixtures/app-search-child-symbols.txt
+            fixture_capture_script: |
+              readelf -dW "$dir/libfixture_app_root.so" | tee build-fixtures/app-search-root-dynamic.txt
+              readelf -rW "$dir/libfixture_app_root.so" | tee build-fixtures/app-search-root-relocations.txt
+              readelf -sW "$dir/libfixture_app_child.so" | tee build-fixtures/app-search-child-symbols.txt
             configure_defs: >-
               -DLIBA32ANDROID_ARM32_APP_SEARCH_APK_PATH="$GITHUB_WORKSPACE/build-fixtures/app-search/fixture-app.apk"
             build_targets: compat_android_library_search_integration_test
@@ -306,6 +334,11 @@ jobs:
                 echo "JNI fixture unexpectedly gained DT_NEEDED dependencies" >&2
                 exit 1
               fi
+            fixture_capture_script: |
+              readelf -hW "$dir/libfixture_jni_onload.so" | tee build-fixtures/jni-header.txt
+              readelf -dW "$dir/libfixture_jni_onload.so" | tee build-fixtures/jni-dynamic.txt
+              readelf -sW "$dir/libfixture_jni_onload.so" | tee build-fixtures/jni-symbols.txt
+              readelf -rW "$dir/libfixture_jni_onload.so" | tee build-fixtures/jni-relocations.txt
             configure_defs: >-
               -DLIBA32ANDROID_ARM32_JNI_ONLOAD_FIXTURE_PATH="$GITHUB_WORKSPACE/build-fixtures/jni/libfixture_jni_onload.so"
             build_targets: >-
@@ -358,6 +391,8 @@ jobs:
           test -x "$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi26-clang"
 
       - name: Build reproducible ARM32 fixture
+        env:
+          CAPTURE_SCRIPT: ${{ matrix.fixture_capture_script }}
         run: |
           set -euxo pipefail
           bash -n "${{ matrix.builder }}"
@@ -385,6 +420,8 @@ jobs:
           for file in ${{ matrix.artifacts }}; do
             cmp "$dir/$file" "$dir_second/$file"
           done
+
+          eval "$CAPTURE_SCRIPT"
 
           ${{ matrix.fixture_checks }}
           sha256sum $(for file in ${{ matrix.artifacts }}; do echo "$dir/$file"; done)
