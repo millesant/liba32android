@@ -1,0 +1,7 @@
+liba32android_add_test_executable(guest_memory_test tests/memory/guest_memory.cpp)
+liba32android_add_test_executable(mapped_guest_memory_test tests/memory/mapped_guest_memory.cpp)
+liba32android_add_test_executable(guest_va_allocator_test tests/memory/guest_va_allocator.cpp)
+
+add_test(NAME guest_memory_bounds COMMAND guest_memory_test)
+add_test(NAME mapped_guest_memory_lifecycle COMMAND mapped_guest_memory_test)
+add_test(NAME guest_va_free_range_search COMMAND guest_va_allocator_test)

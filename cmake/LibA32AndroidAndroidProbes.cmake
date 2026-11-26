@@ -1,0 +1,21 @@
+if(LIBA32ANDROID_BUILD_ANDROID_PROBES)
+    if(NOT ANDROID)
+        message(FATAL_ERROR "LIBA32ANDROID_BUILD_ANDROID_PROBES requires an Android toolchain")
+    endif()
+    if(NOT CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a" AND
+       NOT CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
+        message(FATAL_ERROR "Android address-space probe requires arm64-v8a or x86_64")
+    endif()
+
+    add_executable(android_address_space_probe tools/android/android_address_space_probe.cpp)
+    target_compile_features(android_address_space_probe PRIVATE cxx_std_20)
+    liba32android_enable_android_16k_elf_alignment(android_address_space_probe)
+
+    if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+        add_executable(android_runtime_smoke tools/android/android_runtime_smoke.cpp)
+        target_include_directories(android_runtime_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        target_link_libraries(android_runtime_smoke PRIVATE liba32android)
+        target_compile_features(android_runtime_smoke PRIVATE cxx_std_20)
+        liba32android_enable_android_16k_elf_alignment(android_runtime_smoke)
+    endif()
+endif()

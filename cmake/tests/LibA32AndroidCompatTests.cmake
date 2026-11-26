@@ -1,0 +1,429 @@
+liba32android_add_test_executable(
+    compat_android_log_write_test
+    tests/compat/a32_android_log_write.cpp
+)
+
+add_test(
+    NAME a32_android_log_write_service
+    COMMAND compat_android_log_write_test
+)
+
+liba32android_add_test_executable(
+    compat_android_platform_provider_test
+    tests/compat/a32_android_platform_provider.cpp
+)
+
+add_test(
+    NAME a32_android_platform_provider
+    COMMAND compat_android_platform_provider_test
+)
+
+liba32android_add_test_executable(
+    compat_android_platform_catalog_provider_test
+    tests/compat/a32_android_platform_catalog_provider.cpp
+)
+
+add_test(
+    NAME a32_android_platform_catalog_provider
+    COMMAND compat_android_platform_catalog_provider_test
+)
+
+liba32android_add_test_executable(
+    compat_android_namespace_policy_test
+    tests/compat/a32_android_namespace_policy.cpp
+)
+
+add_test(
+    NAME a32_android_namespace_access_policy
+    COMMAND compat_android_namespace_policy_test
+)
+
+liba32android_add_test_executable(
+    compat_libc_memory_string_test
+    tests/compat/a32_libc_memory_string.cpp
+)
+
+add_test(
+    NAME a32_libc_memory_string_service
+    COMMAND compat_libc_memory_string_test
+)
+
+liba32android_add_test_executable(
+    compat_libc_string_copy_search_test
+    tests/compat/a32_libc_string_copy_search.cpp
+)
+
+add_test(
+    NAME a32_libc_string_copy_search_service
+    COMMAND compat_libc_string_copy_search_test
+)
+
+liba32android_add_test_executable(
+    compat_libc_integer_test
+    tests/compat/a32_libc_integer.cpp
+)
+
+add_test(
+    NAME a32_libc_integer_service
+    COMMAND compat_libc_integer_test
+)
+
+liba32android_add_test_executable(
+    compat_libc_clock_test
+    tests/compat/a32_libc_clock.cpp
+)
+
+add_test(
+    NAME a32_libc_clock_gettime_service
+    COMMAND compat_libc_clock_test
+)
+
+liba32android_add_test_executable(
+    compat_libc_heap_test
+    tests/compat/a32_libc_heap.cpp
+)
+
+add_test(
+    NAME a32_libc_heap_service
+    COMMAND compat_libc_heap_test
+)
+
+liba32android_add_test_executable(
+    compat_pthread_sync_test
+    tests/compat/a32_pthread_sync.cpp
+)
+
+add_test(
+    NAME a32_pthread_sync_service
+    COMMAND compat_pthread_sync_test
+)
+
+liba32android_add_test_executable(
+    compat_pthread_cond_test
+    tests/compat/a32_pthread_cond.cpp
+)
+
+add_test(
+    NAME a32_pthread_condition_variables
+    COMMAND compat_pthread_cond_test
+)
+
+liba32android_add_test_executable(
+    compat_pthread_rwlock_once_test
+    tests/compat/a32_pthread_rwlock_once.cpp
+)
+
+add_test(
+    NAME a32_pthread_rwlock_once_mutex_types
+    COMMAND compat_pthread_rwlock_once_test
+)
+
+liba32android_add_test_executable(
+    compat_pthread_lifecycle_test
+    tests/compat/a32_pthread_lifecycle.cpp
+)
+
+add_test(
+    NAME a32_pthread_lifecycle_service
+    COMMAND compat_pthread_lifecycle_test
+)
+
+liba32android_add_test_executable(
+    compat_pthread_join_cleanup_test
+    tests/compat/a32_pthread_join_cleanup.cpp
+)
+
+add_test(
+    NAME a32_pthread_join_exit_cleanup
+    COMMAND compat_pthread_join_cleanup_test
+)
+
+liba32android_add_test_executable(
+    compat_signal_test
+    tests/compat/a32_signal.cpp
+)
+
+add_test(
+    NAME a32_signal_compatibility_subset
+    COMMAND compat_signal_test
+)
+
+liba32android_add_test_executable(
+    compat_scheduler_test
+    tests/compat/a32_scheduler.cpp
+)
+
+add_test(
+    NAME a32_scheduler_priority_affinity
+    COMMAND compat_scheduler_test
+)
+
+liba32android_add_test_executable(
+    compat_aeabi_atexit_test
+    tests/compat/a32_aeabi_atexit.cpp
+)
+
+add_test(
+    NAME a32_aeabi_atexit_service
+    COMMAND compat_aeabi_atexit_test
+)
+
+
+liba32android_add_test_executable(
+    compat_android_log_shim_integration_test
+    tests/compat/a32_android_log_shim.cpp
+)
+
+if((LIBA32ANDROID_ARM32_ANDROID_LOG_CONSUMER_PATH AND
+    NOT LIBA32ANDROID_ARM32_ANDROID_LOG_SHIM_PATH) OR
+   (LIBA32ANDROID_ARM32_ANDROID_LOG_SHIM_PATH AND
+    NOT LIBA32ANDROID_ARM32_ANDROID_LOG_CONSUMER_PATH))
+    message(FATAL_ERROR
+        "Both LIBA32ANDROID_ARM32_ANDROID_LOG_CONSUMER_PATH and LIBA32ANDROID_ARM32_ANDROID_LOG_SHIM_PATH must be supplied together")
+endif()
+
+if(LIBA32ANDROID_ARM32_ANDROID_LOG_CONSUMER_PATH AND
+   LIBA32ANDROID_ARM32_ANDROID_LOG_SHIM_PATH)
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_ANDROID_LOG_CONSUMER_PATH}")
+        message(FATAL_ERROR
+            "Android log consumer fixture does not exist: ${LIBA32ANDROID_ARM32_ANDROID_LOG_CONSUMER_PATH}")
+    endif()
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_ANDROID_LOG_SHIM_PATH}")
+        message(FATAL_ERROR
+            "Android log shim fixture does not exist: ${LIBA32ANDROID_ARM32_ANDROID_LOG_SHIM_PATH}")
+    endif()
+    add_test(
+        NAME a32_android_log_shim_integration
+        COMMAND compat_android_log_shim_integration_test
+                "${LIBA32ANDROID_ARM32_ANDROID_LOG_CONSUMER_PATH}"
+                "${LIBA32ANDROID_ARM32_ANDROID_LOG_SHIM_PATH}"
+    )
+endif()
+
+liba32android_add_test_executable(
+    compat_libc_memory_string_shim_integration_test
+    tests/compat/a32_libc_memory_string_shim.cpp
+)
+
+if((LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH AND
+    NOT LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH) OR
+   (LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH AND
+    NOT LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH))
+    message(FATAL_ERROR
+        "Both LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH and LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH must be supplied together")
+endif()
+
+if(LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH AND
+   LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH)
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH}")
+        message(FATAL_ERROR
+            "libc memory/string consumer fixture does not exist: ${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH}")
+    endif()
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH}")
+        message(FATAL_ERROR
+            "libc memory/string shim fixture does not exist: ${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH}")
+    endif()
+    add_test(
+        NAME a32_libc_memory_string_shim_integration
+        COMMAND compat_libc_memory_string_shim_integration_test
+                "${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_CONSUMER_PATH}"
+                "${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH}"
+    )
+endif()
+
+liba32android_add_test_executable(
+    compat_pthread_lifecycle_shim_integration_test
+    tests/compat/a32_pthread_lifecycle_shim.cpp
+)
+
+if(LIBA32ANDROID_ARM32_PTHREAD_LIFECYCLE_CONSUMER_PATH)
+    if(NOT LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH)
+        message(FATAL_ERROR
+            "LIBA32ANDROID_ARM32_PTHREAD_LIFECYCLE_CONSUMER_PATH requires LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH")
+    endif()
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_PTHREAD_LIFECYCLE_CONSUMER_PATH}")
+        message(FATAL_ERROR
+            "pthread lifecycle consumer fixture does not exist: ${LIBA32ANDROID_ARM32_PTHREAD_LIFECYCLE_CONSUMER_PATH}")
+    endif()
+    add_test(
+        NAME a32_pthread_lifecycle_shim_integration
+        COMMAND compat_pthread_lifecycle_shim_integration_test
+                "${LIBA32ANDROID_ARM32_PTHREAD_LIFECYCLE_CONSUMER_PATH}"
+                "${LIBA32ANDROID_ARM32_LIBC_MEMORY_STRING_SHIM_PATH}"
+    )
+endif()
+
+liba32android_add_test_executable(
+    compat_libdl_test
+    tests/compat/a32_libdl.cpp
+)
+
+add_test(
+    NAME a32_libdl_service
+    COMMAND compat_libdl_test
+)
+
+liba32android_add_test_executable(
+    compat_libdl_close_transaction_test
+    tests/compat/a32_libdl_close_transaction.cpp
+)
+
+add_test(
+    NAME a32_libdl_close_transaction
+    COMMAND compat_libdl_close_transaction_test
+)
+
+liba32android_add_test_executable(
+    compat_libdl_unload_transaction_test
+    tests/compat/a32_libdl_unload_transaction.cpp
+)
+
+add_test(
+    NAME a32_libdl_unload_transaction
+    COMMAND compat_libdl_unload_transaction_test
+)
+
+liba32android_add_test_executable(
+    compat_libdl_open_transaction_test
+    tests/compat/a32_libdl_open_transaction.cpp
+)
+
+add_test(
+    NAME a32_libdl_open_transaction
+    COMMAND compat_libdl_open_transaction_test
+)
+
+
+liba32android_add_test_executable(
+    compat_libm_test
+    tests/compat/a32_libm.cpp
+)
+
+add_test(
+    NAME a32_libm_service
+    COMMAND compat_libm_test
+)
+
+liba32android_add_test_executable(
+    compat_android_library_search_test
+    tests/compat/a32_android_library_search.cpp
+)
+
+add_test(
+    NAME a32_android_library_search_provider
+    COMMAND compat_android_library_search_test
+)
+
+liba32android_add_test_executable(
+    compat_jni_test
+    tests/compat/a32_jni.cpp
+)
+
+add_test(
+    NAME a32_jni_vm_bootstrap
+    COMMAND compat_jni_test
+)
+
+liba32android_add_test_executable(
+    compat_jni_onload_integration_test
+    tests/compat/a32_jni_onload_integration.cpp
+)
+
+if(LIBA32ANDROID_ARM32_JNI_ONLOAD_FIXTURE_PATH)
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_JNI_ONLOAD_FIXTURE_PATH}")
+        message(FATAL_ERROR
+            "JNI_OnLoad fixture does not exist: ${LIBA32ANDROID_ARM32_JNI_ONLOAD_FIXTURE_PATH}")
+    endif()
+    add_test(
+        NAME a32_jni_onload_integration
+        COMMAND compat_jni_onload_integration_test
+                "${LIBA32ANDROID_ARM32_JNI_ONLOAD_FIXTURE_PATH}"
+    )
+endif()
+
+liba32android_add_test_executable(
+    compat_libdl_shim_integration_test
+    tests/compat/a32_libdl_shim.cpp
+)
+
+if((LIBA32ANDROID_ARM32_LIBDL_CONSUMER_PATH OR
+    LIBA32ANDROID_ARM32_LIBDL_SHIM_PATH OR
+    LIBA32ANDROID_ARM32_LIBDL_PROVIDER_PATH) AND
+   NOT (LIBA32ANDROID_ARM32_LIBDL_CONSUMER_PATH AND
+        LIBA32ANDROID_ARM32_LIBDL_SHIM_PATH AND
+        LIBA32ANDROID_ARM32_LIBDL_PROVIDER_PATH))
+    message(FATAL_ERROR
+        "LIBA32ANDROID_ARM32_LIBDL_CONSUMER_PATH, LIBA32ANDROID_ARM32_LIBDL_SHIM_PATH, and LIBA32ANDROID_ARM32_LIBDL_PROVIDER_PATH must be supplied together")
+endif()
+
+if(LIBA32ANDROID_ARM32_LIBDL_CONSUMER_PATH AND
+   LIBA32ANDROID_ARM32_LIBDL_SHIM_PATH AND
+   LIBA32ANDROID_ARM32_LIBDL_PROVIDER_PATH)
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_LIBDL_CONSUMER_PATH}")
+        message(FATAL_ERROR
+            "libdl consumer fixture does not exist: ${LIBA32ANDROID_ARM32_LIBDL_CONSUMER_PATH}")
+    endif()
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_LIBDL_SHIM_PATH}")
+        message(FATAL_ERROR
+            "libdl shim fixture does not exist: ${LIBA32ANDROID_ARM32_LIBDL_SHIM_PATH}")
+    endif()
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_LIBDL_PROVIDER_PATH}")
+        message(FATAL_ERROR
+            "libdl provider fixture does not exist: ${LIBA32ANDROID_ARM32_LIBDL_PROVIDER_PATH}")
+    endif()
+    add_test(
+        NAME a32_libdl_shim_integration
+        COMMAND compat_libdl_shim_integration_test
+                "${LIBA32ANDROID_ARM32_LIBDL_CONSUMER_PATH}"
+                "${LIBA32ANDROID_ARM32_LIBDL_SHIM_PATH}"
+                "${LIBA32ANDROID_ARM32_LIBDL_PROVIDER_PATH}"
+    )
+endif()
+
+liba32android_add_test_executable(
+    compat_libm_shim_integration_test
+    tests/compat/a32_libm_shim.cpp
+)
+
+if((LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH AND
+    NOT LIBA32ANDROID_ARM32_LIBM_SHIM_PATH) OR
+   (LIBA32ANDROID_ARM32_LIBM_SHIM_PATH AND
+    NOT LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH))
+    message(FATAL_ERROR
+        "LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH and LIBA32ANDROID_ARM32_LIBM_SHIM_PATH must be supplied together")
+endif()
+
+if(LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH AND
+   LIBA32ANDROID_ARM32_LIBM_SHIM_PATH)
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH}")
+        message(FATAL_ERROR
+            "libm consumer fixture does not exist: ${LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH}")
+    endif()
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_LIBM_SHIM_PATH}")
+        message(FATAL_ERROR
+            "libm shim fixture does not exist: ${LIBA32ANDROID_ARM32_LIBM_SHIM_PATH}")
+    endif()
+    add_test(
+        NAME a32_libm_shim_integration
+        COMMAND compat_libm_shim_integration_test
+                "${LIBA32ANDROID_ARM32_LIBM_CONSUMER_PATH}"
+                "${LIBA32ANDROID_ARM32_LIBM_SHIM_PATH}"
+    )
+endif()
+
+liba32android_add_test_executable(
+    compat_android_library_search_integration_test
+    tests/compat/a32_android_library_search_integration.cpp
+)
+
+if(LIBA32ANDROID_ARM32_APP_SEARCH_APK_PATH)
+    if(NOT EXISTS "${LIBA32ANDROID_ARM32_APP_SEARCH_APK_PATH}")
+        message(FATAL_ERROR
+            "Android app-search APK fixture does not exist: ${LIBA32ANDROID_ARM32_APP_SEARCH_APK_PATH}")
+    endif()
+    add_test(
+        NAME a32_android_library_search_integration
+        COMMAND compat_android_library_search_integration_test
+                "${LIBA32ANDROID_ARM32_APP_SEARCH_APK_PATH}"
+    )
+endif()

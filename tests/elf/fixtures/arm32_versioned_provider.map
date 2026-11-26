@@ -1,0 +1,6 @@
+LIBC {
+    global:
+        fixture_versioned_import;
+    local:
+        *;
+};

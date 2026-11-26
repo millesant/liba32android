@@ -1,0 +1,942 @@
+#pragma once
+
+#define LIBA32ANDROID_A32_JNI_GET_ENV_SVC 0xD7
+#define LIBA32ANDROID_A32_JNI_FIND_CLASS_SVC 0xD8
+#define LIBA32ANDROID_A32_JNI_REGISTER_NATIVES_SVC 0xD9
+#define LIBA32ANDROID_A32_JNI_GET_METHOD_ID_SVC 0xDA
+#define LIBA32ANDROID_A32_JNI_GET_FIELD_ID_SVC 0xDB
+#define LIBA32ANDROID_A32_JNI_GET_STATIC_FIELD_ID_SVC 0xDC
+#define LIBA32ANDROID_A32_JNI_ATTACH_CURRENT_THREAD_SVC 0xDD
+#define LIBA32ANDROID_A32_JNI_DETACH_CURRENT_THREAD_SVC 0xDE
+#define LIBA32ANDROID_A32_JNI_NEW_GLOBAL_REF_SVC 0xDF
+#define LIBA32ANDROID_A32_JNI_DELETE_GLOBAL_REF_SVC 0xE0
+#define LIBA32ANDROID_A32_JNI_DELETE_LOCAL_REF_SVC 0xE1
+#define LIBA32ANDROID_A32_JNI_GET_ARRAY_LENGTH_SVC 0xE2
+#define LIBA32ANDROID_A32_JNI_GET_STATIC_INT_FIELD_SVC 0xE3
+#define LIBA32ANDROID_A32_JNI_NEW_STRING_UTF_SVC 0xE4
+#define LIBA32ANDROID_A32_JNI_GET_STRING_UTF_CHARS_SVC 0xE5
+#define LIBA32ANDROID_A32_JNI_RELEASE_STRING_UTF_CHARS_SVC 0xE6
+#define LIBA32ANDROID_A32_JNI_NEW_LONG_ARRAY_SVC 0xE7
+#define LIBA32ANDROID_A32_JNI_GET_LONG_ARRAY_ELEMENTS_SVC 0xE8
+#define LIBA32ANDROID_A32_JNI_RELEASE_LONG_ARRAY_ELEMENTS_SVC 0xE9
+#define LIBA32ANDROID_A32_JNI_SET_LONG_ARRAY_REGION_SVC 0xEA
+#define LIBA32ANDROID_A32_JNI_NEW_OBJECT_ARRAY_SVC 0xEB
+#define LIBA32ANDROID_A32_JNI_GET_OBJECT_ARRAY_ELEMENT_SVC 0xEC
+#define LIBA32ANDROID_A32_JNI_SET_OBJECT_ARRAY_ELEMENT_SVC 0xED
+#define LIBA32ANDROID_A32_JNI_GET_LONG_FIELD_SVC 0xEE
+#define LIBA32ANDROID_A32_JNI_SET_LONG_FIELD_SVC 0xEF
+#define LIBA32ANDROID_A32_JNI_THROW_NEW_SVC 0xF0
+#define LIBA32ANDROID_A32_JNI_CALL_VOID_METHOD_V_SVC 0xF1
+#define LIBA32ANDROID_A32_JNI_GET_BYTE_ARRAY_ELEMENTS_SVC 0xF2
+#define LIBA32ANDROID_A32_JNI_RELEASE_BYTE_ARRAY_ELEMENTS_SVC 0xF3
+#define LIBA32ANDROID_A32_JNI_CALL_VOID_METHOD_SVC 0xF4
+#define LIBA32ANDROID_A32_JNI_GET_INT_FIELD_SVC 0xF5
+#define LIBA32ANDROID_A32_JNI_EXCEPTION_OCCURRED_SVC 0xF6
+#define LIBA32ANDROID_A32_JNI_EXCEPTION_CLEAR_SVC 0xF7
+#define LIBA32ANDROID_A32_JNI_NEW_OBJECT_V_SVC 0xF8
+#define LIBA32ANDROID_A32_JNI_GET_STATIC_METHOD_ID_SVC 0xF9
+#define LIBA32ANDROID_A32_JNI_CALL_STATIC_VOID_METHOD_SVC 0xFA
+#define LIBA32ANDROID_A32_JNI_CALL_STATIC_OBJECT_METHOD_SVC 0xFB
+#define LIBA32ANDROID_A32_JNI_NEW_WEAK_GLOBAL_REF_SVC 0xFC
+#define LIBA32ANDROID_A32_JNI_DELETE_WEAK_GLOBAL_REF_SVC 0xFD
+#define LIBA32ANDROID_A32_JNI_EXCEPTION_CHECK_SVC 0xFE
+#define LIBA32ANDROID_A32_JNI_GET_STATIC_OBJECT_FIELD_SVC 0xFF
+
+#ifdef __cplusplus
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "compat/a32_pthread_lifecycle.h"
+#include "cpu/a32_cpu.h"
+#include "elf/elf32_dependency_graph.h"
+#include "elf/elf32_lifecycle.h"
+#include "elf/elf32_symbol_lookup.h"
+#include "runtime/a32_service_dispatch.h"
+
+namespace liba32android::compat {
+
+inline constexpr std::uint32_t kA32JniGetEnvSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_ENV_SVC;
+inline constexpr std::uint32_t kA32JniFindClassSvcImmediate =
+    LIBA32ANDROID_A32_JNI_FIND_CLASS_SVC;
+inline constexpr std::uint32_t kA32JniRegisterNativesSvcImmediate =
+    LIBA32ANDROID_A32_JNI_REGISTER_NATIVES_SVC;
+inline constexpr std::uint32_t kA32JniGetMethodIdSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_METHOD_ID_SVC;
+inline constexpr std::uint32_t kA32JniGetFieldIdSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_FIELD_ID_SVC;
+inline constexpr std::uint32_t kA32JniGetStaticFieldIdSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_STATIC_FIELD_ID_SVC;
+inline constexpr std::uint32_t kA32JniAttachCurrentThreadSvcImmediate =
+    LIBA32ANDROID_A32_JNI_ATTACH_CURRENT_THREAD_SVC;
+inline constexpr std::uint32_t kA32JniDetachCurrentThreadSvcImmediate =
+    LIBA32ANDROID_A32_JNI_DETACH_CURRENT_THREAD_SVC;
+inline constexpr std::uint32_t kA32JniNewGlobalRefSvcImmediate =
+    LIBA32ANDROID_A32_JNI_NEW_GLOBAL_REF_SVC;
+inline constexpr std::uint32_t kA32JniDeleteGlobalRefSvcImmediate =
+    LIBA32ANDROID_A32_JNI_DELETE_GLOBAL_REF_SVC;
+inline constexpr std::uint32_t kA32JniDeleteLocalRefSvcImmediate =
+    LIBA32ANDROID_A32_JNI_DELETE_LOCAL_REF_SVC;
+inline constexpr std::uint32_t kA32JniGetArrayLengthSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_ARRAY_LENGTH_SVC;
+inline constexpr std::uint32_t kA32JniGetStaticIntFieldSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_STATIC_INT_FIELD_SVC;
+inline constexpr std::uint32_t kA32JniNewStringUtfSvcImmediate =
+    LIBA32ANDROID_A32_JNI_NEW_STRING_UTF_SVC;
+inline constexpr std::uint32_t kA32JniGetStringUtfCharsSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_STRING_UTF_CHARS_SVC;
+inline constexpr std::uint32_t kA32JniReleaseStringUtfCharsSvcImmediate =
+    LIBA32ANDROID_A32_JNI_RELEASE_STRING_UTF_CHARS_SVC;
+inline constexpr std::uint32_t kA32JniNewLongArraySvcImmediate =
+    LIBA32ANDROID_A32_JNI_NEW_LONG_ARRAY_SVC;
+inline constexpr std::uint32_t kA32JniGetLongArrayElementsSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_LONG_ARRAY_ELEMENTS_SVC;
+inline constexpr std::uint32_t kA32JniReleaseLongArrayElementsSvcImmediate =
+    LIBA32ANDROID_A32_JNI_RELEASE_LONG_ARRAY_ELEMENTS_SVC;
+inline constexpr std::uint32_t kA32JniSetLongArrayRegionSvcImmediate =
+    LIBA32ANDROID_A32_JNI_SET_LONG_ARRAY_REGION_SVC;
+inline constexpr std::uint32_t kA32JniNewObjectArraySvcImmediate =
+    LIBA32ANDROID_A32_JNI_NEW_OBJECT_ARRAY_SVC;
+inline constexpr std::uint32_t kA32JniGetObjectArrayElementSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_OBJECT_ARRAY_ELEMENT_SVC;
+inline constexpr std::uint32_t kA32JniSetObjectArrayElementSvcImmediate =
+    LIBA32ANDROID_A32_JNI_SET_OBJECT_ARRAY_ELEMENT_SVC;
+inline constexpr std::uint32_t kA32JniGetLongFieldSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_LONG_FIELD_SVC;
+inline constexpr std::uint32_t kA32JniSetLongFieldSvcImmediate =
+    LIBA32ANDROID_A32_JNI_SET_LONG_FIELD_SVC;
+inline constexpr std::uint32_t kA32JniThrowNewSvcImmediate =
+    LIBA32ANDROID_A32_JNI_THROW_NEW_SVC;
+inline constexpr std::uint32_t kA32JniCallVoidMethodVSvcImmediate =
+    LIBA32ANDROID_A32_JNI_CALL_VOID_METHOD_V_SVC;
+inline constexpr std::uint32_t kA32JniGetByteArrayElementsSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_BYTE_ARRAY_ELEMENTS_SVC;
+inline constexpr std::uint32_t kA32JniReleaseByteArrayElementsSvcImmediate =
+    LIBA32ANDROID_A32_JNI_RELEASE_BYTE_ARRAY_ELEMENTS_SVC;
+inline constexpr std::uint32_t kA32JniCallVoidMethodSvcImmediate =
+    LIBA32ANDROID_A32_JNI_CALL_VOID_METHOD_SVC;
+inline constexpr std::uint32_t kA32JniGetIntFieldSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_INT_FIELD_SVC;
+inline constexpr std::uint32_t kA32JniExceptionOccurredSvcImmediate =
+    LIBA32ANDROID_A32_JNI_EXCEPTION_OCCURRED_SVC;
+inline constexpr std::uint32_t kA32JniExceptionClearSvcImmediate =
+    LIBA32ANDROID_A32_JNI_EXCEPTION_CLEAR_SVC;
+inline constexpr std::uint32_t kA32JniNewObjectVSvcImmediate =
+    LIBA32ANDROID_A32_JNI_NEW_OBJECT_V_SVC;
+inline constexpr std::uint32_t kA32JniGetStaticMethodIdSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_STATIC_METHOD_ID_SVC;
+inline constexpr std::uint32_t kA32JniCallStaticVoidMethodSvcImmediate =
+    LIBA32ANDROID_A32_JNI_CALL_STATIC_VOID_METHOD_SVC;
+inline constexpr std::uint32_t kA32JniCallStaticObjectMethodSvcImmediate =
+    LIBA32ANDROID_A32_JNI_CALL_STATIC_OBJECT_METHOD_SVC;
+inline constexpr std::uint32_t kA32JniNewWeakGlobalRefSvcImmediate =
+    LIBA32ANDROID_A32_JNI_NEW_WEAK_GLOBAL_REF_SVC;
+inline constexpr std::uint32_t kA32JniDeleteWeakGlobalRefSvcImmediate =
+    LIBA32ANDROID_A32_JNI_DELETE_WEAK_GLOBAL_REF_SVC;
+inline constexpr std::uint32_t kA32JniExceptionCheckSvcImmediate =
+    LIBA32ANDROID_A32_JNI_EXCEPTION_CHECK_SVC;
+inline constexpr std::uint32_t kA32JniGetStaticObjectFieldSvcImmediate =
+    LIBA32ANDROID_A32_JNI_GET_STATIC_OBJECT_FIELD_SVC;
+
+inline constexpr std::uint32_t kA32JniVersion11 = 0x00010001U;
+inline constexpr std::uint32_t kA32JniVersion12 = 0x00010002U;
+inline constexpr std::uint32_t kA32JniVersion14 = 0x00010004U;
+inline constexpr std::uint32_t kA32JniVersion16 = 0x00010006U;
+
+inline constexpr std::int32_t kA32JniOk = 0;
+inline constexpr std::int32_t kA32JniErr = -1;
+inline constexpr std::int32_t kA32JniEdetached = -2;
+inline constexpr std::int32_t kA32JniEversion = -3;
+
+inline constexpr std::size_t kA32JniHardMaxClasses = 1024U;
+inline constexpr std::size_t kA32JniHardMaxRegisteredMethods = 4096U;
+inline constexpr std::size_t kA32JniHardMaxMethodsPerRegistration = 1024U;
+inline constexpr std::size_t kA32JniHardMaxMemberIds = 4096U;
+inline constexpr std::size_t kA32JniHardMaxReferenceHandles = 4096U;
+inline constexpr std::size_t kA32JniHardMaxReferenceCountPerHandle = 1U << 20U;
+inline constexpr std::size_t kA32JniHardMaxArrays = 4096U;
+inline constexpr std::size_t kA32JniHardMaxLongArrayElements = 65536U;
+inline constexpr std::size_t kA32JniHardMaxByteArrayElements = 65536U;
+inline constexpr std::size_t kA32JniHardMaxObjectArrayElements = 65536U;
+inline constexpr std::size_t kA32JniHardMaxStrings = 4096U;
+inline constexpr std::size_t kA32JniHardMaxStringBytes = 4096U;
+inline constexpr std::size_t kA32JniHardMaxMethodArguments = 128U;
+inline constexpr std::size_t kA32JniHardMaxLogicalThreads = 1024U;
+
+// Android/Dalvik GetEnv accepts the inclusive numeric JNI 1.1..1.6
+// range. JNI_OnLoad is stricter and accepts only 1.2, 1.4, or 1.6.
+[[nodiscard]] constexpr bool is_a32_supported_jni_getenv_version(
+    std::uint32_t version) noexcept {
+    return version >= kA32JniVersion11 &&
+           version <= kA32JniVersion16;
+}
+
+[[nodiscard]] constexpr bool is_a32_supported_jni_onload_version(
+    std::uint32_t version) noexcept {
+    return version == kA32JniVersion12 ||
+           version == kA32JniVersion14 ||
+           version == kA32JniVersion16;
+}
+
+struct A32JniRegistryLimits {
+    std::size_t max_classes{64U};
+    std::size_t max_registered_methods{256U};
+    std::size_t max_methods_per_registration{64U};
+    std::size_t max_member_ids{512U};
+    std::size_t max_reference_handles{512U};
+    std::size_t max_reference_count_per_handle{4096U};
+    std::size_t max_arrays{512U};
+    std::size_t max_long_array_elements{4096U};
+    std::size_t max_byte_array_elements{4096U};
+    std::size_t max_object_array_elements{4096U};
+    std::uint32_t dynamic_array_handle_base{0x75000000U};
+    std::uint32_t dynamic_array_handle_stride{4U};
+    std::size_t max_strings{256U};
+    std::size_t max_modified_utf8_bytes{1024U};
+    std::size_t max_exception_message_bytes{1024U};
+    std::uint32_t dynamic_string_handle_base{0x74000000U};
+    std::uint32_t dynamic_string_handle_stride{4U};
+    std::uint32_t dynamic_exception_handle_base{0x73000000U};
+    std::uint32_t dynamic_exception_handle_stride{4U};
+    std::size_t max_class_name_bytes{256U};
+    std::size_t max_method_name_bytes{256U};
+    std::size_t max_signature_bytes{256U};
+    std::size_t max_method_arguments{64U};
+};
+
+enum class A32JniRegistryError : std::uint8_t {
+    None = 0,
+    InvalidLimits,
+    InvalidClassHandle,
+    InvalidName,
+    ClassLimitExceeded,
+    DuplicateClassName,
+    DuplicateClassHandle,
+    UnknownClass,
+    InvalidMethod,
+    MethodLimitExceeded,
+    DuplicateMethod,
+    InvalidMemberHandle,
+    InvalidMemberKind,
+    MemberLimitExceeded,
+    DuplicateMemberHandle,
+    DuplicateMember,
+    InvalidReferenceHandle,
+    ReferenceLimitExceeded,
+    DuplicateReferenceHandle,
+    ReferenceCountExceeded,
+    InvalidArrayHandle,
+    InvalidArrayLength,
+    ArrayLimitExceeded,
+    DuplicateArrayHandle,
+    InvalidStringValue,
+    StringLimitExceeded,
+    StringHandleExhausted,
+    ArrayHandleExhausted,
+    ExceptionPending,
+};
+
+enum class A32JniMemberKind : std::uint8_t {
+    InstanceMethod = 0,
+    InstanceField,
+    StaticField,
+    StaticMethod,
+};
+
+struct A32JniMemberId {
+    std::uint32_t class_handle{};
+    std::uint32_t handle{};
+    A32JniMemberKind kind{A32JniMemberKind::InstanceMethod};
+    std::string class_name;
+    std::string name;
+    std::string signature;
+};
+
+enum class A32JniValueKind : std::uint8_t {
+    Boolean = 0,
+    Byte,
+    Char,
+    Short,
+    Int,
+    Long,
+    Float,
+    Double,
+    Reference,
+};
+
+struct A32JniValue {
+    A32JniValueKind kind{A32JniValueKind::Int};
+    std::uint64_t bits{};
+};
+
+// Embedding-owned Java-call boundary. Argument storage is borrowed only for the
+// synchronous callback and contains logical JNI values, never host pointers.
+class A32JniMethodCallBridge {
+public:
+    virtual ~A32JniMethodCallBridge() = default;
+
+    [[nodiscard]] virtual bool call_void_method(
+        std::uint32_t receiver,
+        const A32JniMemberId& method,
+        std::span<const A32JniValue> arguments) = 0;
+
+    // Optional constructor boundary. A successful implementation returns a
+    // fresh nonzero logical jobject handle in object_handle.
+    [[nodiscard]] virtual bool new_object(
+        std::uint32_t,
+        const A32JniMemberId&,
+        std::span<const A32JniValue>,
+        std::uint32_t& object_handle) {
+        object_handle = 0U;
+        return false;
+    }
+
+    [[nodiscard]] virtual bool call_static_void_method(
+        std::uint32_t,
+        const A32JniMemberId&,
+        std::span<const A32JniValue>) {
+        return false;
+    }
+
+    // A successful embedding callback may return null or one pre-existing
+    // logical JNI reference identity. The service retains one local reference
+    // for a non-null returned identity before exposing it to the guest.
+    [[nodiscard]] virtual bool call_static_object_method(
+        std::uint32_t,
+        const A32JniMemberId&,
+        std::span<const A32JniValue>,
+        std::uint32_t& object_handle) {
+        object_handle = 0U;
+        return false;
+    }
+};
+
+struct A32JniReferenceCounts {
+    std::uint32_t local{};
+    std::uint32_t global{};
+    std::uint32_t weak{};
+};
+
+struct A32JniArrayInfo {
+    std::uint32_t handle{};
+    std::uint32_t length{};
+};
+
+struct A32JniStaticIntFieldValue {
+    std::uint32_t field_handle{};
+    std::int32_t value{};
+};
+
+struct A32JniStaticObjectFieldValue {
+    std::uint32_t field_handle{};
+    std::uint32_t object_handle{};
+};
+
+struct A32JniInstanceIntFieldValue {
+    std::uint32_t object_handle{};
+    std::uint32_t field_handle{};
+    std::int32_t value{};
+};
+
+struct A32JniInstanceLongFieldValue {
+    std::uint32_t object_handle{};
+    std::uint32_t field_handle{};
+    std::int64_t value{};
+};
+
+struct A32JniStringInfo {
+    std::uint32_t handle{};
+    std::string modified_utf8;
+};
+
+struct A32JniLongArrayInfo {
+    std::uint32_t handle{};
+    std::vector<std::int64_t> elements;
+};
+
+struct A32JniByteArrayInfo {
+    std::uint32_t handle{};
+    std::vector<std::uint8_t> elements;
+};
+
+struct A32JniObjectArrayInfo {
+    std::uint32_t handle{};
+    std::uint32_t element_class_handle{};
+    std::vector<std::uint32_t> elements;
+};
+
+struct A32JniPendingException {
+    std::uint32_t handle{};
+    std::uint32_t class_handle{};
+    std::string class_name;
+    std::string message;
+};
+
+struct A32JniRegisteredNative {
+    std::uint32_t class_handle{};
+    std::string class_name;
+    std::string name;
+    std::string signature;
+    std::uint32_t function{};
+};
+
+// Caller-owned bounded class/native registry. Guest-visible values are logical
+// 32-bit handles/function pointers; strings are copied into owned host storage.
+class A32JniClassRegistry final {
+public:
+    explicit A32JniClassRegistry(
+        A32JniRegistryLimits limits = {}) noexcept
+        : limits_(limits) {}
+
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] A32JniRegistryError add_class(
+        std::uint32_t handle,
+        std::string_view name);
+
+    [[nodiscard]] std::optional<std::uint32_t> find_class(
+        std::string_view name) const noexcept;
+    [[nodiscard]] bool contains_class_handle(
+        std::uint32_t handle) const noexcept;
+
+    [[nodiscard]] A32JniRegistryError add_reference_identity(
+        std::uint32_t handle);
+    [[nodiscard]] bool retain_local_reference(
+        std::uint32_t handle) noexcept;
+    [[nodiscard]] std::uint32_t new_global_reference(
+        std::uint32_t handle) noexcept;
+    [[nodiscard]] std::uint32_t new_weak_global_reference(
+        std::uint32_t handle) noexcept;
+    [[nodiscard]] bool delete_local_reference(
+        std::uint32_t handle) noexcept;
+    [[nodiscard]] bool delete_global_reference(
+        std::uint32_t handle) noexcept;
+    [[nodiscard]] bool delete_weak_global_reference(
+        std::uint32_t handle) noexcept;
+    [[nodiscard]] std::optional<A32JniReferenceCounts> reference_counts(
+        std::uint32_t handle) const noexcept;
+
+    [[nodiscard]] A32JniRegistryError add_array(
+        std::uint32_t handle,
+        std::uint32_t length);
+    [[nodiscard]] std::optional<std::uint32_t> array_length(
+        std::uint32_t handle) const noexcept;
+
+    [[nodiscard]] A32JniRegistryError create_long_array(
+        std::int32_t length,
+        std::uint32_t& handle);
+    [[nodiscard]] const A32JniLongArrayInfo* find_long_array(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] A32JniLongArrayInfo* find_long_array(
+        std::uint32_t handle) noexcept;
+
+    [[nodiscard]] A32JniRegistryError add_byte_array(
+        std::uint32_t handle,
+        std::span<const std::uint8_t> elements);
+    [[nodiscard]] const A32JniByteArrayInfo* find_byte_array(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] A32JniByteArrayInfo* find_byte_array(
+        std::uint32_t handle) noexcept;
+
+    [[nodiscard]] A32JniRegistryError create_object_array(
+        std::int32_t length,
+        std::uint32_t element_class_handle,
+        std::uint32_t initial_element,
+        std::uint32_t& handle);
+    [[nodiscard]] const A32JniObjectArrayInfo* find_object_array(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] A32JniObjectArrayInfo* find_object_array(
+        std::uint32_t handle) noexcept;
+
+    [[nodiscard]] A32JniRegistryError create_modified_utf8_string(
+        std::string_view value,
+        std::uint32_t& handle);
+    [[nodiscard]] const A32JniStringInfo* find_modified_utf8_string(
+        std::uint32_t handle) const noexcept;
+
+    [[nodiscard]] A32JniRegistryError add_member(
+        std::uint32_t class_handle,
+        A32JniMemberKind kind,
+        std::uint32_t handle,
+        std::string_view name,
+        std::string_view signature);
+    [[nodiscard]] const A32JniMemberId* find_member(
+        std::uint32_t class_handle,
+        A32JniMemberKind kind,
+        std::string_view name,
+        std::string_view signature) const noexcept;
+    [[nodiscard]] const A32JniMemberId* find_member_by_handle(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] A32JniRegistryError set_static_int_field_value(
+        std::uint32_t field_handle,
+        std::int32_t value);
+    [[nodiscard]] std::optional<std::int32_t> static_int_field_value(
+        std::uint32_t field_handle) const noexcept;
+    [[nodiscard]] A32JniRegistryError set_static_object_field_value(
+        std::uint32_t field_handle,
+        std::uint32_t object_handle);
+    [[nodiscard]] std::optional<std::uint32_t> static_object_field_value(
+        std::uint32_t field_handle) const noexcept;
+    [[nodiscard]] A32JniRegistryError set_instance_int_field_value(
+        std::uint32_t object_handle,
+        std::uint32_t field_handle,
+        std::int32_t value);
+    [[nodiscard]] std::optional<std::int32_t> instance_int_field_value(
+        std::uint32_t object_handle,
+        std::uint32_t field_handle) const noexcept;
+    [[nodiscard]] A32JniRegistryError set_instance_long_field_value(
+        std::uint32_t object_handle,
+        std::uint32_t field_handle,
+        std::int64_t value);
+    [[nodiscard]] std::optional<std::int64_t> instance_long_field_value(
+        std::uint32_t object_handle,
+        std::uint32_t field_handle) const noexcept;
+
+    [[nodiscard]] A32JniRegistryError set_pending_exception(
+        std::uint32_t class_handle,
+        std::string_view message);
+    [[nodiscard]] const A32JniPendingException* pending_exception()
+        const noexcept {
+        return pending_exception_.has_value()
+            ? &*pending_exception_
+            : nullptr;
+    }
+    void clear_pending_exception() noexcept;
+
+    [[nodiscard]] const A32JniRegisteredNative* find_native(
+        std::uint32_t class_handle,
+        std::string_view name,
+        std::string_view signature) const noexcept;
+
+    [[nodiscard]] std::size_t class_count() const noexcept {
+        return classes_.size();
+    }
+    [[nodiscard]] std::size_t member_count() const noexcept {
+        return members_.size();
+    }
+    [[nodiscard]] std::size_t array_count() const noexcept {
+        return arrays_.size();
+    }
+    [[nodiscard]] std::size_t string_count() const noexcept {
+        return strings_.size();
+    }
+    [[nodiscard]] std::size_t registered_native_count() const noexcept {
+        return natives_.size();
+    }
+    [[nodiscard]] A32JniRegistryLimits limits() const noexcept {
+        return limits_;
+    }
+
+private:
+    struct ClassEntry {
+        std::uint32_t handle{};
+        std::string name;
+    };
+    struct ReferenceEntry {
+        std::uint32_t handle{};
+        std::uint32_t local_count{};
+        std::uint32_t global_count{};
+        std::uint32_t weak_count{};
+    };
+
+    [[nodiscard]] const ReferenceEntry* find_reference_entry(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] ReferenceEntry* find_reference_entry(
+        std::uint32_t handle) noexcept;
+    [[nodiscard]] const ClassEntry* find_class_entry(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] A32JniRegistryError register_natives(
+        std::uint32_t class_handle,
+        std::vector<A32JniRegisteredNative> pending);
+    void release_pending_exception_identity(
+        const A32JniPendingException& pending) noexcept;
+
+    A32JniRegistryLimits limits_;
+    std::vector<ClassEntry> classes_;
+    std::vector<ReferenceEntry> references_;
+    std::vector<A32JniArrayInfo> arrays_;
+    std::vector<A32JniLongArrayInfo> long_arrays_;
+    std::vector<A32JniByteArrayInfo> byte_arrays_;
+    std::vector<A32JniObjectArrayInfo> object_arrays_;
+    std::vector<A32JniStringInfo> strings_;
+    std::vector<A32JniMemberId> members_;
+    std::vector<A32JniStaticIntFieldValue> static_int_fields_;
+    std::vector<A32JniStaticObjectFieldValue> static_object_fields_;
+    std::vector<A32JniInstanceIntFieldValue> instance_int_fields_;
+    std::vector<A32JniInstanceLongFieldValue> instance_long_fields_;
+    std::optional<A32JniPendingException> pending_exception_;
+    std::vector<A32JniRegisteredNative> natives_;
+
+    friend class A32JniVmService;
+};
+
+struct A32JniVmLayout {
+    std::uint32_t java_vm_address{};
+    std::uint32_t invoke_table_address{};
+    std::uint32_t jni_env_address{};
+    std::uint32_t native_table_address{};
+    std::uint32_t get_env_stub_address{};
+    std::uint32_t find_class_stub_address{};
+    std::uint32_t register_natives_stub_address{};
+    std::uint32_t get_method_id_stub_address{};
+    std::uint32_t get_field_id_stub_address{};
+    std::uint32_t get_static_field_id_stub_address{};
+    std::uint32_t get_static_object_field_stub_address{};
+    std::uint32_t attach_current_thread_stub_address{};
+    std::uint32_t detach_current_thread_stub_address{};
+    std::uint32_t new_global_ref_stub_address{};
+    std::uint32_t delete_global_ref_stub_address{};
+    std::uint32_t delete_local_ref_stub_address{};
+    std::uint32_t get_array_length_stub_address{};
+    std::uint32_t get_static_int_field_stub_address{};
+    std::uint32_t new_string_utf_stub_address{};
+    std::uint32_t get_string_utf_chars_stub_address{};
+    std::uint32_t release_string_utf_chars_stub_address{};
+    std::uint32_t string_utf_scratch_address{};
+    std::uint32_t string_utf_scratch_bytes{};
+    std::uint32_t new_long_array_stub_address{};
+    std::uint32_t get_long_array_elements_stub_address{};
+    std::uint32_t release_long_array_elements_stub_address{};
+    std::uint32_t set_long_array_region_stub_address{};
+    std::uint32_t long_array_scratch_address{};
+    std::uint32_t long_array_scratch_bytes{};
+    std::uint32_t new_object_array_stub_address{};
+    std::uint32_t get_object_array_element_stub_address{};
+    std::uint32_t set_object_array_element_stub_address{};
+    std::uint32_t get_int_field_stub_address{};
+    std::uint32_t exception_occurred_stub_address{};
+    std::uint32_t exception_clear_stub_address{};
+    std::uint32_t new_object_v_stub_address{};
+    std::uint32_t get_static_method_id_stub_address{};
+    std::uint32_t call_static_void_method_stub_address{};
+    std::uint32_t call_static_object_method_stub_address{};
+    std::uint32_t new_weak_global_ref_stub_address{};
+    std::uint32_t delete_weak_global_ref_stub_address{};
+    std::uint32_t exception_check_stub_address{};
+    std::uint32_t get_long_field_stub_address{};
+    std::uint32_t set_long_field_stub_address{};
+    std::uint32_t throw_new_stub_address{};
+    std::uint32_t call_void_method_v_stub_address{};
+    std::uint32_t call_void_method_stub_address{};
+    std::uint32_t get_byte_array_elements_stub_address{};
+    std::uint32_t release_byte_array_elements_stub_address{};
+    std::uint32_t byte_array_scratch_address{};
+    std::uint32_t byte_array_scratch_bytes{};
+};
+
+enum class A32JniVmInstallError : std::uint8_t {
+    None = 0,
+    InvalidLayout,
+    SnapshotFailed,
+    WriteFailed,
+    RollbackFailed,
+};
+
+struct A32JniVmInstallResult {
+    A32JniVmInstallError error{A32JniVmInstallError::None};
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return error == A32JniVmInstallError::None;
+    }
+};
+
+struct A32JniVmOptions {
+    std::size_t max_logical_threads{64U};
+    std::uint32_t initial_logical_thread_id{1U};
+};
+
+// Bounded guest JNI state keyed by the same logical thread identity used by the
+// pthread compatibility layer. install() begins with one attached logical
+// thread for backwards-compatible single-thread fixtures. The caller owns all
+// guest mappings; no host thread identity enters guest-visible state.
+class A32JniVmService final
+    : public runtime::A32HostServiceHandler,
+      public A32PthreadThreadExitHook {
+public:
+    explicit A32JniVmService(
+        A32JniVmLayout layout,
+        A32JniClassRegistry* registry = nullptr,
+        A32JniMethodCallBridge* method_call_bridge = nullptr,
+        A32JniVmOptions options = {}) noexcept
+        : layout_(layout),
+          registry_(registry),
+          method_call_bridge_(method_call_bridge),
+          options_(options) {}
+
+    [[nodiscard]] A32JniVmInstallResult install(
+        memory::GuestMemory& memory);
+
+    [[nodiscard]] runtime::A32HostServiceDisposition handle(
+        memory::GuestMemory& memory,
+        std::uint32_t svc_immediate,
+        std::array<std::uint32_t, 16>& regs,
+        std::uint32_t& cpsr) override;
+
+    void set_current_thread_id(std::uint32_t thread_id) noexcept;
+    [[nodiscard]] bool set_current_thread_id(
+        runtime::A32LogicalThreadId thread_id) noexcept;
+    [[nodiscard]] bool set_current_thread_context(
+        const runtime::A32LogicalExecutionContext& context) noexcept;
+    [[nodiscard]] std::uint32_t current_thread_id() const noexcept {
+        return current_thread_id_.value();
+    }
+
+    [[nodiscard]] bool on_thread_exit(
+        memory::GuestMemory& memory,
+        runtime::A32LogicalThreadId thread_id) override;
+
+    [[nodiscard]] A32JniVmLayout layout() const noexcept {
+        return layout_;
+    }
+
+    [[nodiscard]] bool installed() const noexcept {
+        return installed_;
+    }
+    [[nodiscard]] bool attached() const noexcept;
+    [[nodiscard]] std::size_t thread_state_count() const noexcept {
+        return thread_states_.size();
+    }
+    [[nodiscard]] std::uint32_t current_local_reference_count(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] const A32JniPendingException*
+    current_pending_exception() const noexcept;
+
+    [[nodiscard]] bool utf_chars_lease_active() const noexcept {
+        return active_utf_chars_string_.has_value();
+    }
+    [[nodiscard]] bool long_array_lease_active() const noexcept {
+        return active_long_array_.has_value();
+    }
+    [[nodiscard]] bool byte_array_lease_active() const noexcept {
+        return active_byte_array_.has_value();
+    }
+
+    [[nodiscard]] A32JniClassRegistry* registry() noexcept {
+        return registry_;
+    }
+    [[nodiscard]] const A32JniClassRegistry* registry() const noexcept {
+        return registry_;
+    }
+
+private:
+    struct ThreadLocalReference {
+        std::uint32_t handle{};
+        std::uint32_t count{};
+    };
+    struct ThreadState {
+        runtime::A32LogicalThreadId thread_id{};
+        bool attached{};
+        std::vector<ThreadLocalReference> local_references;
+        std::optional<A32JniPendingException> pending_exception;
+    };
+
+    [[nodiscard]] bool layout_valid() const noexcept;
+    [[nodiscard]] ThreadState* find_thread_state(
+        runtime::A32LogicalThreadId thread_id) noexcept;
+    [[nodiscard]] const ThreadState* find_thread_state(
+        runtime::A32LogicalThreadId thread_id) const noexcept;
+    [[nodiscard]] ThreadState* current_thread_state() noexcept;
+    [[nodiscard]] const ThreadState* current_thread_state() const noexcept;
+    [[nodiscard]] bool adopt_current_local_reference(
+        std::uint32_t handle);
+    [[nodiscard]] bool retain_current_local_reference(
+        std::uint32_t handle);
+    [[nodiscard]] bool delete_current_local_reference(
+        std::uint32_t handle) noexcept;
+    [[nodiscard]] bool current_reference_live(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] std::uint32_t owned_local_reference_count(
+        std::uint32_t handle) const noexcept;
+    [[nodiscard]] bool release_thread_state(
+        runtime::A32LogicalThreadId thread_id) noexcept;
+    void stash_current_pending_exception() noexcept;
+    void restore_current_pending_exception() noexcept;
+    void clear_thread_leases(
+        runtime::A32LogicalThreadId thread_id) noexcept;
+
+    A32JniVmLayout layout_;
+    A32JniClassRegistry* registry_{};
+    A32JniMethodCallBridge* method_call_bridge_{};
+    A32JniVmOptions options_{};
+    bool installed_{};
+    runtime::A32LogicalThreadId current_thread_id_{};
+    std::vector<ThreadState> thread_states_;
+    std::optional<std::uint32_t> active_utf_chars_string_;
+    std::optional<std::uint32_t> active_utf_chars_thread_id_;
+    std::optional<std::uint32_t> active_long_array_;
+    std::optional<std::uint32_t> active_long_array_thread_id_;
+    std::optional<std::uint32_t> active_byte_array_;
+    std::optional<std::uint32_t> active_byte_array_thread_id_;
+};
+
+struct A32JniOnLoadOptions {
+    std::uint32_t stack_top{};
+    std::uint32_t return_pc{};
+    std::size_t max_instructions{};
+    std::size_t max_service_calls{};
+    elf::Elf32SymbolLookupOptions symbols{};
+    // Optional borrowed provenance context. During a JNI library entrypoint it
+    // identifies exactly object_index so nested lifecycle registrations learn
+    // the same object/DSO ownership as constructor execution.
+    elf::Elf32LifecycleExecutionContext* execution_context{};
+};
+
+enum class A32JniOnLoadError : std::uint8_t {
+    None = 0,
+    InvalidOptions,
+    InvalidObject,
+    SymbolIndexFailed,
+    SymbolLookupFailed,
+    InvalidFunctionAddress,
+    MemoryFault,
+    CpuException,
+    ServiceLimitExceeded,
+    ServiceUnhandled,
+    ServiceFailed,
+    ServiceSuspended,
+    InstructionLimitExceeded,
+    UnsupportedVersion,
+};
+
+struct A32JniOnLoadResult {
+    A32JniOnLoadError error{A32JniOnLoadError::None};
+    elf::Elf32SymbolIndexError index_error{
+        elf::Elf32SymbolIndexError::None};
+    elf::Elf32SymbolLookupError lookup_error{
+        elf::Elf32SymbolLookupError::None};
+    elf::Elf32LinkerStringError string_error{
+        elf::Elf32LinkerStringError::None};
+    std::uint32_t returned_version{};
+    std::optional<runtime::A32ServiceDispatchResult> execution;
+    std::optional<std::uint32_t> failing_svc_immediate;
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return error == A32JniOnLoadError::None;
+    }
+};
+
+// Resolve JNI_OnLoad from exactly object_index (never dependency/global scope),
+// execute it as jint JNI_OnLoad(JavaVM*, void*) with r1 == nullptr, and accept
+// only Android/Dalvik JNI 1.2, 1.4, or 1.6 return versions.
+[[nodiscard]] A32JniOnLoadResult invoke_a32_jni_on_load(
+    memory::GuestMemory& memory,
+    const elf::Elf32DependencyGraph& graph,
+    std::size_t object_index,
+    std::uint32_t java_vm_address,
+    runtime::A32HostServiceHandler& service_handler,
+    const A32JniOnLoadOptions& options);
+
+using A32JniOnUnloadOptions = A32JniOnLoadOptions;
+
+enum class A32JniOnUnloadError : std::uint8_t {
+    None = 0,
+    InvalidOptions,
+    InvalidObject,
+    SymbolIndexFailed,
+    SymbolLookupFailed,
+    InvalidFunctionAddress,
+    MemoryFault,
+    CpuException,
+    ServiceLimitExceeded,
+    ServiceUnhandled,
+    ServiceFailed,
+    ServiceSuspended,
+    InstructionLimitExceeded,
+};
+
+struct A32JniOnUnloadResult {
+    A32JniOnUnloadError error{A32JniOnUnloadError::None};
+    elf::Elf32SymbolIndexError index_error{
+        elf::Elf32SymbolIndexError::None};
+    elf::Elf32SymbolLookupError lookup_error{
+        elf::Elf32SymbolLookupError::None};
+    elf::Elf32LinkerStringError string_error{
+        elf::Elf32LinkerStringError::None};
+    std::optional<runtime::A32ServiceDispatchResult> execution;
+    std::optional<std::uint32_t> failing_svc_immediate;
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return error == A32JniOnUnloadError::None;
+    }
+};
+
+// Resolve JNI_OnUnload from exactly object_index and execute it as
+// void JNI_OnUnload(JavaVM*, void*) with r1 == nullptr. This helper is an
+// explicit bounded invocation seam; automatic final-close wiring is separate.
+[[nodiscard]] A32JniOnUnloadResult invoke_a32_jni_on_unload(
+    memory::GuestMemory& memory,
+    const elf::Elf32DependencyGraph& graph,
+    std::size_t object_index,
+    std::uint32_t java_vm_address,
+    runtime::A32HostServiceHandler& service_handler,
+    const A32JniOnUnloadOptions& options);
+
+struct A32JniNativeInvokeOptions {
+    std::uint32_t stack_top{};
+    std::uint32_t return_pc{};
+    std::size_t max_instructions{};
+    std::size_t max_service_calls{};
+};
+
+enum class A32JniNativeInvokeError : std::uint8_t {
+    None = 0,
+    InvalidOptions,
+    ClassNotFound,
+    NativeNotFound,
+    NonZeroArgumentSignature,
+    InvalidFunctionAddress,
+    MemoryFault,
+    CpuException,
+    ServiceLimitExceeded,
+    ServiceUnhandled,
+    ServiceFailed,
+    ServiceSuspended,
+    InstructionLimitExceeded,
+};
+
+struct A32JniNativeInvokeResult {
+    A32JniNativeInvokeError error{A32JniNativeInvokeError::None};
+    std::uint32_t function{};
+    std::uint32_t returned_value{};
+    std::optional<runtime::A32ServiceDispatchResult> execution;
+    std::optional<std::uint32_t> failing_svc_immediate;
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return error == A32JniNativeInvokeError::None;
+    }
+};
+
+// Execute one exact registered zero-Java-argument native. The function receives
+// JNIEnv* in r0 and receiver_or_class in r1. The raw r0 return bits are exposed.
+[[nodiscard]] A32JniNativeInvokeResult
+invoke_a32_registered_native_noargs(
+    memory::GuestMemory& memory,
+    const A32JniClassRegistry& registry,
+    std::uint32_t class_handle,
+    std::string_view name,
+    std::string_view signature,
+    std::uint32_t jni_env_address,
+    std::uint32_t receiver_or_class,
+    runtime::A32HostServiceHandler& service_handler,
+    const A32JniNativeInvokeOptions& options);
+
+[[nodiscard]] const char* to_string(
+    A32JniRegistryError error) noexcept;
+[[nodiscard]] const char* to_string(
+    A32JniVmInstallError error) noexcept;
+[[nodiscard]] const char* to_string(
+    A32JniOnLoadError error) noexcept;
+[[nodiscard]] const char* to_string(
+    A32JniOnUnloadError error) noexcept;
+[[nodiscard]] const char* to_string(
+    A32JniNativeInvokeError error) noexcept;
+
+}  // namespace liba32android::compat
+
+#endif

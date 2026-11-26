@@ -1,0 +1,25 @@
+#pragma once
+
+#ifdef __cplusplus
+
+#include <cstdint>
+
+namespace liba32android::compat {
+
+// Android/Linux guest errno numbers shared by compatibility services.
+inline constexpr std::int32_t kA32AndroidEperm = 1;
+inline constexpr std::int32_t kA32AndroidEsrch = 3;
+inline constexpr std::int32_t kA32AndroidEagain = 11;
+inline constexpr std::int32_t kA32AndroidEacces = 13;
+inline constexpr std::int32_t kA32AndroidEnomem = 12;
+inline constexpr std::int32_t kA32AndroidEfault = 14;
+inline constexpr std::int32_t kA32AndroidEbusy = 16;
+inline constexpr std::int32_t kA32AndroidEinval = 22;
+inline constexpr std::int32_t kA32AndroidErange = 34;
+inline constexpr std::int32_t kA32AndroidEdeadlk = 35;
+inline constexpr std::int32_t kA32AndroidEoverflow = 75;
+inline constexpr std::int32_t kA32AndroidEtimedout = 110;
+
+}  // namespace liba32android::compat
+
+#endif

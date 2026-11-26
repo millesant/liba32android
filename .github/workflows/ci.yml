@@ -1,0 +1,366 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-smoke:
+    name: Linux A32 smoke
+    runs-on: ubuntu-24.04
+    env:
+      NDK_VERSION: 27.3.13750724
+      ARM32_FIXTURE: ${{ github.workspace }}/build-fixtures/liba32android_loader_fixture.so
+      ARM32_JUMP_SLOT_DIR: ${{ github.workspace }}/build-fixtures/jump-slot
+      ARM32_JUMP_SLOT_CONSUMER: ${{ github.workspace }}/build-fixtures/jump-slot/liba32android_jump_slot_consumer.so
+      ARM32_JUMP_SLOT_PROVIDER: ${{ github.workspace }}/build-fixtures/jump-slot/liba32android_jump_slot_provider.so
+      ARM32_VERSIONED_DIR: ${{ github.workspace }}/build-fixtures/versioned
+      ARM32_VERSIONED_CONSUMER: ${{ github.workspace }}/build-fixtures/versioned/liba32android_versioned_consumer.so
+      ARM32_VERSIONED_PROVIDER: ${{ github.workspace }}/build-fixtures/versioned/liba32android_versioned_provider.so
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libboost-dev binutils zlib1g-dev
+      - name: Validate Android 16 KiB harnesses
+        run: |
+          set -euxo pipefail
+          bash -n tools/android/run_android_16k_validation.sh
+          grep -F 'getconf PAGE_SIZE' tools/android/run_android_16k_validation.sh
+          grep -F 'expected 16384-byte Android page size' tools/android/run_android_16k_validation.sh
+          grep -F 'expected AArch64 Android target' tools/android/run_android_16k_validation.sh
+          grep -F 'a32.fastmem_fault.status=PASS' tools/android/run_android_16k_validation.sh
+          bash -n tools/android/run_android_16k_probe_validation.sh
+          grep -F 'expected x86_64 or aarch64 Android target' tools/android/run_android_16k_probe_validation.sh
+          grep -F 'jit_wx.result_check=PASS' tools/android/run_android_16k_probe_validation.sh
+      - name: Ensure pinned NDK for real ARM32 fixture
+        run: |
+          set -euxo pipefail
+          if [ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION"
+          fi
+          test -x "$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi26-clang"
+      - name: Build reproducible real ARM32 Android fixture
+        run: |
+          set -euxo pipefail
+          mkdir -p build-fixtures
+          bash tools/fixtures/build_arm32_loader_fixture.sh "$ANDROID_HOME/ndk/$NDK_VERSION" "$ARM32_FIXTURE"
+          bash tools/fixtures/build_arm32_loader_fixture.sh "$ANDROID_HOME/ndk/$NDK_VERSION" build-fixtures/liba32android_loader_fixture.second.so
+          cmp "$ARM32_FIXTURE" build-fixtures/liba32android_loader_fixture.second.so
+          file "$ARM32_FIXTURE"
+          readelf -hW "$ARM32_FIXTURE"
+          readelf -lW "$ARM32_FIXTURE"
+          readelf -dW "$ARM32_FIXTURE"
+          sha256sum "$ARM32_FIXTURE" build-fixtures/liba32android_loader_fixture.second.so
+      - name: Build reproducible real ARM32 JUMP_SLOT fixture
+        run: |
+          set -euxo pipefail
+          bash tools/fixtures/build_arm32_jump_slot_fixture.sh "$ANDROID_HOME/ndk/$NDK_VERSION" "$ARM32_JUMP_SLOT_DIR"
+          bash tools/fixtures/build_arm32_jump_slot_fixture.sh "$ANDROID_HOME/ndk/$NDK_VERSION" build-fixtures/jump-slot-second
+          cmp "$ARM32_JUMP_SLOT_CONSUMER" build-fixtures/jump-slot-second/liba32android_jump_slot_consumer.so
+          cmp "$ARM32_JUMP_SLOT_PROVIDER" build-fixtures/jump-slot-second/liba32android_jump_slot_provider.so
+          file "$ARM32_JUMP_SLOT_CONSUMER" "$ARM32_JUMP_SLOT_PROVIDER"
+          readelf -dW "$ARM32_JUMP_SLOT_CONSUMER" | tee build-fixtures/jump-slot-dynamic.txt
+          readelf -rW "$ARM32_JUMP_SLOT_CONSUMER" | tee build-fixtures/jump-slot-relocations.txt
+          grep -F 'Shared library: [liba32android_jump_slot_provider.so]' build-fixtures/jump-slot-dynamic.txt
+          grep -F '(JMPREL)' build-fixtures/jump-slot-dynamic.txt
+          grep -F '(PLTRELSZ)' build-fixtures/jump-slot-dynamic.txt
+          grep -F '(PLTREL)' build-fixtures/jump-slot-dynamic.txt | grep -F 'REL'
+          grep -F 'R_ARM_JUMP_SLOT' build-fixtures/jump-slot-relocations.txt | grep -F 'fixture_import'
+          sha256sum "$ARM32_JUMP_SLOT_CONSUMER" "$ARM32_JUMP_SLOT_PROVIDER"
+      - name: Build reproducible real ARM32 versioned-symbol fixture
+        run: |
+          set -euxo pipefail
+          bash tools/fixtures/build_arm32_versioned_fixture.sh "$ANDROID_HOME/ndk/$NDK_VERSION" "$ARM32_VERSIONED_DIR"
+          bash tools/fixtures/build_arm32_versioned_fixture.sh "$ANDROID_HOME/ndk/$NDK_VERSION" build-fixtures/versioned-second
+          cmp "$ARM32_VERSIONED_CONSUMER" build-fixtures/versioned-second/liba32android_versioned_consumer.so
+          cmp "$ARM32_VERSIONED_PROVIDER" build-fixtures/versioned-second/liba32android_versioned_provider.so
+          readelf -VW "$ARM32_VERSIONED_CONSUMER" | tee build-fixtures/versioned-consumer-versions.txt
+          readelf -VW "$ARM32_VERSIONED_PROVIDER" | tee build-fixtures/versioned-provider-versions.txt
+          readelf -rW "$ARM32_VERSIONED_CONSUMER" | tee build-fixtures/versioned-consumer-relocations.txt
+          grep -F 'LIBC' build-fixtures/versioned-consumer-versions.txt
+          grep -F 'LIBC' build-fixtures/versioned-provider-versions.txt
+          grep -F 'R_ARM_JUMP_SLOT' build-fixtures/versioned-consumer-relocations.txt | grep -F 'fixture_versioned_import'
+          sha256sum "$ARM32_VERSIONED_CONSUMER" "$ARM32_VERSIONED_PROVIDER"
+      - name: Configure
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLIBA32ANDROID_BUILD_TESTS=ON
+          -DLIBA32ANDROID_ARM32_FIXTURE_PATH="$ARM32_FIXTURE"
+          -DLIBA32ANDROID_ARM32_JUMP_SLOT_CONSUMER_PATH="$ARM32_JUMP_SLOT_CONSUMER"
+          -DLIBA32ANDROID_ARM32_JUMP_SLOT_PROVIDER_PATH="$ARM32_JUMP_SLOT_PROVIDER"
+          -DLIBA32ANDROID_ARM32_VERSIONED_CONSUMER_PATH="$ARM32_VERSIONED_CONSUMER"
+          -DLIBA32ANDROID_ARM32_VERSIONED_PROVIDER_PATH="$ARM32_VERSIONED_PROVIDER"
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Verify shared library name
+        run: |
+          set -euxo pipefail
+          test -f build/liba32android.so
+          test ! -e build/libliba32android.so
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Record real ARM32 fixture loader evidence
+        run: |
+          set -euxo pipefail
+          build/elf32_real_fixture_test "$ARM32_FIXTURE" | tee build-fixtures/loader-evidence.txt
+          build/elf32_dynamic_placement_real_fixture_test "$ARM32_FIXTURE" |
+            tee build-fixtures/auto-placement-evidence.txt
+          build/elf32_dependency_loader_real_fixture_test "$ARM32_FIXTURE" |
+            tee build-fixtures/dependency-graph-evidence.txt
+          build/elf32_relro_real_fixture_test "$ARM32_FIXTURE" |
+            tee build-fixtures/relro-evidence.txt
+          build/elf32_execution_real_fixture_test "$ARM32_FIXTURE" |
+            tee build-fixtures/execution-evidence.txt
+          build/elf32_jump_slot_real_fixture_test "$ARM32_JUMP_SLOT_CONSUMER" "$ARM32_JUMP_SLOT_PROVIDER" |
+            tee build-fixtures/jump-slot-apply-evidence.txt
+          build/elf32_versioned_real_fixture_test "$ARM32_VERSIONED_CONSUMER" "$ARM32_VERSIONED_PROVIDER" |
+            tee build-fixtures/versioned-apply-evidence.txt
+          readelf -lW "$ARM32_FIXTURE" > build-fixtures/program-headers.txt
+          grep -F 'GNU_RELRO' build-fixtures/program-headers.txt
+          grep -F 'fixture.pt_gnu_relro.count=1' build-fixtures/loader-evidence.txt
+          grep -F 'fixture.pt_gnu_relro.writable_before_seal=true' build-fixtures/loader-evidence.txt
+          grep -F 'fixture.status=PASS' build-fixtures/loader-evidence.txt
+          grep -F 'fixture.auto_placement.required_alignment=0x4000'             build-fixtures/auto-placement-evidence.txt
+          grep -F 'fixture.auto_placement.status=PASS'             build-fixtures/auto-placement-evidence.txt
+          grep -F 'fixture.dependency_graph.required_alignment=0x4000' build-fixtures/dependency-graph-evidence.txt
+          grep -F 'fixture.dependency_graph.needed_count=0' build-fixtures/dependency-graph-evidence.txt
+          grep -F 'fixture.dependency_graph.provider_calls=0' build-fixtures/dependency-graph-evidence.txt
+          grep -F 'fixture.dependency_graph.status=PASS' build-fixtures/dependency-graph-evidence.txt
+          grep -F 'fixture.relro.segment_count=1' build-fixtures/relro-evidence.txt
+          grep -F 'fixture.relro.writable_before_seal=true' build-fixtures/relro-evidence.txt
+          grep -F 'fixture.relro.write_rejected_after_seal=true' build-fixtures/relro-evidence.txt
+          grep -F 'fixture.relro.relocated_bytes_unchanged=true' build-fixtures/relro-evidence.txt
+          grep -F 'fixture.relro.non_relro_permissions_unchanged=true' build-fixtures/relro-evidence.txt
+          grep -F 'fixture.relro.status=PASS' build-fixtures/relro-evidence.txt
+          grep -F 'fixture.execution.relocation_count=2' build-fixtures/execution-evidence.txt
+          grep -F 'fixture.execution.return_marker=0x5a' build-fixtures/execution-evidence.txt
+          grep -F 'fixture.execution.status=PASS' build-fixtures/execution-evidence.txt
+          grep -F 'fixture.jump_slot.object_count=2' build-fixtures/jump-slot-apply-evidence.txt
+          grep -F 'fixture.jump_slot.relocation_count=1' build-fixtures/jump-slot-apply-evidence.txt
+          grep -F 'fixture.jump_slot.provider_calls=1' build-fixtures/jump-slot-apply-evidence.txt
+          grep -F 'fixture.jump_slot.mappings_unchanged=true' build-fixtures/jump-slot-apply-evidence.txt
+          grep -F 'fixture.jump_slot.status=PASS' build-fixtures/jump-slot-apply-evidence.txt
+          grep -F 'fixture.versioned.object_count=2' build-fixtures/versioned-apply-evidence.txt
+          grep -F 'fixture.versioned.version_name=LIBC' build-fixtures/versioned-apply-evidence.txt
+          grep -F 'fixture.versioned.relocation_count=1' build-fixtures/versioned-apply-evidence.txt
+          grep -F 'fixture.versioned.status=PASS' build-fixtures/versioned-apply-evidence.txt
+      - name: Upload real ARM32 fixture evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm32-loader-fixture-${{ github.sha }}
+          path: |
+            build-fixtures/liba32android_loader_fixture.so
+            build-fixtures/loader-evidence.txt
+            build-fixtures/auto-placement-evidence.txt
+            build-fixtures/dependency-graph-evidence.txt
+            build-fixtures/relro-evidence.txt
+            build-fixtures/execution-evidence.txt
+            build-fixtures/program-headers.txt
+            build-fixtures/jump-slot/liba32android_jump_slot_consumer.so
+            build-fixtures/jump-slot/liba32android_jump_slot_provider.so
+            build-fixtures/jump-slot-dynamic.txt
+            build-fixtures/jump-slot-relocations.txt
+            build-fixtures/jump-slot-apply-evidence.txt
+            build-fixtures/versioned/liba32android_versioned_consumer.so
+            build-fixtures/versioned/liba32android_versioned_provider.so
+            build-fixtures/versioned-consumer-versions.txt
+            build-fixtures/versioned-provider-versions.txt
+            build-fixtures/versioned-consumer-relocations.txt
+            build-fixtures/versioned-apply-evidence.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  android-x86-64-probe-build:
+    name: Android x86_64 address-space probe
+    runs-on: ubuntu-24.04
+    env:
+      NDK_VERSION: 27.3.13750724
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libboost-dev binutils zlib1g-dev
+      - name: Ensure pinned NDK
+        run: |
+          set -euxo pipefail
+          if [ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION"
+          fi
+          test -f "$ANDROID_HOME/ndk/$NDK_VERSION/build/cmake/android.toolchain.cmake"
+      - name: Stage Boost headers for configure
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/boost-headers"
+          cp -a /usr/include/boost "$RUNNER_TEMP/boost-headers/"
+      - name: Configure x86_64 probe
+        run: >-
+          cmake -S . -B build-android-x86_64 -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/$NDK_VERSION/build/cmake/android.toolchain.cmake"
+          -DANDROID_ABI=x86_64
+          -DANDROID_PLATFORM=android-26
+          -DARCHITECTURE=x64
+          -DBoost_INCLUDE_DIR="$RUNNER_TEMP/boost-headers"
+          -DLIBA32ANDROID_BUILD_TESTS=OFF
+          -DLIBA32ANDROID_BUILD_ANDROID_PROBES=ON
+          -DDYNARMIC_ENABLE_NO_EXECUTE_SUPPORT=ON
+      - name: Build x86_64 address-space probe
+        run: cmake --build build-android-x86_64 --target android_address_space_probe --parallel 2
+      - name: Verify x86_64 probe
+        run: |
+          set -euxo pipefail
+          readelf -hW build-android-x86_64/android_address_space_probe | grep -F 'Machine:' | grep -F 'Advanced Micro Devices X86-64'
+          readelf -lW build-android-x86_64/android_address_space_probe | tee build-android-x86_64/program-headers.txt
+          load_count=$(awk '$1 == "LOAD" { count++ } END { print count + 0 }' build-android-x86_64/program-headers.txt)
+          aligned_load_count=$(awk '$1 == "LOAD" && $NF == "0x4000" { count++ } END { print count + 0 }' build-android-x86_64/program-headers.txt)
+          test "$load_count" -gt 0
+          test "$load_count" -eq "$aligned_load_count"
+          strings build-android-x86_64/android_address_space_probe | grep -F 'arch=x86_64'
+          strings build-android-x86_64/android_address_space_probe | grep -F 'jit_wx.result_check=%s'
+      - name: Upload x86_64 Android address-space probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-address-space-probe-x86_64-${{ github.sha }}
+          path: build-android-x86_64/android_address_space_probe
+          if-no-files-found: error
+          retention-days: 14
+
+  android-arm64-build:
+    name: Android arm64-v8a cross-build
+    runs-on: ubuntu-24.04
+    env:
+      NDK_VERSION: 27.3.13750724
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libboost-dev binutils zlib1g-dev
+      - name: Ensure pinned NDK
+        run: |
+          set -euxo pipefail
+          if [ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION"
+          fi
+          test -f "$ANDROID_HOME/ndk/$NDK_VERSION/build/cmake/android.toolchain.cmake"
+      - name: Stage Boost headers for cross compilation
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/boost-headers"
+          cp -a /usr/include/boost "$RUNNER_TEMP/boost-headers/"
+          test -f "$RUNNER_TEMP/boost-headers/boost/variant.hpp"
+      - name: Configure arm64-v8a
+        run: >-
+          cmake -S . -B build-android -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/$NDK_VERSION/build/cmake/android.toolchain.cmake"
+          -DANDROID_ABI=arm64-v8a
+          -DANDROID_PLATFORM=android-26
+          -DARCHITECTURE=arm64
+          -DBoost_INCLUDE_DIR="$RUNNER_TEMP/boost-headers"
+          -DLIBA32ANDROID_BUILD_TESTS=OFF
+          -DLIBA32ANDROID_BUILD_ANDROID_PROBES=ON
+          -DDYNARMIC_ENABLE_NO_EXECUTE_SUPPORT=ON
+      - name: Build shared runtime and Android diagnostics
+        run: cmake --build build-android --target liba32android android_address_space_probe android_runtime_smoke --parallel 2
+      - name: Verify shared library name and 16 KiB ELF alignment
+        run: |
+          set -euxo pipefail
+          test -f build-android/liba32android.so
+          test ! -e build-android/libliba32android.so
+          for elf in build-android/liba32android.so build-android/android_address_space_probe build-android/android_runtime_smoke; do
+            readelf -lW "$elf" > "$elf.program-headers.txt"
+            load_count=$(awk '$1 == "LOAD" { count++ } END { print count + 0 }' "$elf.program-headers.txt")
+            aligned_load_count=$(awk '$1 == "LOAD" && $NF == "0x4000" { count++ } END { print count + 0 }' "$elf.program-headers.txt")
+            test "$load_count" -gt 0
+            test "$load_count" -eq "$aligned_load_count"
+          done
+      - name: Verify Android diagnostic markers
+        run: |
+          set -euxo pipefail
+          strings build-android/android_address_space_probe | grep -F '/sdcard/Download/liba32android/address-space-probe.log'
+          strings build-android/android_address_space_probe | grep -F 'diagnostics.log_file=%s'
+          strings build-android/android_address_space_probe | grep -F 'android.ndk_api=%d'
+          strings build-android/android_address_space_probe | grep -F 'android.runtime_sdk'
+          strings build-android/android_address_space_probe | grep -F 'android.release'
+          if strings build-android/android_address_space_probe | grep -Fq 'android.api=%d'; then
+            echo 'obsolete android.api compile-time marker still present' >&2
+            exit 1
+          fi
+          grep -F 'A32CRASH|component=android_address_space_probe|signal=' tools/android/android_address_space_probe.cpp
+          strings build-android/android_address_space_probe | grep -F -- '--crash-test'
+          strings build-android/android_address_space_probe | grep -F 'crash_test.status=ARMED'
+          grep -F 'std::abort();' tools/android/android_address_space_probe.cpp
+          strings build-android/android_runtime_smoke | grep -F 'a32.return42.status=%s'
+          strings build-android/android_runtime_smoke | grep -F 'a32.memory.fastmem_direct=%s'
+          grep -F 'A32CRASH|component=android_runtime_smoke|signal=' tools/android/android_runtime_smoke.cpp
+          strings build-android/android_runtime_smoke | grep -F -- '--crash-test'
+          strings build-android/android_runtime_smoke | grep -F 'crash_test.status=ARMED'
+          grep -F 'std::abort();' tools/android/android_runtime_smoke.cpp
+          grep -F 'A32ERR|component=android_runtime_smoke|' tools/android/android_runtime_smoke.cpp
+          grep -F 'signal(signal_number, SIG_DFL);' tools/android/android_runtime_smoke.cpp
+          readelf -d build-android/android_runtime_smoke | grep -F 'Shared library: [liba32android.so]'
+      - name: Upload Android runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: liba32android-arm64-v8a-${{ github.sha }}
+          path: build-android/liba32android.so
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload Android address-space probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-address-space-probe-${{ github.sha }}
+          path: build-android/android_address_space_probe
+          if-no-files-found: error
+          retention-days: 14
+      - name: Stage Android runtime smoke bundle
+        run: |
+          set -euxo pipefail
+          mkdir -p runtime-smoke-bundle
+          cp build-android/android_runtime_smoke runtime-smoke-bundle/
+          cp build-android/liba32android.so runtime-smoke-bundle/
+          cat > runtime-smoke-bundle/run.sh <<'EOF'
+          #!/system/bin/sh
+          set -eu
+          SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+          export LD_LIBRARY_PATH="$SCRIPT_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          exec "$SCRIPT_DIR/android_runtime_smoke" "$@"
+          EOF
+          chmod 755 runtime-smoke-bundle/run.sh
+          cat > runtime-smoke-bundle/README.txt <<'EOF'
+          Copy/extract this whole directory into an executable Termux-private directory (not /sdcard), then run:
+            chmod 700 android_runtime_smoke run.sh
+            ./run.sh
+
+          Optional fastmem fault/fallback validation after the normal smoke passes:
+            ./run.sh --exercise-fastmem-fault
+
+          Destructive crash-marker/tombstone validation is explicit and intentionally terminates the process.
+          Run it separately, only after the normal smoke passes:
+            ./run.sh --crash-test
+          Expected pre-crash output includes:
+            crash_test.status=ARMED
+            crash_test.signal=SIGABRT
+          followed by an A32CRASH marker if the installed handler runs.
+
+          The program prints diagnostics.log_file=... with the log path. On Termux it first tries:
+            ~/storage/downloads/liba32android-runtime-smoke.log
+          EOF
+          test -f runtime-smoke-bundle/android_runtime_smoke
+          test -f runtime-smoke-bundle/liba32android.so
+          grep -F 'LD_LIBRARY_PATH' runtime-smoke-bundle/run.sh
+      - name: Upload Android runtime smoke bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-runtime-smoke-${{ github.sha }}
+          path: runtime-smoke-bundle/
+          if-no-files-found: error
+          retention-days: 14

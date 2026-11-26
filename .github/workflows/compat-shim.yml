@@ -1,0 +1,96 @@
+name: ARM32 liblog shim
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  arm32-liblog-shim:
+    name: ARM32 liblog shim integration
+    runs-on: ubuntu-24.04
+    env:
+      NDK_VERSION: 27.3.13750724
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libboost-dev binutils zlib1g-dev
+
+      - name: Ensure pinned NDK
+        run: |
+          set -euxo pipefail
+          if [ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION"
+          fi
+          test -x "$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi26-clang"
+
+      - name: Build reproducible ARM32 liblog shim fixture
+        run: |
+          set -euxo pipefail
+          bash -n tools/fixtures/build_arm32_android_log_shim_fixture.sh
+          rm -rf build-fixtures/android-log build-fixtures/android-log-second
+          bash tools/fixtures/build_arm32_android_log_shim_fixture.sh             "$ANDROID_HOME/ndk/$NDK_VERSION"             build-fixtures/android-log
+          bash tools/fixtures/build_arm32_android_log_shim_fixture.sh             "$ANDROID_HOME/ndk/$NDK_VERSION"             build-fixtures/android-log-second
+          cmp             build-fixtures/android-log/liblog.so             build-fixtures/android-log-second/liblog.so
+          cmp             build-fixtures/android-log/liba32android_android_log_consumer.so             build-fixtures/android-log-second/liba32android_android_log_consumer.so
+          readelf -dW build-fixtures/android-log/liblog.so |
+            tee build-fixtures/android-log-shim-dynamic.txt
+          readelf -sW build-fixtures/android-log/liblog.so |
+            tee build-fixtures/android-log-shim-symbols.txt
+          readelf -dW build-fixtures/android-log/liba32android_android_log_consumer.so |
+            tee build-fixtures/android-log-consumer-dynamic.txt
+          readelf -rW build-fixtures/android-log/liba32android_android_log_consumer.so |
+            tee build-fixtures/android-log-consumer-relocations.txt
+          grep -F 'Library soname: [liblog.so]' build-fixtures/android-log-shim-dynamic.txt
+          for symbol in __android_log_write __android_log_print __android_log_vprint; do
+            grep -F "$symbol" build-fixtures/android-log-shim-symbols.txt
+            grep -F 'R_ARM_JUMP_SLOT' build-fixtures/android-log-consumer-relocations.txt |
+              grep -F "$symbol"
+          done
+          grep -F 'Shared library: [liblog.so]' build-fixtures/android-log-consumer-dynamic.txt
+          sha256sum             build-fixtures/android-log/liblog.so             build-fixtures/android-log/liba32android_android_log_consumer.so
+
+      - name: Configure integration
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DLIBA32ANDROID_BUILD_TESTS=ON             -DLIBA32ANDROID_ARM32_ANDROID_LOG_CONSUMER_PATH="$GITHUB_WORKSPACE/build-fixtures/android-log/liba32android_android_log_consumer.so"             -DLIBA32ANDROID_ARM32_ANDROID_LOG_SHIM_PATH="$GITHUB_WORKSPACE/build-fixtures/android-log/liblog.so"
+
+      - name: Build integration
+        run: cmake --build build --target compat_android_log_shim_integration_test --parallel 2
+
+      - name: Test integration
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build --output-on-failure -R '^a32_android_log_shim_integration$'
+          build/compat_android_log_shim_integration_test             build-fixtures/android-log/liba32android_android_log_consumer.so             build-fixtures/android-log/liblog.so |
+            tee build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.object_count=2' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.needed=liblog.so' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.symbol_object=1' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.relocation_count=3' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.write_service_id=0xa0' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.print_service_id=0x133' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.vprint_service_id=0x134' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.service_calls=3' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.priority=6' build-fixtures/android-log-integration-evidence.txt
+          grep -F 'fixture.android_log.status=PASS' build-fixtures/android-log-integration-evidence.txt
+
+      - name: Upload shim integration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm32-liblog-shim
+          path: |
+            build-fixtures/android-log/liblog.so
+            build-fixtures/android-log/liba32android_android_log_consumer.so
+            build-fixtures/android-log-shim-dynamic.txt
+            build-fixtures/android-log-shim-symbols.txt
+            build-fixtures/android-log-consumer-dynamic.txt
+            build-fixtures/android-log-consumer-relocations.txt
+            build-fixtures/android-log-integration-evidence.txt
+          if-no-files-found: error
+          retention-days: 14
